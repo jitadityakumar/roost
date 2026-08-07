@@ -36,11 +36,15 @@ def list_listings(user_status: str | None = None) -> list[dict]:
         conn.close()
 
 
-def create_stub_listing(listing_id: int, url: str) -> None:
+def create_stub_listing(listing_id: int, url: str) -> bool:
+    """Returns True if this call actually inserted the row (i.e. this is the
+    first submission of this listing), False if it already existed. Callers
+    use this to avoid enqueueing a duplicate extraction job when two
+    concurrent submissions race for the same new URL."""
     now = _now_iso()
     conn = get_connection()
     try:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT INTO listings (id, url, extraction_status, edited_fields, created_at, updated_at)
             VALUES (?, ?, 'queued', '{}', ?, ?)
@@ -49,6 +53,7 @@ def create_stub_listing(listing_id: int, url: str) -> None:
             (listing_id, url, now, now),
         )
         conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 
@@ -56,21 +61,29 @@ def create_stub_listing(listing_id: int, url: str) -> None:
 def apply_extracted_fields(listing_id: int, fields: dict, from_scrape: bool = True) -> None:
     """Write extracted/derived fields onto a listing, skipping any field the
     user has manually edited (present in edited_fields). System columns
-    (extraction_status, extraction_error, updated_at) are always written."""
-    listing = get_listing(listing_id)
-    if listing is None:
-        raise ValueError(f"no listing with id {listing_id}")
+    (extraction_status, extraction_error, updated_at) are always written.
 
-    edited_fields = json.loads(listing["edited_fields"] or "{}")
-    to_write = {k: v for k, v in fields.items() if not (from_scrape and k in edited_fields)}
-    to_write["updated_at"] = _now_iso()
-
-    if not to_write:
-        return
-
-    set_clause = ", ".join(f"{k} = ?" for k in to_write)
+    The read of edited_fields and the write both happen inside one
+    BEGIN IMMEDIATE transaction on a single connection: without that, a
+    concurrent apply_manual_edit could mark a field sticky *after* this
+    function already decided (from a stale read) that the field was safe to
+    overwrite, permanently baking a scraped value in over a value the user
+    just corrected. BEGIN IMMEDIATE serializes against apply_manual_edit's
+    own BEGIN IMMEDIATE below, so that interleaving can't happen.
+    """
     conn = get_connection()
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT edited_fields FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        if row is None:
+            conn.execute("COMMIT")
+            raise ValueError(f"no listing with id {listing_id}")
+
+        edited_fields = json.loads(row["edited_fields"] or "{}")
+        to_write = {k: v for k, v in fields.items() if not (from_scrape and k in edited_fields)}
+        to_write["updated_at"] = _now_iso()
+
+        set_clause = ", ".join(f"{k} = ?" for k in to_write)
         conn.execute(
             f"UPDATE listings SET {set_clause} WHERE id = ?",
             (*to_write.values(), listing_id),
@@ -82,31 +95,41 @@ def apply_extracted_fields(listing_id: int, fields: dict, from_scrape: bool = Tr
 
 def apply_manual_edit(listing_id: int, fields: dict) -> dict:
     """User-initiated edit via PATCH: writes the fields and marks each one
-    sticky in edited_fields so future scrapes/jobs never clobber it."""
-    listing = get_listing(listing_id)
-    if listing is None:
-        raise ValueError(f"no listing with id {listing_id}")
+    sticky in edited_fields so future scrapes/jobs never clobber it.
 
-    now = _now_iso()
-    edited_fields = json.loads(listing["edited_fields"] or "{}")
-    for key in fields:
-        edited_fields[key] = now
-
-    to_write = dict(fields)
-    to_write["edited_fields"] = json.dumps(edited_fields)
-    to_write["updated_at"] = now
-
-    set_clause = ", ".join(f"{k} = ?" for k in to_write)
+    Read-then-write on edited_fields happens inside one BEGIN IMMEDIATE
+    transaction (see apply_extracted_fields docstring) so two concurrent
+    manual edits can't lose each other's sticky markers via a last-write-wins
+    JSON merge.
+    """
     conn = get_connection()
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT edited_fields FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        if row is None:
+            conn.execute("COMMIT")
+            raise ValueError(f"no listing with id {listing_id}")
+
+        now = _now_iso()
+        edited_fields = json.loads(row["edited_fields"] or "{}")
+        for key in fields:
+            edited_fields[key] = now
+
+        to_write = dict(fields)
+        to_write["edited_fields"] = json.dumps(edited_fields)
+        to_write["updated_at"] = now
+
+        set_clause = ", ".join(f"{k} = ?" for k in to_write)
         conn.execute(
             f"UPDATE listings SET {set_clause} WHERE id = ?",
             (*to_write.values(), listing_id),
         )
         conn.commit()
+
+        row = conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        return dict(row)
     finally:
         conn.close()
-    return get_listing(listing_id)
 
 
 def set_user_status(listing_id: int, user_status: str) -> None:

@@ -38,12 +38,15 @@ def create_listing(body: CreateListingRequest):
         raise HTTPException(status_code=422, detail=str(e))
 
     canonical = url_utils.canonical_url(property_id)
-    existing = store.get_listing(property_id)
-    if existing is not None:
-        return serialize_listing(existing)
-
-    store.create_stub_listing(property_id, canonical)
-    queue.enqueue_job(property_id, "rightmove_extract", "http")
+    # create_stub_listing is the atomic operation (INSERT ... ON CONFLICT DO
+    # NOTHING) — its return value tells us whether *this* request was the one
+    # that actually created the row. A preceding get_listing()-then-insert
+    # check would leave a race window where two concurrent submissions of a
+    # brand-new URL both see "doesn't exist yet" and both enqueue an
+    # extraction job for it.
+    inserted = store.create_stub_listing(property_id, canonical)
+    if inserted:
+        queue.enqueue_job(property_id, "rightmove_extract", "http")
     return serialize_listing(store.get_listing(property_id))
 
 
@@ -65,8 +68,12 @@ def refresh_listing(listing_id: int):
     listing = store.get_listing(listing_id)
     if listing is None:
         raise HTTPException(status_code=404, detail="listing not found")
-    store.set_extraction_status(listing_id, "queued")
-    queue.enqueue_job(listing_id, "rightmove_extract", "http")
+    # Without this guard, N rapid clicks on refresh enqueue N extraction
+    # jobs for the same listing (each producing its own snapshot row and
+    # media_download job) instead of just riding the one already in flight.
+    if not queue.has_pending_job(listing_id, "rightmove_extract"):
+        store.set_extraction_status(listing_id, "queued")
+        queue.enqueue_job(listing_id, "rightmove_extract", "http")
     return serialize_listing(store.get_listing(listing_id))
 
 
