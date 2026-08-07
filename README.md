@@ -19,6 +19,15 @@ joins yet (Phase 2) — those show as UI stubs.
 - Packaging: single Docker container (backend serves the built frontend as
   static files; SQLite on a mounted volume)
 
+## How it works
+
+Paste a Rightmove URL in and it comes back immediately with a stub card — no
+waiting on the scrape. A background job fetches the listing, extracts
+structured fields, then queues a media download for the photos, floorplan,
+and EPC graphic. The card upgrades in place once that's done. Any field can
+be manually corrected afterward; a manual edit sticks and won't be
+overwritten by a later refresh.
+
 ## Development
 
 ```
@@ -33,6 +42,16 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Running with Docker
+
+```
+docker build -t roost .
+docker run -p 8000:8000 -v $(pwd)/data:/data roost
+```
+
+Then open http://localhost:8000. The `/data` volume holds the SQLite
+database and downloaded media so they survive container restarts.
 
 ## Data
 
