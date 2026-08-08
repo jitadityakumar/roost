@@ -21,6 +21,18 @@ function formatFetchedAt(listing) {
   return listing.rightmove_fetched_at.slice(0, 10);
 }
 
+// The jobs table shows current status, not a full audit log: every Refresh
+// enqueues a fresh row per job_type rather than reusing the previous one
+// (the jobs table is a history log by design), so a listing refreshed many
+// times accumulates one group of rows per refresh. Collapse to just the
+// most recent row per job_type -- the API already returns rows ordered by
+// created_at ASC, so the last occurrence of each job_type is the latest.
+function latestJobsByType(jobs) {
+  const latest = new Map();
+  for (const j of jobs) latest.set(j.job_type, j);
+  return Array.from(latest.values());
+}
+
 const FIELDS = [
   { field: "price_gbp", label: "Price", editable: true, currency: true },
   { field: "address", label: "Address", editable: true },
@@ -238,7 +250,7 @@ export default function ListingDetail() {
             </tr>
           </thead>
           <tbody>
-            {jobs.map((j) => (
+            {latestJobsByType(jobs).map((j) => (
               <tr key={j.id}>
                 <td>{j.job_type}</td>
                 <td>{j.lane}</td>
