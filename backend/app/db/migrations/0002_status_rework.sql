@@ -12,9 +12,17 @@
 -- SQLite refuses to DROP a table other tables still reference while
 -- enforcement is on. It's restored at the end of this script; PRAGMA
 -- foreign_keys can't be toggled inside a transaction, and this script runs
--- outside one (see migrate.py's use of executescript).
+-- outside one (see migrate.py's use of executescript). Because of that,
+-- this script also isn't atomic -- executescript commits each statement as
+-- it runs rather than the whole file as one transaction, so a crash
+-- partway through (disk full, OOM-kill) can leave both `listings` and
+-- `listings_new` on disk with schema_version not yet bumped, and the next
+-- boot would retry this file from the top. The DROP IF EXISTS below makes
+-- that retry safe instead of failing on "table listings_new already exists".
 
 PRAGMA foreign_keys=OFF;
+
+DROP TABLE IF EXISTS listings_new;
 
 DELETE FROM commute_data
     WHERE listing_id IN (SELECT id FROM listings WHERE user_status = 'removed');

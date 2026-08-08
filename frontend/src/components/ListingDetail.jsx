@@ -78,7 +78,7 @@ export default function ListingDetail() {
 
   return (
     <div className="listing-detail">
-      <button className="back-btn" onClick={() => navigate(-1)}>
+      <button className="back-btn" onClick={() => navigate("/")}>
         ← Back
       </button>
 

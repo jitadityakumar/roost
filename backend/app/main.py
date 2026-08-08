@@ -53,7 +53,7 @@ if os.path.isdir(_STATIC_DIR):
     def spa_fallback(full_path: str):
         # A real API 404 (e.g. /api/nonexistent) should stay a 404, not
         # silently serve the app shell.
-        if full_path.startswith("api/"):
+        if full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404)
         if full_path == "favicon.svg":
             return FileResponse(os.path.join(_STATIC_DIR, "favicon.svg"))
