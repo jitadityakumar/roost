@@ -12,9 +12,74 @@ def test_create_listing_creates_stub_and_enqueues_job(client):
     body = resp.json()
     assert body["id"] == 123456789
     assert body["extraction_status"] in ("queued", "running", "done")
+    assert body["pipeline_status"] == "queued"
 
     jobs = queue.get_jobs_for_listing(123456789)
     assert any(j["job_type"] == "rightmove_extract" for j in jobs)
+
+
+def test_pipeline_status_is_none_for_listing_with_no_jobs(client):
+    # create_stub_listing bypasses the route (and its job enqueue) --
+    # exercises the "no jobs table rows at all" branch.
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    resp = client.get("/api/listings/1")
+    assert resp.json()["pipeline_status"] is None
+
+
+def test_pipeline_status_is_fetching_while_media_download_in_flight(client):
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    rm_job_id = queue.enqueue_job(1, "rightmove_extract", "http")
+    queue.complete_job(rm_job_id)
+    queue.enqueue_job(1, "media_download", "http")
+
+    resp = client.get("/api/listings/1")
+    assert resp.json()["pipeline_status"] == "fetching"
+
+
+def test_pipeline_status_is_failed_when_a_job_permanently_fails(client):
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    rm_job_id = queue.enqueue_job(1, "rightmove_extract", "http")
+    queue.fail_job(rm_job_id, "boom", permanent=True)
+
+    resp = client.get("/api/listings/1")
+    assert resp.json()["pipeline_status"] == "failed"
+
+
+def test_list_listings_includes_pipeline_status_without_n_plus_1(client):
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    store.create_stub_listing(2, "https://www.rightmove.co.uk/properties/2")
+    queue.enqueue_job(1, "rightmove_extract", "http")
+    queue.enqueue_job(2, "rightmove_extract", "http")
+
+    resp = client.get("/api/listings")
+    statuses = {l["id"]: l["pipeline_status"] for l in resp.json()}
+    assert statuses == {1: "queued", 2: "queued"}
+
+
+def test_list_listings_attributes_distinct_pipeline_status_per_listing(client):
+    # Three listings simultaneously in three different pipeline stages --
+    # exercises that the aggregate query in queue.latest_job_statuses_for_listings
+    # correctly scopes rows per listing_id rather than mixing them up.
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    store.create_stub_listing(2, "https://www.rightmove.co.uk/properties/2")
+    store.create_stub_listing(3, "https://www.rightmove.co.uk/properties/3")
+
+    queue.enqueue_job(1, "rightmove_extract", "http")  # stays queued
+
+    rm2 = queue.enqueue_job(2, "rightmove_extract", "http")
+    queue.complete_job(rm2)
+    md2 = queue.enqueue_job(2, "media_download", "http")
+    queue.complete_job(md2)
+    queue.enqueue_job(2, "text_extract", "llm")  # queued -> processing
+
+    rm3 = queue.enqueue_job(3, "rightmove_extract", "http")
+    queue.complete_job(rm3)
+    md3 = queue.enqueue_job(3, "media_download", "http")
+    queue.complete_job(md3)  # nothing else in flight -> done
+
+    resp = client.get("/api/listings")
+    statuses = {l["id"]: l["pipeline_status"] for l in resp.json()}
+    assert statuses == {1: "queued", 2: "processing", 3: None}
 
 
 def test_create_listing_rejects_invalid_url(client):

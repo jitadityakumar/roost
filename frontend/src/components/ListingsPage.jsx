@@ -26,9 +26,13 @@ export default function ListingsPage({ status }) {
     load();
   }, [load]);
 
-  // Poll while anything is still extracting, so stub cards upgrade in place.
+  // Poll while any listing's pipeline is still in flight (extraction, media
+  // download, or llm enrichment), so stub cards upgrade in place and badges
+  // clear once each stage finishes.
   useEffect(() => {
-    const hasPending = listings.some((l) => l.extraction_status === "queued" || l.extraction_status === "running");
+    const hasPending = listings.some(
+      (l) => l.pipeline_status === "queued" || l.pipeline_status === "fetching" || l.pipeline_status === "processing"
+    );
     if (!hasPending) return;
     const timer = setInterval(load, 3000);
     return () => clearInterval(timer);

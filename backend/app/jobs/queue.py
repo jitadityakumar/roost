@@ -210,3 +210,36 @@ def get_jobs_for_listing(listing_id: int) -> list[dict]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def latest_job_statuses_for_listings(listing_ids: list[int]) -> dict[int, dict[str, str]]:
+    """For each given listing, returns {job_type: status} using only each
+    job_type's most recent row (a listing accumulates one row per job_type
+    per Refresh/backfill — see pipeline_status.py). One aggregate query
+    regardless of how many listing_ids are passed, so callers like
+    list_listings can compute a per-listing pipeline status without an N+1
+    query per row."""
+    if not listing_ids:
+        return {}
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in listing_ids)
+        rows = conn.execute(
+            f"""
+            SELECT j.listing_id, j.job_type, j.status
+            FROM jobs j
+            JOIN (
+                SELECT listing_id, job_type, MAX(id) AS max_id
+                FROM jobs
+                WHERE listing_id IN ({placeholders})
+                GROUP BY listing_id, job_type
+            ) latest ON j.id = latest.max_id
+            """,
+            listing_ids,
+        ).fetchall()
+        result: dict[int, dict[str, str]] = {}
+        for row in rows:
+            result.setdefault(row["listing_id"], {})[row["job_type"]] = row["status"]
+        return result
+    finally:
+        conn.close()
