@@ -25,9 +25,14 @@ describe("FieldRow display formatting", () => {
     expect(screen.getByText("Yes")).toBeInTheDocument();
   });
 
-  it("formats currency fields with a £ prefix", () => {
+  it("formats currency fields with a £ prefix and thousands separators", () => {
     render(<FieldRow listing={makeListing({ price_gbp: 475000 })} field="price_gbp" label="Price" currency />);
-    expect(screen.getByText("£475000")).toBeInTheDocument();
+    expect(screen.getByText("£475,000")).toBeInTheDocument();
+  });
+
+  it("formats fields with a unit suffix", () => {
+    render(<FieldRow listing={makeListing({ floor_area_sqft: 1200 })} field="floor_area_sqft" label="Floor area" unit="sq ft" />);
+    expect(screen.getByText("1200 sq ft")).toBeInTheDocument();
   });
 
   it("shows an 'edited by you' badge when the field is sticky", () => {
