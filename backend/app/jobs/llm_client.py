@@ -294,28 +294,48 @@ def as_bool(value) -> bool | None:
     return None
 
 
-_EPC_RE = re.compile(r"\b([A-G])\b(?:\s*\((\d+)\))?", re.I)
+# Official England & Wales EPC band thresholds (gov.uk): A 92+, B 81-91,
+# C 69-80, D 55-68, E 39-54, F 21-38, G 1-20 — sorted descending so the
+# first threshold a score meets or exceeds is its band.
+_EPC_BAND_THRESHOLDS = [
+    (92, "A"),
+    (81, "B"),
+    (69, "C"),
+    (55, "D"),
+    (39, "E"),
+    (21, "F"),
+    (1, "G"),
+]
 
 
-def as_epc_rating(value) -> str | None:
-    """Normalizes to '<Letter> (<score>)', or just '<Letter>' if no score is
-    present. Accepts a plain string ('C (73)', 'C') or a {'letter', 'score'}
-    dict shape, in case the model ever returns that instead."""
-    if isinstance(value, dict):
-        letter = value.get("letter")
-        score = value.get("score")
-        text = f"{letter} ({score})" if letter and score is not None else letter
-    elif isinstance(value, str):
-        text = value
-    else:
+def epc_band_for_score(score: int) -> str | None:
+    """The app calculates the letter band from the numeric score itself,
+    rather than trusting the model's letter — a misread band is a bigger
+    error than a misread number, and the two should never be allowed to
+    disagree. Found on a real (non-synthetic) listing on 2026-08-08: Haiku
+    correctly read a score of 81 off a real EPC graphic but misclassified
+    it as band A (should be B) — the prompt/schema now only asks for the
+    score, not the letter, and this function is the source of truth for
+    the band."""
+    for threshold, band in _EPC_BAND_THRESHOLDS:
+        if score >= threshold:
+            return band
+    return None  # a score below 1 isn't a valid EPC score
+
+
+def epc_rating_from_score(value) -> str | None:
+    """Coerces `value` via as_int, then formats as '<Letter> (<score>)'
+    using epc_band_for_score. None if the score doesn't coerce or is out of
+    the valid EPC range (1-100-ish; epc_band_for_score returns None below
+    1, and a hallucinated >100 score is still shown since there's no
+    documented upper cap worth guessing at)."""
+    score = as_int(value)
+    if score is None:
         return None
-    if not text:
+    band = epc_band_for_score(score)
+    if band is None:
         return None
-    match = _EPC_RE.search(text)
-    if not match:
-        return None
-    letter, score = match.group(1).upper(), match.group(2)
-    return f"{letter} ({score})" if score else letter
+    return f"{band} ({score})"
 
 
 _BAND_RE = re.compile(r"^[A-H]$")

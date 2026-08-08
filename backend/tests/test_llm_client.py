@@ -202,18 +202,46 @@ def test_as_council_tax_band(value, expected):
 
 
 @pytest.mark.parametrize(
-    "value,expected",
+    "score,expected_band",
     [
-        ("C (73)", "C (73)"),
-        ("c (73)", "C (73)"),
-        ("C", "C"),
-        ({"letter": "C", "score": 73}, "C (73)"),
-        (None, None),
-        ("not legible", None),
+        (100, "A"),
+        (92, "A"),
+        (91, "B"),
+        (81, "B"),
+        (80, "C"),
+        (69, "C"),
+        (68, "D"),
+        (55, "D"),
+        (54, "E"),
+        (39, "E"),
+        (38, "F"),
+        (21, "F"),
+        (20, "G"),
+        (1, "G"),
+        (0, None),
     ],
 )
-def test_as_epc_rating(value, expected):
-    assert llm_client.as_epc_rating(value) == expected
+def test_epc_band_for_score(score, expected_band):
+    assert llm_client.epc_band_for_score(score) == expected_band
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (81, "B (81)"),
+        ("81", "B (81)"),
+        (73, "C (73)"),
+        (None, None),
+        ("not a number", None),
+        (0, None),  # coerces to 0, which is below the valid EPC range
+    ],
+)
+def test_epc_rating_from_score(value, expected):
+    # Real 2026-08-08 finding: Haiku correctly read a score of 81 off a
+    # real EPC graphic but misclassified it as band A instead of B — the
+    # app now calculates the band from the score instead of trusting the
+    # model's letter.
+    assert llm_client.epc_rating_from_score(value) == expected
 
 
 @pytest.mark.parametrize(

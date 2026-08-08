@@ -197,15 +197,32 @@ def test_handle_epc_vision_writes_both_fields(listing_id, media_dir, mock_claude
     d = os.path.join(media_dir, str(listing_id), "epc")
     os.makedirs(d)
     open(os.path.join(d, "01.jpeg"), "w").close()
-    _queue_response(mock_claude_cli, {"epc_current": "C (73)", "epc_potential": "B (80)"})
+    _queue_response(mock_claude_cli, {"epc_current_score": 73, "epc_potential_score": 82})
 
     handlers.handle_epc_vision(_job(listing_id))
 
     listing = store.get_listing(listing_id)
     assert listing["epc_current"] == "C (73)"
-    assert listing["epc_potential"] == "B (80)"
+    assert listing["epc_potential"] == "B (82)"
     assert listing["epc_source"] == "llm"
     assert mock_claude_cli["calls"][0]["json_schema"] == llm_prompts.EPC_VISION_SCHEMA
+
+
+def test_handle_epc_vision_computes_band_from_score_not_model_letter(listing_id, media_dir, mock_claude_cli):
+    # Real 2026-08-08 finding: the model can read the score correctly (81)
+    # while still misclassifying the band. The prompt/schema no longer ask
+    # for a letter at all — the app derives it from the score, so there's
+    # no letter for the model to get wrong anymore.
+    d = os.path.join(media_dir, str(listing_id), "epc")
+    os.makedirs(d)
+    open(os.path.join(d, "01.jpeg"), "w").close()
+    _queue_response(mock_claude_cli, {"epc_current_score": 81, "epc_potential_score": 81})
+
+    handlers.handle_epc_vision(_job(listing_id))
+
+    listing = store.get_listing(listing_id)
+    assert listing["epc_current"] == "B (81)"
+    assert listing["epc_potential"] == "B (81)"
 
 
 def test_handle_epc_vision_raises_without_image(listing_id, media_dir):

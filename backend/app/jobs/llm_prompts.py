@@ -21,9 +21,9 @@ FLOOR_AREA_VISION_PROMPT = """This is a UK property floorplan image at {image_pa
 
 Reply with ONLY a JSON object, no other text before or after it: {{"floor_area_sqm": <number or null>, "floor_area_sqft": <number or null>}}. Populate whichever unit(s) are printed on the image; if only one unit is shown, leave the other null (the caller will convert). If no total floor area figure is printed anywhere on the image, return {{"floor_area_sqm": null, "floor_area_sqft": null}}."""
 
-EPC_VISION_PROMPT = """This is a UK Energy Performance Certificate (EPC) graphic image at {image_path}. Read the image and find the current and potential energy efficiency rating.
+EPC_VISION_PROMPT = """This is a UK Energy Performance Certificate (EPC) graphic image at {image_path}. Read the image and find the current and potential energy efficiency score.
 
-Reply with ONLY a JSON object, no other text before or after it: {{"epc_current": "<letter> (<score>)", "epc_potential": "<letter> (<score>)"}}, e.g. {{"epc_current": "C (73)", "epc_potential": "B (80)"}}. Use null for either value if it isn't legible or present on the image. Read the score number carefully off the marker position on the coloured bar — do not guess a score from the letter band alone."""
+Reply with ONLY a JSON object, no other text before or after it: {{"epc_current_score": <integer 1-100 or null>, "epc_potential_score": <integer 1-100 or null>}}, e.g. {{"epc_current_score": 73, "epc_potential_score": 80}}. Use null for either value if it isn't legible or present on the image. Read the score number carefully off the marker position on the coloured bar. Only report the number — the letter band is derived from it separately, do not include a letter in your answer."""
 
 # JSON schemas passed to `claude -p --output-format json --json-schema ...`
 # (see llm_client.run_claude_prompt/parse_structured_output). Prompt wording
@@ -58,9 +58,9 @@ FLOOR_AREA_VISION_SCHEMA = {
 EPC_VISION_SCHEMA = {
     "type": "object",
     "properties": {
-        "epc_current": {"type": ["string", "null"]},
-        "epc_potential": {"type": ["string", "null"]},
+        "epc_current_score": {"type": ["integer", "null"]},
+        "epc_potential_score": {"type": ["integer", "null"]},
     },
-    "required": ["epc_current", "epc_potential"],
+    "required": ["epc_current_score", "epc_potential_score"],
     "additionalProperties": False,
 }

@@ -16,7 +16,7 @@ from app.config import MEDIA_DIR
 from app.jobs import llm_enqueue, llm_prompts, queue
 from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
 from app.jobs.llm_client import parse_structured_output, run_claude_prompt
-from app.jobs.llm_client import as_bool, as_council_tax_band, as_epc_rating, as_float, as_int
+from app.jobs.llm_client import as_bool, as_council_tax_band, as_float, as_int, epc_rating_from_score
 from app.jobs.rightmove_extract import (
     download_media,
     extract_listing,
@@ -253,11 +253,11 @@ def handle_epc_vision(job: dict) -> None:
     parsed = parse_structured_output(raw)
 
     fields = {}
-    current = as_epc_rating(parsed.get("epc_current"))
+    current = epc_rating_from_score(parsed.get("epc_current_score"))
     if current is not None:
         fields["epc_current"] = current
         fields["epc_source"] = "llm"
-    potential = as_epc_rating(parsed.get("epc_potential"))
+    potential = epc_rating_from_score(parsed.get("epc_potential_score"))
     if potential is not None:
         fields["epc_potential"] = potential
         fields["epc_source"] = "llm"
