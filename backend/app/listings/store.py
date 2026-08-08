@@ -1,6 +1,7 @@
 """Listing row read/write helpers, including the manual-edit stickiness rule:
 a field name present in `edited_fields` was hand-corrected by the user and
-must never be silently overwritten by a later scrape or job."""
+must never be silently overwritten by a later scrape or job — and neither
+must its companion `_source` column (see FIELD_SOURCE_COMPANIONS)."""
 from __future__ import annotations
 
 import json
@@ -8,9 +9,38 @@ from datetime import datetime, timezone
 
 from app.db.connection import get_connection
 
+# Every multi-source field's companion `_source` column. A manual edit to
+# the value column freezes the value (via edited_fields), but the source
+# column is a separate dict key that would otherwise keep getting reset to
+# 'rightmove'/'llm' by every future scrape or job — falsely re-claiming an
+# automated origin for a value the user has since overridden by hand. When
+# the value field is sticky, its source companion must be sticky too.
+FIELD_SOURCE_COMPANIONS = {
+    "lease_years_remaining": "lease_years_remaining_source",
+    "service_charge_pa": "service_charge_source",
+    "service_charge_pm": "service_charge_source",
+    "council_tax_band": "council_tax_band_source",
+    "floor_area_sqft": "floor_area_sqft_source",
+    "epc_current": "epc_source",
+    "epc_potential": "epc_source",
+    "chain_free": "chain_free_source",
+    "cash_only": "cash_only_source",
+    "garden": "garden_source",
+    "parking": "parking_source",
+}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _is_sticky(key: str, edited_fields: dict) -> bool:
+    if key in edited_fields:
+        return True
+    return any(
+        key == source_field and value_field in edited_fields
+        for value_field, source_field in FIELD_SOURCE_COMPANIONS.items()
+    )
 
 
 def get_listing(listing_id: int) -> dict | None:
@@ -80,7 +110,7 @@ def apply_extracted_fields(listing_id: int, fields: dict, from_scrape: bool = Tr
             raise ValueError(f"no listing with id {listing_id}")
 
         edited_fields = json.loads(row["edited_fields"] or "{}")
-        to_write = {k: v for k, v in fields.items() if not (from_scrape and k in edited_fields)}
+        to_write = {k: v for k, v in fields.items() if not (from_scrape and _is_sticky(k, edited_fields))}
         to_write["updated_at"] = _now_iso()
 
         set_clause = ", ".join(f"{k} = ?" for k in to_write)

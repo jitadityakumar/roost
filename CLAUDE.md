@@ -67,13 +67,31 @@ calls into it and does all the DB-writing, normalization, and job-chaining
 **Every enrichable field can come from more than one source, and users can
 override any of them.** `app/listings/store.py` has two write paths:
 `apply_extracted_fields` (from a scrape/job — skips any field the user has
-manually edited) and `apply_manual_edit` (from a user PATCH — writes the
-value and marks it sticky in the `edited_fields` JSON column). A field's
-`_source` column (`rightmove` or `llm`) records where the value *originally*
-came from; `edited_fields` is what actually blocks future overwrites, not
-`_source`. When adding a new enrichable field, decide its source priority
-order and wire both write paths consistently — don't bypass
-`apply_extracted_fields` with a raw UPDATE from job code.
+manually edited, and *also* skips that field's companion `_source` column via
+`FIELD_SOURCE_COMPANIONS` — a manual edit freezes the value and the metadata
+describing where it came from together) and `apply_manual_edit` (from a user
+PATCH — writes the value and marks it sticky in the `edited_fields` JSON
+column). A field's `_source` column (`rightmove` or `llm`) records where the
+value *originally* came from; `edited_fields` is what actually blocks future
+overwrites, not `_source`. When adding a new enrichable field with a
+`_source` companion, add the pair to `FIELD_SOURCE_COMPANIONS` too — a value
+field skipped for stickiness whose source column isn't also skipped will
+silently mislabel a hand-entered value as machine-sourced.
+
+**When Phase 3 builds the LLM job-enqueue logic: check stickiness before
+enqueueing, not just before writing results.** `apply_extracted_fields`
+already refuses to overwrite a sticky field's *value*, but that's a
+correctness backstop, not an efficiency one — nothing stops a job from being
+enqueued and actually running an LLM call whose entire output is guaranteed
+to be discarded. Given `lane=llm` is strictly serial (one worker, see below),
+that's a wasted turn in a scarce single-threaded queue, not just wasted
+compute. Before enqueueing `floor_area_vision`, `epc_vision`, or
+`text_extract` for a listing, check whether every field that job would
+populate is already in `edited_fields`; if so, skip enqueueing it entirely.
+(`text_extract` populates several fields at once — lease years, service
+charge, council tax band, chain-free, cash-only — so this is a
+job-level "*are all of my target fields already sticky?*" check, not a
+per-field one.)
 
 **Media is never served from a bare static mount.** `app/routes/media.py`
 validates the listing exists, the category is an allowlisted value, and the

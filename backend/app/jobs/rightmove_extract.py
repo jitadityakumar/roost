@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 USER_AGENT = (
@@ -128,7 +129,13 @@ def download_media(prop: dict, out_dir: str) -> dict:
         cat_dir = os.path.join(prop_dir, name)
         os.makedirs(cat_dir, exist_ok=True)
         for i, item in enumerate(items, start=1):
-            ext = os.path.splitext(item["url"])[1] or default_ext
+            # Extension must come from the URL's path, not the raw URL
+            # string: splitext() on the full URL would sweep a query string
+            # (e.g. "?v=3") into the "extension", producing a filename the
+            # media-serving route's filename allowlist rejects forever.
+            ext = os.path.splitext(urlparse(item["url"]).path)[1] or default_ext
+            if not re.fullmatch(r"\.[a-zA-Z0-9]{1,5}", ext):
+                ext = default_ext
             dest = os.path.join(cat_dir, f"{i:02d}{ext}")
             download_file(item["url"], dest)
             print(f"{name} {i}/{len(items)} -> {dest}", file=sys.stderr)
