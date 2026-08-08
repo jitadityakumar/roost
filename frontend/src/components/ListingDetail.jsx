@@ -8,12 +8,6 @@ import MediaGrid from "./MediaGrid.jsx";
 import NearestStations from "./NearestStations.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 
-const BACK_ROUTE = {
-  triage: "/triage",
-  approved: "/approved",
-  rejected: "/rejected",
-};
-
 function formatBroadband(listing) {
   if (!listing.broadband_top_speed) return "—";
   const speed = String(listing.broadband_top_speed).replace(/mb\/?s?$/i, "").trim();
@@ -138,10 +132,7 @@ export default function ListingDetail() {
 
   return (
     <div className="listing-detail">
-      <button
-        className="back-btn"
-        onClick={() => navigate(BACK_ROUTE[listing.user_status] || "/")}
-      >
+      <button className="back-btn" onClick={() => navigate(`/${listing.user_status}`)}>
         ← Back
       </button>
 
