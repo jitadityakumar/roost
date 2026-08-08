@@ -52,6 +52,13 @@ def resolve_page_model(html: str) -> dict:
     return resolve(0)
 
 
+def extract_added_on(root: dict) -> str | None:
+    """Rightmove's listing-added date lives at analyticsInfo.analyticsProperty
+    .added (raw 'YYYYMMDD' string) -- a sibling of propertyData in the page
+    model, not nested inside it."""
+    return ((root.get("analyticsInfo") or {}).get("analyticsProperty") or {}).get("added")
+
+
 def extract_listing(prop: dict, listing_added_on: str | None = None) -> dict:
     return {
         "id": prop.get("id"),
@@ -175,8 +182,7 @@ def main():
     html = fetch_html(args.url)
     root = resolve_page_model(html)
     prop = root["propertyData"]
-    added_on = ((root.get("analyticsInfo") or {}).get("analyticsProperty") or {}).get("added")
-    listing = extract_listing(prop, listing_added_on=added_on)
+    listing = extract_listing(prop, listing_added_on=extract_added_on(root))
 
     if not args.no_broadband:
         postcode = f"{listing['postcode_outcode']}{listing['postcode_incode']}"

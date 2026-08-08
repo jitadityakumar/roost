@@ -20,6 +20,7 @@ from app.jobs.llm_client import parse_structured_output, run_claude_prompt
 from app.jobs.llm_client import as_bool, as_council_tax_band, as_float, as_int, epc_rating_from_score
 from app.jobs.rightmove_extract import (
     download_media,
+    extract_added_on,
     extract_listing,
     fetch_broadband_summary,
     fetch_html,
@@ -45,8 +46,7 @@ def handle_rightmove_extract(job: dict) -> None:
         store.set_extraction_status(listing_id, "failed", str(e))
         raise RuntimeError(f"extraction failed for listing {listing_id}: {e}") from e
 
-    added_on = ((root.get("analyticsInfo") or {}).get("analyticsProperty") or {}).get("added")
-    extracted = extract_listing(prop, listing_added_on=added_on)
+    extracted = extract_listing(prop, listing_added_on=extract_added_on(root))
 
     postcode = None
     if extracted.get("postcode_outcode"):
