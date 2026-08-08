@@ -51,7 +51,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   background: var(--bg);
   color: var(--fg);
 }
-.add-listing-form button, .controls button, .detail-actions button {
+.add-listing-form button, .controls button, .detail-actions button:not(.icon-btn) {
   padding: 0.6rem 1rem;
   border: 1px solid var(--border);
   border-radius: 6px;
