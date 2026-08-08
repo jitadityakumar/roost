@@ -84,7 +84,7 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
         raise HTTPException(status_code=404, detail="listing not found")
 
     if body.user_status is not None:
-        if body.user_status not in ("active", "removed", "suspended"):
+        if body.user_status not in ("active", "in_review"):
             raise HTTPException(status_code=422, detail="invalid user_status")
         store.set_user_status(listing_id, body.user_status)
 

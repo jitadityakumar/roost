@@ -1,24 +1,27 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "../api.js";
-import AddListingForm from "./AddListingForm.jsx";
 import ListingCard from "./ListingCard.jsx";
 
-export default function Dashboard({ onSelect }) {
+const TITLES = {
+  active: "Active",
+  in_review: "In-review",
+};
+
+export default function ListingsPage({ status }) {
   const [listings, setListings] = useState([]);
-  const [statusFilter, setStatusFilter] = useState("active");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await api.list(statusFilter === "all" ? null : statusFilter);
+      const data = await api.list(status);
       setListings(data);
       setError(null);
     } catch (err) {
       setError(err.message);
     }
-  }, [statusFilter]);
+  }, [status]);
 
   useEffect(() => {
     load();
@@ -46,7 +49,7 @@ export default function Dashboard({ onSelect }) {
 
   return (
     <div className="dashboard">
-      <AddListingForm onAdded={load} />
+      <h2>{TITLES[status] || status}</h2>
 
       <div className="controls">
         <input
@@ -55,12 +58,6 @@ export default function Dashboard({ onSelect }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-          <option value="removed">Removed</option>
-          <option value="all">All</option>
-        </select>
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
           <option value="newest">Newest first</option>
           <option value="price_asc">Price: low to high</option>
@@ -71,11 +68,15 @@ export default function Dashboard({ onSelect }) {
       {error && <p className="error">{error}</p>}
 
       {filtered.length === 0 ? (
-        <p className="empty-state">No listings yet — paste a Rightmove URL above to get started.</p>
+        <p className="empty-state">
+          {status === "in_review"
+            ? "Nothing in review — add a property to get started."
+            : "No active listings yet — promote one from in-review."}
+        </p>
       ) : (
         <div className="listing-grid">
           {filtered.map((l) => (
-            <ListingCard key={l.id} listing={l} onSelect={onSelect} />
+            <ListingCard key={l.id} listing={l} />
           ))}
         </div>
       )}
