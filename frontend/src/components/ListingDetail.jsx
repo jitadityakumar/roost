@@ -105,10 +105,13 @@ export default function ListingDetail() {
       <div className="detail-header">
         <h2>{listing.address || listing.url}</h2>
         <div className="detail-actions">
-          <button className="status-toggle-btn" onClick={handleStatusToggle}>
+          <button
+            className={`status-toggle-btn ${listing.user_status === "active" ? "warn" : ""}`}
+            onClick={handleStatusToggle}
+          >
             {listing.user_status === "active" ? "Move → In review" : "Move → Active"}
           </button>
-          <button className="icon-btn" onClick={() => setEditMode((v) => !v)} title="Edit" aria-label="Edit" aria-pressed={editMode}>
+          <button className="icon-btn edit" onClick={() => setEditMode((v) => !v)} title="Edit" aria-label="Edit" aria-pressed={editMode}>
             ✎
           </button>
           <button className="icon-btn" onClick={handleRefresh} title="Refresh" aria-label="Refresh">
