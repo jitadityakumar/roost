@@ -65,6 +65,19 @@ def handle_rightmove_extract(job: dict) -> None:
         fields["lease_years_remaining"] = extracted["lease_years_remaining"]
         fields["lease_years_remaining_source"] = "rightmove"
 
+    living_costs = extracted.get("living_costs") or {}
+
+    council_tax_band = living_costs.get("councilTaxBand")
+    if council_tax_band and council_tax_band.strip().upper() != "TBC":
+        fields["council_tax_band"] = council_tax_band
+        fields["council_tax_band_source"] = "rightmove"
+
+    annual_service_charge = living_costs.get("annualServiceCharge")
+    if annual_service_charge is not None:
+        fields["service_charge_pa"] = round(annual_service_charge)
+        fields["service_charge_pm"] = round(annual_service_charge / 12)
+        fields["service_charge_source"] = "rightmove"
+
     key_features = extracted.get("key_features") or []
     structured_features = extracted.get("features") or {}
 
