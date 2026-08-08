@@ -11,8 +11,12 @@ stronger model without paying for it on the others — see JOB_TYPE_MODELS.
 from __future__ import annotations
 
 import json
+import logging
 import re
+import shutil
 import subprocess
+
+logger = logging.getLogger("roost.llm_client")
 
 # Known accuracy risk (see context.md, 2026-08-08 eval): Haiku misread an EPC
 # graphic (wrong band and score). Swapping a job type to "sonnet" is a
@@ -47,6 +51,24 @@ class LlmCallError(RuntimeError):
         self.permanent = permanent
 
 
+def cli_available() -> bool:
+    """Cheap PATH check, called once at worker-pool startup (see worker.py)
+    so a missing/misconfigured CLI shows up in `docker logs` immediately at
+    boot, rather than only after the first listing gets refreshed and its
+    first llm job fails."""
+    return shutil.which("claude") is not None
+
+
+# Kept generous (not the ~500 chars that goes into a job's last_error column,
+# which is meant to stay skimmable via the jobs API) because this is the
+# only place the *full* failure detail ends up — if something in production
+# actually breaks (the exact scenario this logging exists for: an auth
+# failure from the mounted ~/.claude session, a CLI version mismatch, an
+# unexpected output shape), `docker logs roost` needs to be enough to
+# diagnose it without being able to reproduce the failure interactively.
+_LOG_TRUNCATE_CHARS = 4000
+
+
 def run_claude_prompt(prompt: str, model: str, timeout_s: int, allow_read: bool = False) -> str:
     """Invoke `claude -p <prompt> --model <model>` non-interactively and
     return raw stdout. `allow_read` grants the Read tool (only needed by the
@@ -60,13 +82,29 @@ def run_claude_prompt(prompt: str, model: str, timeout_s: int, allow_read: bool 
     try:
         result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s)
     except subprocess.TimeoutExpired as e:
+        logger.warning("claude -p (model=%s) timed out after %ds", model, timeout_s)
         raise LlmCallError(f"claude -p timed out after {timeout_s}s") from e
     except FileNotFoundError as e:
+        logger.error(
+            "claude CLI not found on PATH — check the Dockerfile installed it and it's "
+            "actually on this container's PATH"
+        )
         raise LlmCallError(
             "claude CLI not found on PATH — see Dockerfile / README 'Running with Docker'",
             permanent=True,
         ) from e
     if result.returncode != 0:
+        # Deliberately logged in full (not just the truncated message that
+        # ends up in the DB) — an auth failure from the mounted ~/.claude
+        # session is exactly the kind of thing whose real explanation is a
+        # sentence or two in stderr that a 500-char truncation could cut off.
+        logger.warning(
+            "claude -p (model=%s) exited %d\nstderr: %s\nstdout: %s",
+            model,
+            result.returncode,
+            result.stderr.strip()[:_LOG_TRUNCATE_CHARS],
+            result.stdout.strip()[:_LOG_TRUNCATE_CHARS],
+        )
         raise LlmCallError(f"claude -p exited {result.returncode}: {result.stderr.strip()[:500]}")
     return result.stdout
 
@@ -102,6 +140,7 @@ def extract_json_block(raw_output: str) -> dict:
         if isinstance(result, dict):
             return result
 
+    logger.warning("no parseable JSON object in claude output: %s", raw_output[:_LOG_TRUNCATE_CHARS])
     raise LlmCallError(f"no parseable JSON object in claude output: {raw_output[:500]!r}")
 
 

@@ -32,6 +32,41 @@ def test_run_claude_prompt_raises_on_nonzero_exit(monkeypatch):
         llm_client.run_claude_prompt("hello", "haiku", 10)
 
 
+def test_run_claude_prompt_logs_full_stderr_on_nonzero_exit(monkeypatch, caplog):
+    # The DB-facing error message is truncated to 500 chars; the whole point
+    # of also logging is that a real failure (e.g. an auth error from the
+    # mounted ~/.claude session) needs to be diagnosable from `docker logs`
+    # without needing to reproduce it interactively.
+    long_stderr = "auth error: " + ("x" * 600)
+
+    def fake_run(argv, capture_output, text, timeout):
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr=long_stderr)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with caplog.at_level("WARNING"):
+        with pytest.raises(llm_client.LlmCallError):
+            llm_client.run_claude_prompt("hello", "haiku", 10)
+
+    assert long_stderr in caplog.text
+
+
+def test_extract_json_block_logs_full_raw_output_on_failure(caplog):
+    long_output = "sorry, I can't help: " + ("y" * 600)
+    with caplog.at_level("WARNING"):
+        with pytest.raises(llm_client.LlmCallError):
+            llm_client.extract_json_block(long_output)
+
+    assert long_output in caplog.text
+
+
+def test_cli_available_reflects_path(monkeypatch):
+    monkeypatch.setattr(llm_client.shutil, "which", lambda name: None)
+    assert llm_client.cli_available() is False
+
+    monkeypatch.setattr(llm_client.shutil, "which", lambda name: "/usr/local/bin/claude")
+    assert llm_client.cli_available() is True
+
+
 def test_run_claude_prompt_raises_on_timeout(monkeypatch):
     def fake_run(argv, capture_output, text, timeout):
         raise subprocess.TimeoutExpired(argv, timeout)

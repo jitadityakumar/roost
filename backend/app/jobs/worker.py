@@ -161,16 +161,24 @@ class LlmLaneWorkerPool:
             )
             return
 
-        logger.info("llm worker running job %d (%s)", job["id"], job["job_type"])
+        logger.info(
+            "llm worker running job %d (%s) for listing %d",
+            job["id"], job["job_type"], job["listing_id"],
+        )
         heartbeat_task = asyncio.create_task(self._heartbeat_while_running(job["id"]))
         try:
             await asyncio.to_thread(handler, job)
             await asyncio.to_thread(queue.complete_job, job["id"])
         except LlmCallError as e:
-            logger.exception("job %d (%s) failed", job["id"], job["job_type"])
+            logger.exception(
+                "job %d (%s) for listing %d failed (permanent=%s)",
+                job["id"], job["job_type"], job["listing_id"], e.permanent,
+            )
             await asyncio.to_thread(queue.fail_job, job["id"], str(e), e.permanent)
         except Exception as e:
-            logger.exception("job %d (%s) failed", job["id"], job["job_type"])
+            logger.exception(
+                "job %d (%s) for listing %d failed", job["id"], job["job_type"], job["listing_id"]
+            )
             await asyncio.to_thread(queue.fail_job, job["id"], str(e))
         finally:
             heartbeat_task.cancel()

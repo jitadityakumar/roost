@@ -33,7 +33,8 @@ Docker (from repo root):
 ```
 docker build -t roost .
 docker run -p 8000:8000 -v $(pwd)/data:/data \
-  -v ~/.claude:/root/.claude:ro roost
+  -v ~/.claude:/root/.claude:ro \
+  --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 
 There is no automated test suite yet — verification so far has been manual
