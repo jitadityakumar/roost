@@ -1,12 +1,14 @@
-const TYPE_ICONS = {
-  LONDON_UNDERGROUND: { icon: "Ⓤ", label: "Underground" },
-  LONDON_OVERGROUND: { icon: "🚈", label: "Overground" },
-  ELIZABETH_LINE: { icon: "🚈", label: "Elizabeth line" },
-  DLR: { icon: "🚝", label: "DLR" },
-  TRAMLINK: { icon: "🚋", label: "Tram" },
-  NATIONAL_TRAIN: { icon: "🚆", label: "National Rail" },
+// Brand colors identify each network without reproducing its trademarked
+// logo (TfL roundel, National Rail double-arrow, etc.) in the repo.
+const TYPE_BADGES = {
+  LONDON_UNDERGROUND: { letter: "U", label: "Underground", bg: "#E32017" },
+  LONDON_OVERGROUND: { letter: "O", label: "Overground", bg: "#EE7C0E" },
+  ELIZABETH_LINE: { letter: "E", label: "Elizabeth line", bg: "#7156A5" },
+  DLR: { letter: "D", label: "DLR", bg: "#00A4A7" },
+  TRAMLINK: { letter: "T", label: "Tram", bg: "#84B817" },
+  NATIONAL_TRAIN: { letter: "R", label: "National Rail", bg: "#003088" },
 };
-const DEFAULT_TYPE_ICON = { icon: "🚉", label: "Station" };
+const DEFAULT_TYPE_BADGE = { letter: "?", label: "Station", bg: "#666" };
 
 function formatDistance(distance, unit) {
   if (distance === null || distance === undefined) return null;
@@ -22,10 +24,16 @@ export default function NearestStations({ stations }) {
         <li key={s.name} className="station-row">
           <span className="station-icons">
             {(s.types && s.types.length > 0 ? s.types : ["_"]).map((t) => {
-              const { icon, label } = TYPE_ICONS[t] || DEFAULT_TYPE_ICON;
+              const { letter, label, bg } = TYPE_BADGES[t] || DEFAULT_TYPE_BADGE;
               return (
-                <span key={t} className="station-icon" title={label} aria-label={label}>
-                  {icon}
+                <span
+                  key={t}
+                  className="station-badge"
+                  style={{ backgroundColor: bg }}
+                  title={label}
+                  aria-label={label}
+                >
+                  {letter}
                 </span>
               );
             })}
