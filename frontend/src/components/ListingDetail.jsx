@@ -16,7 +16,9 @@ function formatBroadband(listing) {
 
 function formatFetchedAt(listing) {
   if (!listing.rightmove_fetched_at) return "—";
-  return new Date(listing.rightmove_fetched_at).toLocaleString("en-GB");
+  // Match listing_added_on's plain ISO-date display (FieldRow's default
+  // rendering) -- date only, no time, no locale reformatting.
+  return listing.rightmove_fetched_at.slice(0, 10);
 }
 
 const FIELDS = [
