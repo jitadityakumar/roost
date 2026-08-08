@@ -3,10 +3,22 @@ into the listings table: numeric price parsing and the light heuristics used
 to read garden/parking off Rightmove's own key_features bullets (still a
 'rightmove' source — not the free-text description, no LLM involved)."""
 import re
+from datetime import datetime
 
 
 def sqm_to_sqft(sqm: float) -> float:
     return round(sqm * 10.7639, 1)
+
+
+def parse_yyyymmdd_date(date_text) -> str | None:
+    """Rightmove's analyticsInfo.analyticsProperty.added is 'YYYYMMDD' ->
+    ISO 'YYYY-MM-DD' for display. None if missing or not a valid date."""
+    if not date_text:
+        return None
+    try:
+        return datetime.strptime(str(date_text), "%Y%m%d").date().isoformat()
+    except ValueError:
+        return None
 
 
 def parse_price_gbp(price_text) -> int | None:

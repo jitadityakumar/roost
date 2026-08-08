@@ -52,7 +52,14 @@ def resolve_page_model(html: str) -> dict:
     return resolve(0)
 
 
-def extract_listing(prop: dict) -> dict:
+def extract_added_on(root: dict) -> str | None:
+    """Rightmove's listing-added date lives at analyticsInfo.analyticsProperty
+    .added (raw 'YYYYMMDD' string) -- a sibling of propertyData in the page
+    model, not nested inside it."""
+    return ((root.get("analyticsInfo") or {}).get("analyticsProperty") or {}).get("added")
+
+
+def extract_listing(prop: dict, listing_added_on: str | None = None) -> dict:
     return {
         "id": prop.get("id"),
         "url": f"https://www.rightmove.co.uk/properties/{prop.get('id')}",
@@ -67,6 +74,7 @@ def extract_listing(prop: dict) -> dict:
         "tenure": (prop.get("tenure") or {}).get("tenureType"),
         "lease_years_remaining": (prop.get("tenure") or {}).get("yearsRemainingOnLease"),
         "key_features": prop.get("keyFeatures"),
+        "listing_added_on": listing_added_on,
         "description": prop.get("text", {}).get("description"),
         "listing_update": (prop.get("listingHistory") or {}).get("listingUpdateReason"),
         "nearest_stations": prop.get("nearestStations"),
@@ -174,7 +182,7 @@ def main():
     html = fetch_html(args.url)
     root = resolve_page_model(html)
     prop = root["propertyData"]
-    listing = extract_listing(prop)
+    listing = extract_listing(prop, listing_added_on=extract_added_on(root))
 
     if not args.no_broadband:
         postcode = f"{listing['postcode_outcode']}{listing['postcode_incode']}"

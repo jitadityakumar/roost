@@ -32,6 +32,18 @@ def test_handle_rightmove_extract_maps_fields(listing_id):
     assert listing["broadband_top_speed"] == "900 Mbps"
     assert listing["broadband_top_speed_provider"] == "Testnet"
     assert listing["extraction_status"] == "done"
+    assert listing["listing_added_on"] == "2026-01-15"
+    assert listing["rightmove_fetched_at"] is not None
+
+
+def test_handle_rightmove_extract_handles_missing_added_on(listing_id, sample_property_data, monkeypatch):
+    monkeypatch.setattr(handlers, "resolve_page_model", lambda html: {"propertyData": sample_property_data})
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    listing = store.get_listing(listing_id)
+    assert listing["listing_added_on"] is None
+    assert listing["rightmove_fetched_at"] is not None
 
 
 def test_handle_rightmove_extract_chains_media_download(listing_id):

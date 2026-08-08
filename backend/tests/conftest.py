@@ -40,7 +40,10 @@ def mock_rightmove_network(monkeypatch, sample_property_data):
         return "<html>irrelevant, resolve_page_model is also stubbed</html>"
 
     def fake_resolve_page_model(html):
-        return {"propertyData": sample_property_data}
+        return {
+            "propertyData": sample_property_data,
+            "analyticsInfo": {"analyticsProperty": {"added": "20260115"}},
+        }
 
     def fake_fetch_broadband_summary(postcode):
         return {
