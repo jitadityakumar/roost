@@ -73,19 +73,22 @@ def mock_rightmove_network(monkeypatch, sample_property_data):
 def client(isolated_db, mock_rightmove_network, monkeypatch):
     from app import main
 
-    # main.worker_pool is a process-wide singleton whose internal
-    # asyncio.Lock binds to the first event loop it ever runs on. Each
-    # TestClient spins up its own event loop, so letting the real pool start
-    # here would break (and log noisy errors) on the second and later tests
-    # that use this fixture. Route/handler tests below assert on job-queue
-    # side effects and call handlers directly rather than relying on the
-    # background pool actually draining jobs, so it's safe to no-op it.
+    # main.worker_pool/llm_worker_pool are process-wide singletons whose
+    # internal asyncio state binds to the first event loop they ever run on.
+    # Each TestClient spins up its own event loop, so letting the real pools
+    # start here would break (and log noisy errors) on the second and later
+    # tests that use this fixture. Route/handler tests below assert on
+    # job-queue side effects and call handlers directly rather than relying
+    # on a background pool actually draining jobs, so it's safe to no-op
+    # both.
     monkeypatch.setattr(main.worker_pool, "start", lambda: None)
+    monkeypatch.setattr(main.llm_worker_pool, "start", lambda: None)
 
     async def noop_stop():
         return None
 
     monkeypatch.setattr(main.worker_pool, "stop", noop_stop)
+    monkeypatch.setattr(main.llm_worker_pool, "stop", noop_stop)
 
     with TestClient(main.app) as c:
         yield c
@@ -94,9 +97,14 @@ def client(isolated_db, mock_rightmove_network, monkeypatch):
 @pytest.fixture
 def media_dir(tmp_path, monkeypatch):
     """Redirect media storage to a temp dir for the duration of a test.
-    MEDIA_DIR is bound at import time into each route module (`from
-    app.config import MEDIA_DIR`), so both bound names need patching, not
-    just app.config.MEDIA_DIR itself."""
+    MEDIA_DIR is bound at import time into each module that resolves a path
+    from it at test time (`from app.config import MEDIA_DIR`), so each such
+    bound name needs patching, not just app.config.MEDIA_DIR itself.
+    handlers.MEDIA_DIR is deliberately NOT patched here: handlers.py only
+    ever passes it straight through to download_media(), which
+    mock_rightmove_network stubs out entirely — so its value never affects
+    what a test actually reads or writes."""
+    from app.jobs import llm_enqueue
     from app.routes import listings as listings_routes
     from app.routes import media as media_routes
 
@@ -104,4 +112,43 @@ def media_dir(tmp_path, monkeypatch):
     d.mkdir()
     monkeypatch.setattr(listings_routes, "MEDIA_DIR", str(d))
     monkeypatch.setattr(media_routes, "MEDIA_DIR", str(d))
+    monkeypatch.setattr(llm_enqueue, "MEDIA_DIR", str(d))
     return str(d)
+
+
+@pytest.fixture
+def mock_claude_cli(monkeypatch):
+    """Stub handlers.run_claude_prompt so tests never shell out to the real
+    `claude` CLI. `responses` is a list the test pushes raw stdout strings
+    onto before calling a handler, consumed in call order (each handler
+    makes exactly one call) — avoids matching on prompt text, since prompt
+    wording is expected to change (see llm_prompts.py). Handlers now always
+    pass `json_schema` and run the result through
+    llm_client.parse_structured_output, so queued responses must be a
+    `--output-format json` envelope (see test_llm_handlers.py's
+    `_queue_response` helper), not a bare JSON object. `calls` records every
+    invocation's args for assertions."""
+    from app.jobs import handlers
+
+    calls = []
+    responses = []
+
+    def fake_run_claude_prompt(
+        prompt, model, timeout_s, allow_read=False, json_schema=None, disallow_all_tools=False
+    ):
+        calls.append(
+            {
+                "prompt": prompt,
+                "model": model,
+                "timeout_s": timeout_s,
+                "allow_read": allow_read,
+                "json_schema": json_schema,
+                "disallow_all_tools": disallow_all_tools,
+            }
+        )
+        if not responses:
+            raise AssertionError("no mocked response queued for this claude -p call")
+        return responses.pop(0)
+
+    monkeypatch.setattr(handlers, "run_claude_prompt", fake_run_claude_prompt)
+    return {"calls": calls, "responses": responses}

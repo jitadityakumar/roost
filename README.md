@@ -49,15 +49,31 @@ npm run dev
 ```
 docker build -t roost .
 docker run -d --name roost --restart unless-stopped \
-  -p 8099:8000 -v $(pwd)/data:/data roost
+  -p 8099:8000 -v $(pwd)/data:/data \
+  -v ~/.claude:/root/.claude:ro \
+  --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 
 Then open http://localhost:8099. Port 8099 (not 8000) is used on the host
 because 8000 is already taken by `mortgage-calculator` on this machine.
 `--restart unless-stopped` makes the container come back up automatically
 after a reboot or Docker restart, as long as you didn't stop it manually.
-The `/data` volume holds the SQLite database and downloaded media so they
-survive container restarts.
+`--log-opt max-size=10m --log-opt max-file=3` caps Docker's default
+`json-file` log driver at 3 rotated 10MB files (~30MB total) instead of
+growing unbounded — the app logs to stdout only (`docker logs roost`), and
+the Phase 3 llm-lane worker deliberately logs full (not truncated) failure
+output for diagnosis, so without a cap a long-running container with
+recurring llm failures could otherwise accumulate an ever-growing log file
+on the host.
+The `-v ~/.claude:/root/.claude:ro` mount gives the LLM enrichment worker
+(Phase 3) read-only access to the host's existing `claude login` session, so
+no separate API key needs to be provisioned or stored in the container. Known
+tradeoff of the `:ro` mount: the CLI can't persist a refreshed OAuth token
+back to the host, so if `llm`-lane jobs start failing with an auth error
+after the container's been running a long time, re-running `claude login` on
+the host (which the container will pick up on its next call, since the mount
+is live) is the fix. The `/data` volume holds the SQLite database and
+downloaded media so they survive container restarts.
 
 ## Data
 

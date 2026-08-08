@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import MEDIA_DIR
-from app.jobs import queue
+from app.jobs import llm_enqueue, queue
 from app.listings import store, url_utils
 from app.listings.serialize import serialize_listing
 
@@ -75,6 +75,43 @@ def refresh_listing(listing_id: int):
         store.set_extraction_status(listing_id, "queued")
         queue.enqueue_job(listing_id, "rightmove_extract", "http")
     return serialize_listing(store.get_listing(listing_id))
+
+
+@router.post("/{listing_id}/llm-refresh", status_code=202)
+def llm_refresh_listing(listing_id: int):
+    """Re-runs the llm-lane jobs (text_extract, floor_area_vision,
+    epc_vision) directly, without re-scraping Rightmove first — unlike
+    /refresh, which re-runs the whole chain. Meant for backfilling existing
+    listings after a model/prompt/schema change (see scripts/backfill-llm.sh)
+    where the underlying Rightmove data and downloaded images haven't
+    changed, only how we read them.
+
+    Reuses the exact same should_enqueue/first_media_file guards the normal
+    rightmove_extract/media_download auto-chain already applies (see
+    handlers.py) — a hand-edited field stays hand-edited (should_enqueue's
+    stickiness check), and a vision job with no image on disk is silently
+    skipped rather than enqueued to fail. Not gated on any field already
+    being llm-sourced — a backfill's entire point is to overwrite a prior
+    llm-sourced value with a fresh one, and a rightmove-sourced field is
+    protected separately (each handler checks its own `_source` column
+    before writing, same protection /refresh relies on)."""
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise HTTPException(status_code=404, detail="listing not found")
+
+    enqueued = []
+    if llm_enqueue.should_enqueue(listing_id, "text_extract"):
+        queue.enqueue_job(listing_id, "text_extract", "llm")
+        enqueued.append("text_extract")
+    if llm_enqueue.should_enqueue(listing_id, "floor_area_vision") and llm_enqueue.first_media_file(
+        listing_id, "floorplans"
+    ):
+        queue.enqueue_job(listing_id, "floor_area_vision", "llm")
+        enqueued.append("floor_area_vision")
+    if llm_enqueue.should_enqueue(listing_id, "epc_vision") and llm_enqueue.first_media_file(listing_id, "epc"):
+        queue.enqueue_job(listing_id, "epc_vision", "llm")
+        enqueued.append("epc_vision")
+    return {"enqueued": enqueued}
 
 
 @router.patch("/{listing_id}")

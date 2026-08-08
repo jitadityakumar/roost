@@ -7,19 +7,37 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db.migrate import run_migrations
-from app.jobs.worker import HttpLaneWorkerPool
+from app.jobs.llm_client import cli_available
+from app.jobs.worker import HttpLaneWorkerPool, LlmLaneWorkerPool
 from app.routes import listings, media
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("roost.main")
 
 worker_pool = HttpLaneWorkerPool()
+llm_worker_pool = LlmLaneWorkerPool()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
     worker_pool.start()
+    llm_worker_pool.start()
+    # Checked once at boot (not just left to surface on the first llm job's
+    # failure) so a broken Phase 3 setup — CLI not installed, or installed
+    # but not on PATH — shows up in `docker logs roost` immediately, not
+    # only after someone refreshes a listing and wonders why enrichment
+    # never shows up.
+    if cli_available():
+        logger.info("claude CLI found on PATH — llm-lane jobs can run")
+    else:
+        logger.warning(
+            "claude CLI NOT found on PATH — every llm-lane job (text_extract, "
+            "floor_area_vision, epc_vision) will fail permanently until this is fixed. "
+            "Check the Dockerfile installed it and the image was rebuilt."
+        )
     yield
+    await llm_worker_pool.stop()
     await worker_pool.stop()
 
 

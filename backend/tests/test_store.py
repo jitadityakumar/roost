@@ -57,6 +57,27 @@ def test_apply_manual_edit_raises_for_unknown_listing():
         store.apply_manual_edit(999, {"price_gbp": 1})
 
 
+def test_target_fields_all_sticky_false_when_none_edited(listing_id):
+    assert store.target_fields_all_sticky(listing_id, ["council_tax_band", "chain_free"]) is False
+
+
+def test_target_fields_all_sticky_true_when_all_edited(listing_id):
+    store.apply_manual_edit(listing_id, {"council_tax_band": "F", "chain_free": 1})
+    assert store.target_fields_all_sticky(listing_id, ["council_tax_band", "chain_free"]) is True
+
+
+def test_target_fields_all_sticky_false_when_only_some_edited(listing_id):
+    store.apply_manual_edit(listing_id, {"council_tax_band": "F"})
+    assert store.target_fields_all_sticky(listing_id, ["council_tax_band", "chain_free"]) is False
+
+
+def test_target_fields_all_sticky_treats_source_companion_as_sticky(listing_id):
+    # council_tax_band_source is the _source companion of council_tax_band —
+    # editing the value field should make the source field read as sticky too.
+    store.apply_manual_edit(listing_id, {"council_tax_band": "F"})
+    assert store.target_fields_all_sticky(listing_id, ["council_tax_band_source"]) is True
+
+
 def test_delete_listing_cascades(listing_id):
     from app.jobs import queue
 

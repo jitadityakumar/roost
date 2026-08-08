@@ -1,10 +1,21 @@
-"""Minimal lane='http' worker pool: a small number of concurrent asyncio
-workers pull jobs from the queue and run their (blocking) handler in a
-thread. Paced with a shared minimum interval between job starts so a burst
-of submissions doesn't fire many concurrent Rightmove requests at once.
+"""Worker pools for both job lanes.
 
-lane='llm' has no workers here — Phase 1 never enqueues llm-lane jobs at all
-(no LLM enrichment worker exists yet, see context.md decision log).
+HttpLaneWorkerPool: a small number of concurrent asyncio workers pull jobs
+from the queue and run their (blocking) handler in a thread. Paced with a
+shared minimum interval between job starts so a burst of submissions doesn't
+fire many concurrent Rightmove requests at once.
+
+LlmLaneWorkerPool: a single worker, strictly serial by design (see
+CLAUDE.md) — each `claude -p` call already takes several seconds, which is
+its own natural pacing, so there's no MIN_JOB_START_INTERVAL_SECONDS
+equivalent. Deliberately duplicates HttpLaneWorkerPool's claim/heartbeat loop
+structure rather than generalizing into a shared base class — minimizes the
+diff against working code for a two-lane app; worth revisiting if a third
+lane ever appears. Does not run its own reclaim loop:
+queue.reclaim_stale_leases() has no lane filter, so HttpLaneWorkerPool's
+existing reclaim loop already covers stale llm-lane leases too — a second
+loop would just race the first one over the same UPDATE, harmlessly but
+pointlessly.
 """
 from __future__ import annotations
 
@@ -13,6 +24,7 @@ import logging
 
 from app.jobs import queue
 from app.jobs.handlers import HANDLERS
+from app.jobs.llm_client import LlmCallError
 
 logger = logging.getLogger("roost.worker")
 
@@ -112,6 +124,83 @@ class HttpLaneWorkerPool:
         for i in range(HTTP_LANE_CONCURRENCY):
             self._tasks.append(asyncio.create_task(self._worker_loop(i)))
         self._tasks.append(asyncio.create_task(self._reclaim_loop()))
+
+    async def stop(self):
+        self._stopping = True
+        for t in self._tasks:
+            t.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks = []
+
+
+LLM_LANE_CONCURRENCY = 1  # strictly serial by design — see CLAUDE.md
+
+
+class LlmLaneWorkerPool:
+    """Single-worker pool for lane='llm'. See module docstring for why this
+    duplicates HttpLaneWorkerPool's structure instead of sharing a base
+    class, and why it doesn't run its own reclaim loop."""
+
+    def __init__(self):
+        self._tasks: list[asyncio.Task] = []
+        self._stopping = False
+
+    async def _heartbeat_while_running(self, job_id: int):
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                await asyncio.to_thread(queue.renew_lease, job_id)
+        except asyncio.CancelledError:
+            pass
+
+    async def _run_one_job(self, job: dict) -> None:
+        handler = HANDLERS.get(job["job_type"])
+        if handler is None:
+            await asyncio.to_thread(
+                queue.fail_job, job["id"], f"no handler registered for job_type={job['job_type']}", True
+            )
+            return
+
+        logger.info(
+            "llm worker running job %d (%s) for listing %d",
+            job["id"], job["job_type"], job["listing_id"],
+        )
+        heartbeat_task = asyncio.create_task(self._heartbeat_while_running(job["id"]))
+        try:
+            await asyncio.to_thread(handler, job)
+            await asyncio.to_thread(queue.complete_job, job["id"])
+        except LlmCallError as e:
+            logger.exception(
+                "job %d (%s) for listing %d failed (permanent=%s)",
+                job["id"], job["job_type"], job["listing_id"], e.permanent,
+            )
+            await asyncio.to_thread(queue.fail_job, job["id"], str(e), e.permanent)
+        except Exception as e:
+            logger.exception(
+                "job %d (%s) for listing %d failed", job["id"], job["job_type"], job["listing_id"]
+            )
+            await asyncio.to_thread(queue.fail_job, job["id"], str(e))
+        finally:
+            heartbeat_task.cancel()
+            await asyncio.gather(heartbeat_task, return_exceptions=True)
+
+    async def _worker_loop(self):
+        while not self._stopping:
+            try:
+                job = await asyncio.to_thread(queue.claim_next_job, "llm")
+                if job is None:
+                    await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                    continue
+                await self._run_one_job(job)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("llm worker loop iteration failed")
+                await asyncio.sleep(ERROR_BACKOFF_SECONDS)
+
+    def start(self):
+        self._stopping = False
+        self._tasks.append(asyncio.create_task(self._worker_loop()))
 
     async def stop(self):
         self._stopping = True

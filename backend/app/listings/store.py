@@ -43,6 +43,24 @@ def _is_sticky(key: str, edited_fields: dict) -> bool:
     )
 
 
+def target_fields_all_sticky(listing_id: int, field_names: list[str]) -> bool:
+    """True if every field in field_names is already sticky (hand-edited, or
+    the value-field companion of a sticky _source column) for this listing.
+    Used by the LLM job-enqueue efficiency check (see llm_enqueue.py) —
+    a job-level check, since e.g. text_extract populates several fields
+    atomically and should only be skipped if ALL of them are already
+    hand-edited, not just one."""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT edited_fields FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"no listing with id {listing_id}")
+        edited_fields = json.loads(row["edited_fields"] or "{}")
+        return all(_is_sticky(f, edited_fields) for f in field_names)
+    finally:
+        conn.close()
+
+
 def get_listing(listing_id: int) -> dict | None:
     conn = get_connection()
     try:

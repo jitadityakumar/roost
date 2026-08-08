@@ -32,7 +32,9 @@ npm run build    # outputs frontend/dist, consumed by the Docker build
 Docker (from repo root):
 ```
 docker build -t roost .
-docker run -p 8000:8000 -v $(pwd)/data:/data roost
+docker run -p 8000:8000 -v $(pwd)/data:/data \
+  -v ~/.claude:/root/.claude:ro \
+  --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 
 There is no automated test suite yet — verification so far has been manual
@@ -46,16 +48,56 @@ applies `backend/app/db/migrations/NNNN_*.sql` files in order, tracked in a
 `schema_version` table. Add new schema changes as a new numbered file — never
 edit an already-applied migration.
 
-**Job queue has two lanes, and only one is staffed.** The `jobs` table
-(`app/jobs/queue.py`) has a `lane` column: `http` (extraction, media
-downloads — concurrent, currently 2-3 workers via `HttpLaneWorkerPool` in
-`app/jobs/worker.py`) and `llm` (future vision/text-extraction jobs, strictly
-serial). **No worker consumes the `llm` lane yet** — don't enqueue `llm`-lane
-jobs from application code until that worker exists, or they'll sit forever.
+**Job queue has two lanes.** The `jobs` table (`app/jobs/queue.py`) has a
+`lane` column: `http` (extraction, media downloads — concurrent, currently
+2-3 workers via `HttpLaneWorkerPool` in `app/jobs/worker.py`) and `llm`
+(vision/text-extraction jobs — `text_extract`, `floor_area_vision`,
+`epc_vision` — strictly serial, one worker via `LlmLaneWorkerPool`, Phase 3).
 Job claiming uses `BEGIN IMMEDIATE` for atomicity across the two writers
 (FastAPI process + worker pool); a `lease_expires_at` lets a dead worker's
 `running` job get reclaimed back to `queued` instead of stalling forever
-(`reclaim_stale_leases`, polled by the worker pool).
+(`reclaim_stale_leases`, polled by the `http`-lane pool only — it has no
+lane filter in its query, so it already covers stale `llm`-lane leases too;
+don't add a second reclaim loop to `LlmLaneWorkerPool`).
+
+**The `llm`-lane worker shells out to the `claude` CLI**
+(`app/jobs/llm_client.py`), not a hosted API — `claude -p --model <model>
+--output-format json --json-schema <schema>`, non-interactive, with
+`--allowedTools Read` granted only to the two vision handlers (they need to
+read an image path). `text_extract`'s prompt embeds a Rightmove listing
+description — untrusted text with no reason to carry filesystem access — so
+it also gets tool access denied; omitting `--allowedTools Read` alone does
+NOT block file reads (the CLI has a hardcoded, always-on set of read-only
+Bash commands like `cat`/`head` that bypass tool permissions entirely —
+confirmed empirically and via https://code.claude.com/docs/en/permissions).
+The deny is `--allowedTools StructuredOutput`, not `--disallowedTools "*"` —
+confirmed empirically that `--disallowedTools "*"` also denies the CLI's own
+internal `StructuredOutput` tool (how `--json-schema` output is actually
+delivered), breaking schema output entirely. `--allowedTools <name>` is an
+allowlist, so naming only `StructuredOutput` still implicitly denies
+everything else. `--json-schema` makes the CLI
+validate the model's JSON output against a schema at the source
+(`llm_prompts.py`'s `*_SCHEMA` constants); the response envelope's
+`structured_output` field (preferred) or its `result` field (fallback, still
+code-fenced) is unpacked by `llm_client.parse_structured_output`. The
+container needs the `claude` CLI installed
+(see `Dockerfile`) and an authenticated session — mounted read-only from the
+host's `~/.claude` at `-v ~/.claude:/root/.claude:ro` (see `README.md`)
+rather than a separate `ANTHROPIC_API_KEY`. That mount is read-only, so a
+token refresh the CLI would normally persist back to `~/.claude` can't be
+written inside the container — if `llm`-lane jobs start failing with an auth
+error after the container's been running a while, this is the first thing to
+check.
+
+**Every Refresh re-runs all three `llm`-lane jobs, deliberately.**
+`llm_enqueue.should_enqueue`'s `has_pending_job` guard only blocks a
+duplicate while one is queued/running — it does not skip re-enqueueing a job
+type that already completed once. A Refresh re-scrapes and may turn up new
+description text or replaced images, so re-running `text_extract` and the
+vision jobs (even though the floorplan/EPC images usually haven't changed)
+is the current intended behavior, not an oversight — revisit only if the
+repeated LLM calls on Refresh turn out to matter at this app's actual usage
+volume.
 
 **Rightmove extraction wraps a standalone script, deliberately.**
 `app/jobs/rightmove_extract.py` is the original scraping logic

@@ -2,16 +2,21 @@
 takes the full job row (dict) and either returns normally (job marked done)
 or raises (job marked failed / requeued, see queue.fail_job).
 
-Only 'rightmove_extract' and 'media_download' are implemented — Phase 1 never
-enqueues 'llm' lane jobs (floor_area_vision / epc_vision / text_extract),
-so no handler exists for them yet (Phase 3 work).
+'text_extract', 'floor_area_vision', 'epc_vision' (Phase 3, the llm lane)
+read from `claude -p` via llm_client.run_claude_prompt — imported by name
+(not as `llm_client.run_claude_prompt` at call sites) so tests can
+monkeypatch `handlers.run_claude_prompt` directly, matching how the
+Rightmove functions below are imported and mocked.
 """
 from __future__ import annotations
 
 import json
 
 from app.config import MEDIA_DIR
-from app.jobs import queue
+from app.jobs import llm_enqueue, llm_prompts, queue
+from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
+from app.jobs.llm_client import parse_structured_output, run_claude_prompt
+from app.jobs.llm_client import as_bool, as_council_tax_band, as_float, as_int, epc_rating_from_score
 from app.jobs.rightmove_extract import (
     download_media,
     extract_listing,
@@ -106,6 +111,8 @@ def handle_rightmove_extract(job: dict) -> None:
     store.insert_snapshot(listing_id, fields.get("price_gbp"), fields.get("rightmove_status"), prop)
 
     queue.enqueue_job(listing_id, "media_download", "http", depends_on_job_id=job["id"])
+    if llm_enqueue.should_enqueue(listing_id, "text_extract"):
+        queue.enqueue_job(listing_id, "text_extract", "llm", depends_on_job_id=job["id"])
 
 
 def handle_media_download(job: dict) -> None:
@@ -120,8 +127,148 @@ def handle_media_download(job: dict) -> None:
     raw["id"] = str(listing_id)
     download_media(raw, MEDIA_DIR)
 
+    # Vision jobs chain off media_download, not directly off
+    # rightmove_extract: they need the image files on disk, and
+    # rightmove_extract → media_download is itself an http-lane job that
+    # might not even be claimed yet by the time rightmove_extract finishes.
+    # This still satisfies "auto-chain after the rightmove extract" — just
+    # transitively, via the existing rightmove_extract → media_download edge.
+    if llm_enqueue.should_enqueue(listing_id, "floor_area_vision") and llm_enqueue.first_media_file(
+        listing_id, "floorplans"
+    ):
+        queue.enqueue_job(listing_id, "floor_area_vision", "llm", depends_on_job_id=job["id"])
+    if llm_enqueue.should_enqueue(listing_id, "epc_vision") and llm_enqueue.first_media_file(listing_id, "epc"):
+        queue.enqueue_job(listing_id, "epc_vision", "llm", depends_on_job_id=job["id"])
+
+
+def handle_text_extract(job: dict) -> None:
+    listing_id = job["listing_id"]
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise RuntimeError(f"no listing row for id {listing_id}")
+    description = listing.get("description")
+    if not description:
+        return  # nothing to extract from; not an error, just a no-op completion
+
+    prompt = llm_prompts.TEXT_EXTRACT_PROMPT.format(description=description)
+    raw = run_claude_prompt(
+        prompt,
+        JOB_TYPE_MODELS["text_extract"],
+        TEXT_EXTRACT_TIMEOUT_S,
+        json_schema=llm_prompts.TEXT_EXTRACT_SCHEMA,
+        disallow_all_tools=True,
+    )
+    parsed = parse_structured_output(raw)
+
+    # Rightmove's structured livingCosts data (see PR #5) always wins over an
+    # LLM read of the free-text description for the fields both can produce
+    # — skip any field already sourced 'rightmove' so this handler can never
+    # regress that fix. A field not yet populated by either source has no
+    # '_source' value at all, so it's untouched by this check.
+    fields = {}
+    if listing.get("lease_years_remaining_source") != "rightmove":
+        lease_years = as_int(parsed.get("lease_years_remaining"))
+        if lease_years is not None:
+            fields["lease_years_remaining"] = lease_years
+            fields["lease_years_remaining_source"] = "llm"
+
+    if listing.get("service_charge_source") != "rightmove":
+        service_charge = as_int(parsed.get("service_charge_pa"))
+        if service_charge is not None:
+            fields["service_charge_pa"] = service_charge
+            fields["service_charge_pm"] = round(service_charge / 12)
+            fields["service_charge_source"] = "llm"
+
+    if listing.get("council_tax_band_source") != "rightmove":
+        band = as_council_tax_band(parsed.get("council_tax_band"))
+        if band is not None:
+            fields["council_tax_band"] = band
+            fields["council_tax_band_source"] = "llm"
+
+    if listing.get("chain_free_source") != "rightmove":
+        chain_free = as_bool(parsed.get("chain_free"))
+        if chain_free is not None:
+            fields["chain_free"] = int(chain_free)
+            fields["chain_free_source"] = "llm"
+
+    if listing.get("cash_only_source") != "rightmove":
+        cash_only = as_bool(parsed.get("cash_only"))
+        if cash_only is not None:
+            fields["cash_only"] = int(cash_only)
+            fields["cash_only_source"] = "llm"
+
+    if fields:
+        store.apply_extracted_fields(listing_id, fields)
+
+
+def handle_floor_area_vision(job: dict) -> None:
+    listing_id = job["listing_id"]
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise RuntimeError(f"no listing row for id {listing_id}")
+    image_path = llm_enqueue.first_media_file(listing_id, "floorplans")
+    if image_path is None:
+        raise RuntimeError(f"no floorplan image on disk for listing {listing_id}")
+    if listing.get("floor_area_sqft_source") == "rightmove":
+        return  # a structured/text source already won; nothing for this job to do
+
+    prompt = llm_prompts.FLOOR_AREA_VISION_PROMPT.format(image_path=image_path)
+    raw = run_claude_prompt(
+        prompt,
+        JOB_TYPE_MODELS["floor_area_vision"],
+        VISION_TIMEOUT_S,
+        allow_read=True,
+        json_schema=llm_prompts.FLOOR_AREA_VISION_SCHEMA,
+    )
+    parsed = parse_structured_output(raw)
+
+    sqft = as_float(parsed.get("floor_area_sqft"))
+    if sqft is None:
+        sqm = as_float(parsed.get("floor_area_sqm"))
+        if sqm is not None:
+            sqft = normalize.sqm_to_sqft(sqm)
+    if sqft is not None:
+        store.apply_extracted_fields(listing_id, {"floor_area_sqft": sqft, "floor_area_sqft_source": "llm"})
+
+
+def handle_epc_vision(job: dict) -> None:
+    listing_id = job["listing_id"]
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise RuntimeError(f"no listing row for id {listing_id}")
+    image_path = llm_enqueue.first_media_file(listing_id, "epc")
+    if image_path is None:
+        raise RuntimeError(f"no EPC image on disk for listing {listing_id}")
+    if listing.get("epc_source") == "rightmove":
+        return  # a structured/text source already won; nothing for this job to do
+
+    prompt = llm_prompts.EPC_VISION_PROMPT.format(image_path=image_path)
+    raw = run_claude_prompt(
+        prompt,
+        JOB_TYPE_MODELS["epc_vision"],
+        VISION_TIMEOUT_S,
+        allow_read=True,
+        json_schema=llm_prompts.EPC_VISION_SCHEMA,
+    )
+    parsed = parse_structured_output(raw)
+
+    fields = {}
+    current = epc_rating_from_score(parsed.get("epc_current_score"))
+    if current is not None:
+        fields["epc_current"] = current
+        fields["epc_source"] = "llm"
+    potential = epc_rating_from_score(parsed.get("epc_potential_score"))
+    if potential is not None:
+        fields["epc_potential"] = potential
+        fields["epc_source"] = "llm"
+    if fields:
+        store.apply_extracted_fields(listing_id, fields)
+
 
 HANDLERS = {
     "rightmove_extract": handle_rightmove_extract,
     "media_download": handle_media_download,
+    "text_extract": handle_text_extract,
+    "floor_area_vision": handle_floor_area_vision,
+    "epc_vision": handle_epc_vision,
 }
