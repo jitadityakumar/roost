@@ -11,25 +11,27 @@ const TYPE_BADGES = {
 const DEFAULT_TYPE_BADGE = { letter: "?", label: "Station", bg: "#666" };
 
 function formatDistance(distance, unit) {
-  if (distance === null || distance === undefined) return null;
-  return `${Number(distance).toFixed(2)} ${unit || "mi"}`;
+  const n = Number(distance);
+  if (distance === null || distance === undefined || Number.isNaN(n)) return null;
+  return `${n.toFixed(2)} ${unit || "mi"}`;
 }
 
 export default function NearestStations({ stations }) {
-  if (!stations || stations.length === 0) return null;
+  if (!Array.isArray(stations) || stations.length === 0) return null;
 
   return (
     <ul className="station-list">
-      {stations.map((s) => (
-        <li key={s.name} className="station-row">
+      {stations.map((s, i) => (
+        <li key={`${s.name}-${i}`} className="station-row">
           <span className="station-icons">
-            {(s.types && s.types.length > 0 ? s.types : ["_"]).map((t) => {
+            {(Array.isArray(s.types) && s.types.length > 0 ? s.types : ["_"]).map((t, j) => {
               const { letter, label, bg } = TYPE_BADGES[t] || DEFAULT_TYPE_BADGE;
               return (
                 <span
-                  key={t}
+                  key={`${t}-${j}`}
                   className="station-badge"
                   style={{ backgroundColor: bg }}
+                  role="img"
                   title={label}
                   aria-label={label}
                 >

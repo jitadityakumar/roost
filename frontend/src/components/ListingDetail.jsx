@@ -165,7 +165,7 @@ export default function ListingDetail() {
         </section>
       )}
 
-      {listing.nearest_stations_raw && listing.nearest_stations_raw.length > 0 && (
+      {Array.isArray(listing.nearest_stations_raw) && listing.nearest_stations_raw.length > 0 && (
         <section>
           <h3>Nearest stations</h3>
           <NearestStations stations={listing.nearest_stations_raw} />
