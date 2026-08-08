@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Lightbox from "./Lightbox.jsx";
 
 export default function MediaGrid({ images }) {
   const [openIndex, setOpenIndex] = useState(null);
+
+  useEffect(() => {
+    setOpenIndex(null);
+  }, [images]);
 
   if (images.length === 0) return null;
 

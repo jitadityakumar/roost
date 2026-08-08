@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Lightbox from "./Lightbox.jsx";
+import { isTypingTarget } from "./domUtils.js";
 
 export default function PhotoCarousel({ images }) {
   const [index, setIndex] = useState(0);
@@ -10,8 +11,13 @@ export default function PhotoCarousel({ images }) {
   const next = () => setIndex((i) => (i + 1) % images.length);
 
   useEffect(() => {
+    setIndex(0);
+  }, [images]);
+
+  useEffect(() => {
     function onKey(e) {
       if (lightboxOpen) return;
+      if (isTypingTarget(e.target)) return;
       if (e.key === "ArrowLeft") prev();
       else if (e.key === "ArrowRight") next();
     }

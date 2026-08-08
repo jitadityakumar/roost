@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isTypingTarget } from "./domUtils.js";
 
 export default function Lightbox({ images, startIndex = 0, onClose }) {
   const [index, setIndex] = useState(startIndex);
@@ -10,6 +11,7 @@ export default function Lightbox({ images, startIndex = 0, onClose }) {
   useEffect(() => {
     function onKey(e) {
       if (e.key === "Escape") onClose();
+      else if (isTypingTarget(e.target)) return;
       else if (e.key === "ArrowLeft") prev();
       else if (e.key === "ArrowRight") next();
     }
