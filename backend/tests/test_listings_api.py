@@ -120,6 +120,77 @@ def test_refresh_listing_404_for_unknown_id(client):
     assert client.post("/api/listings/999/refresh").status_code == 404
 
 
+def test_llm_refresh_404_for_unknown_id(client):
+    assert client.post("/api/listings/999/llm-refresh").status_code == 404
+
+
+def test_llm_refresh_enqueues_text_extract_when_description_present(client):
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(1, {"description": "A lovely flat."})
+
+    resp = client.post("/api/listings/1/llm-refresh")
+    assert resp.status_code == 202
+    assert resp.json()["enqueued"] == ["text_extract"]
+
+    jobs = [j for j in queue.get_jobs_for_listing(1) if j["job_type"] == "text_extract"]
+    assert len(jobs) == 1
+
+
+def test_llm_refresh_skips_vision_jobs_without_images_on_disk(client, media_dir):
+    store.create_stub_listing(1, VALID_URL)
+
+    resp = client.post("/api/listings/1/llm-refresh")
+    assert resp.status_code == 202
+    assert "floor_area_vision" not in resp.json()["enqueued"]
+    assert "epc_vision" not in resp.json()["enqueued"]
+
+
+def test_llm_refresh_enqueues_vision_jobs_when_images_present(client, media_dir):
+    store.create_stub_listing(1, VALID_URL)
+    for category in ("floorplans", "epc"):
+        d = os.path.join(media_dir, "1", category)
+        os.makedirs(d)
+        open(os.path.join(d, "01.jpeg"), "w").close()
+
+    resp = client.post("/api/listings/1/llm-refresh")
+    assert resp.status_code == 202
+    assert set(resp.json()["enqueued"]) >= {"floor_area_vision", "epc_vision"}
+
+
+def test_llm_refresh_does_not_double_enqueue_while_pending(client):
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(1, {"description": "A lovely flat."})
+    queue.enqueue_job(1, "text_extract", "llm")
+
+    resp = client.post("/api/listings/1/llm-refresh")
+    assert resp.json()["enqueued"] == []
+
+    jobs = [j for j in queue.get_jobs_for_listing(1) if j["job_type"] == "text_extract"]
+    assert len(jobs) == 1
+
+
+def test_llm_refresh_skips_hand_edited_fields(client):
+    # A field the user has manually corrected must not be silently
+    # overwritten by a backfill re-run — same stickiness rule /refresh
+    # already respects.
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(1, {"description": "A lovely flat."})
+    store.apply_manual_edit(
+        1,
+        {
+            "lease_years_remaining": 999,
+            "service_charge_pa": 1,
+            "service_charge_pm": 1,
+            "council_tax_band": "A",
+            "chain_free": True,
+            "cash_only": False,
+        },
+    )
+
+    resp = client.post("/api/listings/1/llm-refresh")
+    assert resp.json()["enqueued"] == []
+
+
 def test_get_jobs_for_listing(client):
     store.create_stub_listing(1, VALID_URL)
     queue.enqueue_job(1, "rightmove_extract", "http")
