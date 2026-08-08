@@ -5,10 +5,28 @@ from pydantic import BaseModel
 
 from app.config import MEDIA_DIR
 from app.jobs import llm_enqueue, queue
+from app.jobs.pipeline_status import derive_pipeline_status
 from app.listings import store, url_utils
 from app.listings.serialize import serialize_listing
 
 router = APIRouter(prefix="/api/listings", tags=["listings"])
+
+
+def _serialize_with_pipeline_status(listing: dict) -> dict:
+    statuses = queue.latest_job_statuses_for_listings([listing["id"]])
+    out = serialize_listing(listing)
+    out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
+    return out
+
+
+def _serialize_many_with_pipeline_status(listings: list[dict]) -> list[dict]:
+    statuses = queue.latest_job_statuses_for_listings([l["id"] for l in listings])
+    result = []
+    for listing in listings:
+        out = serialize_listing(listing)
+        out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
+        result.append(out)
+    return result
 
 # Editable via PATCH's manual-edit path — anything not on this list (system
 # columns like extraction_status, id, url, created_at) is rejected.
@@ -47,12 +65,12 @@ def create_listing(body: CreateListingRequest):
     inserted = store.create_stub_listing(property_id, canonical)
     if inserted:
         queue.enqueue_job(property_id, "rightmove_extract", "http")
-    return serialize_listing(store.get_listing(property_id))
+    return _serialize_with_pipeline_status(store.get_listing(property_id))
 
 
 @router.get("")
 def list_listings(user_status: str | None = None):
-    return [serialize_listing(l) for l in store.list_listings(user_status)]
+    return _serialize_many_with_pipeline_status(store.list_listings(user_status))
 
 
 @router.get("/{listing_id}")
@@ -60,7 +78,7 @@ def get_listing(listing_id: int):
     listing = store.get_listing(listing_id)
     if listing is None:
         raise HTTPException(status_code=404, detail="listing not found")
-    return serialize_listing(listing)
+    return _serialize_with_pipeline_status(listing)
 
 
 @router.post("/{listing_id}/refresh", status_code=202)
@@ -74,7 +92,7 @@ def refresh_listing(listing_id: int):
     if not queue.has_pending_job(listing_id, "rightmove_extract"):
         store.set_extraction_status(listing_id, "queued")
         queue.enqueue_job(listing_id, "rightmove_extract", "http")
-    return serialize_listing(store.get_listing(listing_id))
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 
 @router.post("/{listing_id}/llm-refresh", status_code=202)
@@ -131,7 +149,7 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
             raise HTTPException(status_code=422, detail=f"non-editable field(s): {sorted(unknown)}")
         store.apply_manual_edit(listing_id, body.fields)
 
-    return serialize_listing(store.get_listing(listing_id))
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 
 @router.delete("/{listing_id}", status_code=204)

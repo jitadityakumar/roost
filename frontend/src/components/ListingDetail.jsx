@@ -6,6 +6,7 @@ import FieldRow from "./FieldRow.jsx";
 import PhotoCarousel from "./PhotoCarousel.jsx";
 import MediaGrid from "./MediaGrid.jsx";
 import NearestStations from "./NearestStations.jsx";
+import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 
 function formatBroadband(listing) {
   if (!listing.broadband_top_speed) return "—";
@@ -149,11 +150,11 @@ export default function ListingDetail() {
         </a>
       </p>
 
-      {listing.extraction_status !== "done" && (
-        <p className="pending-banner">
-          {listing.extraction_status === "failed"
-            ? `Extraction failed: ${listing.extraction_error || "unknown error"}`
-            : "Fetching details…"}
+      {listing.pipeline_status && (
+        <p className={`pending-banner ${listing.pipeline_status === "failed" ? "failed" : ""}`}>
+          {listing.pipeline_status === "failed"
+            ? `Extraction failed${listing.extraction_error ? `: ${listing.extraction_error}` : ""}`
+            : PIPELINE_STATUS_LABEL[listing.pipeline_status] || listing.pipeline_status}
         </p>
       )}
 

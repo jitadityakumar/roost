@@ -145,3 +145,33 @@ def test_reclaim_stale_leases():
     jobs = queue.get_jobs_for_listing(listing_id)
     assert jobs[0]["status"] == "queued"
     assert jobs[0]["lease_expires_at"] is None
+
+
+def test_latest_job_statuses_for_listings_empty_input():
+    assert queue.latest_job_statuses_for_listings([]) == {}
+
+
+def test_latest_job_statuses_for_listings_picks_most_recent_row_per_type():
+    listing_id = _make_listing()
+    first_job_id = queue.enqueue_job(listing_id, "rightmove_extract", "http")
+    queue.claim_next_job("http")
+    queue.complete_job(first_job_id)
+    # A Refresh enqueues a fresh row for the same job_type rather than
+    # reusing the old one -- the latest row is the one that should count.
+    queue.enqueue_job(listing_id, "rightmove_extract", "http")
+
+    statuses = queue.latest_job_statuses_for_listings([listing_id])
+
+    assert statuses == {listing_id: {"rightmove_extract": "queued"}}
+
+
+def test_latest_job_statuses_for_listings_scopes_by_listing_id():
+    listing_a = _make_listing(1)
+    listing_b = _make_listing(2)
+    queue.enqueue_job(listing_a, "rightmove_extract", "http")
+    queue.enqueue_job(listing_b, "rightmove_extract", "http")
+
+    statuses = queue.latest_job_statuses_for_listings([listing_a])
+
+    assert listing_a in statuses
+    assert listing_b not in statuses
