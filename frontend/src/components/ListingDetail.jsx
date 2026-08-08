@@ -15,7 +15,7 @@ function formatBroadband(listing) {
 }
 
 const FIELDS = [
-  { field: "price_gbp", label: "Price (£)", editable: true },
+  { field: "price_gbp", label: "Price", editable: true, currency: true },
   { field: "address", label: "Address", editable: true },
   { field: "postcode", label: "Postcode", editable: true },
   { field: "property_type", label: "Type", editable: true },
