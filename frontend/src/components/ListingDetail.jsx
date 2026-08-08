@@ -1,7 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import DOMPurify from "dompurify";
 import { api } from "../api.js";
 import FieldRow from "./FieldRow.jsx";
+import PhotoCarousel from "./PhotoCarousel.jsx";
+import MediaGrid from "./MediaGrid.jsx";
+
+function formatBroadband(listing) {
+  if (!listing.broadband_top_speed) return "—";
+  const speed = String(listing.broadband_top_speed).replace(/mb\/?s?$/i, "").trim();
+  const provider = listing.broadband_top_speed_provider;
+  return `${speed} Mbps${provider ? ` · ${provider}` : ""}`;
+}
 
 const FIELDS = [
   { field: "price_gbp", label: "Price (£)", editable: true },
@@ -23,7 +33,6 @@ const FIELDS = [
   { field: "garden", label: "Garden", sourceField: "garden_source", editable: true, boolean: true },
   { field: "parking", label: "Parking", sourceField: "parking_source", editable: true },
   { field: "agent_branch", label: "Agent", editable: false },
-  { field: "broadband_top_speed", label: "Broadband top speed", editable: false },
 ];
 
 export default function ListingDetail() {
@@ -33,6 +42,7 @@ export default function ListingDetail() {
   const [jobs, setJobs] = useState([]);
   const [media, setMedia] = useState(null);
   const [error, setError] = useState(null);
+  const [editMode, setEditMode] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -56,7 +66,8 @@ export default function ListingDetail() {
     setListing(updated);
   }
 
-  async function handleStatusChange(newStatus) {
+  async function handleStatusToggle() {
+    const newStatus = listing.user_status === "active" ? "in_review" : "active";
     const updated = await api.patch(id, { user_status: newStatus });
     setListing(updated);
   }
@@ -76,22 +87,38 @@ export default function ListingDetail() {
   if (error) return <p className="error">{error}</p>;
   if (!listing) return <p>Loading…</p>;
 
+  const photoUrls = media ? media.photos.map((f) => api.mediaUrl(id, "photos", f)) : [];
+  const floorplanUrls = media ? media.floorplans.map((f) => api.mediaUrl(id, "floorplans", f)) : [];
+  const epcUrls = media ? media.epc.map((f) => api.mediaUrl(id, "epc", f)) : [];
+
   return (
     <div className="listing-detail">
-      <button className="back-btn" onClick={() => navigate("/")}>
+      <button
+        className="back-btn"
+        onClick={() => navigate(listing.user_status === "active" ? "/active" : "/in-review")}
+      >
         ← Back
       </button>
+
+      {photoUrls.length > 0 && <PhotoCarousel images={photoUrls} />}
 
       <div className="detail-header">
         <h2>{listing.address || listing.url}</h2>
         <div className="detail-actions">
-          <select value={listing.user_status} onChange={(e) => handleStatusChange(e.target.value)}>
-            <option value="active">Active</option>
-            <option value="in_review">In-review</option>
-          </select>
-          <button onClick={handleRefresh}>Refresh</button>
-          <button className="danger" onClick={handleDelete}>
-            Delete
+          <button
+            className={`status-toggle-btn ${listing.user_status === "active" ? "warn" : ""}`}
+            onClick={handleStatusToggle}
+          >
+            {listing.user_status === "active" ? "Move → In review" : "Move → Active"}
+          </button>
+          <button className="icon-btn edit" onClick={() => setEditMode((v) => !v)} title="Edit" aria-label="Edit" aria-pressed={editMode}>
+            ✎
+          </button>
+          <button className="icon-btn" onClick={handleRefresh} title="Refresh" aria-label="Refresh">
+            ↻
+          </button>
+          <button className="icon-btn danger" onClick={handleDelete} title="Delete" aria-label="Delete">
+            ✕
           </button>
         </div>
       </div>
@@ -112,32 +139,45 @@ export default function ListingDetail() {
 
       <section className="fields">
         {FIELDS.map((f) => (
-          <FieldRow key={f.field} listing={listing} onSave={handleFieldSave} {...f} />
+          <FieldRow key={f.field} listing={listing} onSave={handleFieldSave} editMode={editMode} {...f} />
         ))}
+        <div className="field-row">
+          <span className="field-label-col">
+            <span className="field-label">Broadband top speed</span>
+          </span>
+          <span className="field-value">{formatBroadband(listing)}</span>
+        </div>
       </section>
 
       {listing.description && (
         <section>
           <h3>Description</h3>
-          <p className="description">{listing.description}</p>
+          <div
+            className="description"
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(listing.description, {
+                ALLOWED_TAGS: ["br", "p", "b", "strong", "i", "em", "ul", "ol", "li"],
+                ALLOWED_ATTR: [],
+              }),
+            }}
+          />
         </section>
       )}
 
-      {media && (media.photos.length > 0 || media.floorplans.length > 0 || media.epc.length > 0) && (
+      {media && (floorplanUrls.length > 0 || epcUrls.length > 0) && (
         <section>
           <h3>Media</h3>
-          {["photos", "floorplans", "epc"].map(
-            (category) =>
-              media[category].length > 0 && (
-                <div key={category} className="media-category">
-                  <h4>{category}</h4>
-                  <div className="media-grid">
-                    {media[category].map((filename) => (
-                      <img key={filename} src={api.mediaUrl(id, category, filename)} alt={`${category} ${filename}`} />
-                    ))}
-                  </div>
-                </div>
-              )
+          {floorplanUrls.length > 0 && (
+            <div className="media-category">
+              <h4>floorplans</h4>
+              <MediaGrid images={floorplanUrls} />
+            </div>
+          )}
+          {epcUrls.length > 0 && (
+            <div className="media-category">
+              <h4>epc</h4>
+              <MediaGrid images={epcUrls} />
+            </div>
           )}
         </section>
       )}

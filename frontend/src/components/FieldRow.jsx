@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function FieldRow({ listing, field, label, sourceField, editable, onSave, boolean }) {
+export default function FieldRow({ listing, field, label, sourceField, editable, onSave, boolean, editMode }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(listing[field] ?? "");
 
@@ -23,7 +23,11 @@ export default function FieldRow({ listing, field, label, sourceField, editable,
 
   return (
     <div className="field-row">
-      <span className="field-label">{label}</span>
+      <span className="field-label-col">
+        <span className="field-label">{label}</span>
+        {isEdited && <span className="badge badge-edited">edited by you</span>}
+        {!isEdited && source && <span className="badge badge-source">{source}</span>}
+      </span>
       {editing ? (
         <span className="field-edit">
           {boolean ? (
@@ -41,9 +45,7 @@ export default function FieldRow({ listing, field, label, sourceField, editable,
       ) : (
         <span className="field-value">
           {display(listing[field])}
-          {isEdited && <span className="badge badge-edited">edited by you</span>}
-          {!isEdited && source && <span className="badge badge-source">{source}</span>}
-          {editable && (
+          {editable && editMode && (
             <button className="edit-btn" onClick={() => setEditing(true)}>
               ✎
             </button>
