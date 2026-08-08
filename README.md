@@ -51,6 +51,7 @@ docker build -t roost .
 docker run -d --name roost --restart unless-stopped \
   -p 8099:8000 -v $(pwd)/data:/data \
   -v ~/.claude:/root/.claude:ro \
+  -v ~/.claude.json:/root/.claude.json:ro \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 
@@ -65,13 +66,15 @@ the Phase 3 llm-lane worker deliberately logs full (not truncated) failure
 output for diagnosis, so without a cap a long-running container with
 recurring llm failures could otherwise accumulate an ever-growing log file
 on the host.
-The `-v ~/.claude:/root/.claude:ro` mount gives the LLM enrichment worker
-(Phase 3) read-only access to the host's existing `claude login` session, so
-no separate API key needs to be provisioned or stored in the container. Known
-tradeoff of the `:ro` mount: the CLI can't persist a refreshed OAuth token
-back to the host, so if `llm`-lane jobs start failing with an auth error
-after the container's been running a long time, re-running `claude login` on
-the host (which the container will pick up on its next call, since the mount
+The `-v ~/.claude:/root/.claude:ro` and `-v ~/.claude.json:/root/.claude.json:ro`
+mounts give the LLM enrichment worker (Phase 3) read-only access to the
+host's existing `claude login` session (the second file is separate,
+home-root onboarding/trust state the CLI also expects), so no separate API
+key needs to be provisioned or stored in the container. Known tradeoff of
+the `:ro` mounts: the CLI can't persist a refreshed OAuth token back to the
+host, so if `llm`-lane jobs start failing with an auth error after the
+container's been running a long time, re-running `claude login` on the
+host (which the container will pick up on its next call, since the mount
 is live) is the fix. The `/data` volume holds the SQLite database and
 downloaded media so they survive container restarts.
 
