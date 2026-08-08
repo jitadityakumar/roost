@@ -7,19 +7,22 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db.migrate import run_migrations
-from app.jobs.worker import HttpLaneWorkerPool
+from app.jobs.worker import HttpLaneWorkerPool, LlmLaneWorkerPool
 from app.routes import listings, media
 
 logging.basicConfig(level=logging.INFO)
 
 worker_pool = HttpLaneWorkerPool()
+llm_worker_pool = LlmLaneWorkerPool()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
     worker_pool.start()
+    llm_worker_pool.start()
     yield
+    await llm_worker_pool.stop()
     await worker_pool.stop()
 
 

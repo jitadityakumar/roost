@@ -5,6 +5,10 @@ to read garden/parking off Rightmove's own key_features bullets (still a
 import re
 
 
+def sqm_to_sqft(sqm: float) -> float:
+    return round(sqm * 10.7639, 1)
+
+
 def parse_price_gbp(price_text) -> int | None:
     """'£475,000' -> 475000. Rightmove never lists sub-pound amounts."""
     if not price_text:
