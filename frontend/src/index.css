@@ -345,6 +345,30 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   border-radius: 999px;
 }
 
+.station-list { list-style: none; padding: 0; margin: 0; }
+.station-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.station-icons { display: flex; gap: 0.25rem; flex-shrink: 0; }
+.station-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.station-name { flex: 1; }
+.station-distance { color: var(--muted); font-size: 0.9rem; }
+
 .stub-section { opacity: 0.6; }
 .coming-soon { font-style: italic; color: var(--muted); }
 

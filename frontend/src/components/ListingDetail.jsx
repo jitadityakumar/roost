@@ -5,6 +5,7 @@ import { api } from "../api.js";
 import FieldRow from "./FieldRow.jsx";
 import PhotoCarousel from "./PhotoCarousel.jsx";
 import MediaGrid from "./MediaGrid.jsx";
+import NearestStations from "./NearestStations.jsx";
 
 function formatBroadband(listing) {
   if (!listing.broadband_top_speed) return "—";
@@ -161,6 +162,13 @@ export default function ListingDetail() {
               }),
             }}
           />
+        </section>
+      )}
+
+      {Array.isArray(listing.nearest_stations_raw) && listing.nearest_stations_raw.length > 0 && (
+        <section>
+          <h3>Nearest stations</h3>
+          <NearestStations stations={listing.nearest_stations_raw} />
         </section>
       )}
 
