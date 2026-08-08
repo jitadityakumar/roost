@@ -1,6 +1,6 @@
 import pytest
 
-from app.listings.normalize import detect_garden, detect_parking, parse_price_gbp
+from app.listings.normalize import detect_garden, detect_parking, parse_price_gbp, parse_yyyymmdd_date
 
 
 @pytest.mark.parametrize(
@@ -15,6 +15,20 @@ from app.listings.normalize import detect_garden, detect_parking, parse_price_gb
 )
 def test_parse_price_gbp(price_text, expected):
     assert parse_price_gbp(price_text) == expected
+
+
+@pytest.mark.parametrize(
+    "date_text,expected",
+    [
+        ("20260115", "2026-01-15"),
+        (None, None),
+        ("", None),
+        ("not-a-date", None),
+        ("20261301", None),  # invalid month
+    ],
+)
+def test_parse_yyyymmdd_date(date_text, expected):
+    assert parse_yyyymmdd_date(date_text) == expected
 
 
 def test_detect_garden_from_structured_features():

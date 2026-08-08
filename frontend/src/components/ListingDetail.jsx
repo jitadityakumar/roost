@@ -14,6 +14,11 @@ function formatBroadband(listing) {
   return `${speed} Mbps${provider ? ` · ${provider}` : ""}`;
 }
 
+function formatFetchedAt(listing) {
+  if (!listing.rightmove_fetched_at) return "—";
+  return new Date(listing.rightmove_fetched_at).toLocaleString("en-GB");
+}
+
 const FIELDS = [
   { field: "price_gbp", label: "Price", editable: true, currency: true },
   { field: "address", label: "Address", editable: true },
@@ -34,6 +39,7 @@ const FIELDS = [
   { field: "garden", label: "Garden", sourceField: "garden_source", editable: true, boolean: true },
   { field: "parking", label: "Parking", sourceField: "parking_source", editable: true },
   { field: "agent_branch", label: "Agent", editable: false },
+  { field: "listing_added_on", label: "Listed on", editable: false },
 ];
 
 export default function ListingDetail() {
@@ -147,6 +153,12 @@ export default function ListingDetail() {
             <span className="field-label">Broadband top speed</span>
           </span>
           <span className="field-value">{formatBroadband(listing)}</span>
+        </div>
+        <div className="field-row">
+          <span className="field-label-col">
+            <span className="field-label">Fetched on</span>
+          </span>
+          <span className="field-value">{formatFetchedAt(listing)}</span>
         </div>
       </section>
 

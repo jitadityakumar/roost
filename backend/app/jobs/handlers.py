@@ -11,6 +11,7 @@ Rightmove functions below are imported and mocked.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 from app.config import MEDIA_DIR
 from app.jobs import llm_enqueue, llm_prompts, queue
@@ -44,7 +45,8 @@ def handle_rightmove_extract(job: dict) -> None:
         store.set_extraction_status(listing_id, "failed", str(e))
         raise RuntimeError(f"extraction failed for listing {listing_id}: {e}") from e
 
-    extracted = extract_listing(prop)
+    added_on = ((root.get("analyticsInfo") or {}).get("analyticsProperty") or {}).get("added")
+    extracted = extract_listing(prop, listing_added_on=added_on)
 
     postcode = None
     if extracted.get("postcode_outcode"):
@@ -64,6 +66,8 @@ def handle_rightmove_extract(job: dict) -> None:
         "agent_branch": extracted.get("agent_branch"),
         "agent_address": extracted.get("agent_address"),
         "rightmove_status": json.dumps(extracted.get("status")) if extracted.get("status") else None,
+        "listing_added_on": normalize.parse_yyyymmdd_date(extracted.get("listing_added_on")),
+        "rightmove_fetched_at": datetime.now(timezone.utc).isoformat(),
     }
 
     if extracted.get("lease_years_remaining") is not None:
