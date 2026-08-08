@@ -15,7 +15,7 @@ function formatBroadband(listing) {
 }
 
 const FIELDS = [
-  { field: "price_gbp", label: "Price (£)", editable: true },
+  { field: "price_gbp", label: "Price", editable: true, currency: true },
   { field: "address", label: "Address", editable: true },
   { field: "postcode", label: "Postcode", editable: true },
   { field: "property_type", label: "Type", editable: true },
@@ -26,7 +26,7 @@ const FIELDS = [
   { field: "service_charge_pa", label: "Service charge (per yr)", sourceField: "service_charge_source", editable: true, currency: true },
   { field: "service_charge_pm", label: "Service charge (per mo)", sourceField: "service_charge_source", editable: true, currency: true },
   { field: "council_tax_band", label: "Council tax band", sourceField: "council_tax_band_source", editable: true },
-  { field: "floor_area_sqft", label: "Floor area (sqft)", sourceField: "floor_area_sqft_source", editable: true },
+  { field: "floor_area_sqft", label: "Floor area", sourceField: "floor_area_sqft_source", editable: true, unit: "sq ft" },
   { field: "epc_current", label: "EPC current", sourceField: "epc_source", editable: true },
   { field: "epc_potential", label: "EPC potential", sourceField: "epc_source", editable: true },
   { field: "chain_free", label: "Chain free", sourceField: "chain_free_source", editable: true, boolean: true },
