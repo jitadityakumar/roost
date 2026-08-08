@@ -165,6 +165,17 @@ export default function ListingDetail() {
         </section>
       )}
 
+      {Array.isArray(listing.key_features) && listing.key_features.length > 0 && (
+        <section>
+          <h3>Key features</h3>
+          <ul className="key-features">
+            {listing.key_features.map((feature, i) => (
+              <li key={i}>{feature}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {Array.isArray(listing.nearest_stations_raw) && listing.nearest_stations_raw.length > 0 && (
         <section>
           <h3>Nearest stations</h3>
