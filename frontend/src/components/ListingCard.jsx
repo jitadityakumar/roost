@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 
@@ -14,9 +14,30 @@ const USER_STATUS_LABEL = {
   in_review: "In-review",
 };
 
+// Extraction flips to "done" before the media_download job (which writes
+// photos/01.jpeg) has necessarily finished, so the very first thumbnail
+// request can 404 in the normal case, not just as an edge case. Retry with
+// backoff for a few seconds before giving up on the thumbnail.
+const THUMB_MAX_RETRIES = 8;
+const THUMB_RETRY_DELAY_MS = 2000;
+
 export default function ListingCard({ listing }) {
   const pending = listing.extraction_status !== "done";
+  const [thumbAttempt, setThumbAttempt] = useState(0);
   const [thumbFailed, setThumbFailed] = useState(false);
+
+  useEffect(() => {
+    setThumbAttempt(0);
+    setThumbFailed(false);
+  }, [listing.id]);
+
+  const handleThumbError = () => {
+    if (thumbAttempt >= THUMB_MAX_RETRIES) {
+      setThumbFailed(true);
+    } else {
+      setTimeout(() => setThumbAttempt((n) => n + 1), THUMB_RETRY_DELAY_MS);
+    }
+  };
 
   return (
     <Link className={`listing-card ${pending ? "pending" : ""}`} to={`/listings/${listing.id}`}>
@@ -36,10 +57,10 @@ export default function ListingCard({ listing }) {
           {!thumbFailed && (
             <img
               className="listing-card-thumb"
-              src={api.mediaUrl(listing.id, "photos", "01.jpeg")}
-              alt=""
+              src={`${api.mediaUrl(listing.id, "photos", "01.jpeg")}${thumbAttempt ? `?retry=${thumbAttempt}` : ""}`}
+              alt={listing.address ? `Photo of ${listing.address}` : "Listing photo"}
               loading="lazy"
-              onError={() => setThumbFailed(true)}
+              onError={handleThumbError}
             />
           )}
           <div className="listing-card-body">
