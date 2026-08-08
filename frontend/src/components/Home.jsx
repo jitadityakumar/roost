@@ -6,11 +6,14 @@ export default function Home() {
       <Link className="home-option" to="/add">
         Add property
       </Link>
-      <Link className="home-option" to="/active">
-        View active
+      <Link className="home-option" to="/triage">
+        View triage
       </Link>
-      <Link className="home-option" to="/in-review">
-        View in-review
+      <Link className="home-option" to="/approved">
+        View approved
+      </Link>
+      <Link className="home-option" to="/rejected">
+        View rejected
       </Link>
     </div>
   );

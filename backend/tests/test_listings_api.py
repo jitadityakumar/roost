@@ -110,10 +110,10 @@ def test_get_listing_returns_serialized_listing(client):
 def test_list_listings_filters_by_user_status(client):
     store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
     store.create_stub_listing(2, "https://www.rightmove.co.uk/properties/2")
-    store.set_user_status(1, "active")
-    store.set_user_status(2, "in_review")
+    store.set_user_status(1, "approved")
+    store.set_user_status(2, "triage")
 
-    resp = client.get("/api/listings", params={"user_status": "active"})
+    resp = client.get("/api/listings", params={"user_status": "approved"})
     ids = [l["id"] for l in resp.json()]
     assert ids == [1]
 
@@ -122,6 +122,39 @@ def test_patch_listing_rejects_invalid_user_status(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch("/api/listings/1", json={"user_status": "bogus"})
     assert resp.status_code == 422
+
+
+def test_patch_listing_rejects_without_reason(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch("/api/listings/1", json={"user_status": "rejected"})
+    assert resp.status_code == 422
+
+
+def test_patch_listing_rejects_with_blank_reason(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch("/api/listings/1", json={"user_status": "rejected", "rejection_reason": "   "})
+    assert resp.status_code == 422
+
+
+def test_patch_listing_rejects_with_reason_stores_it(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch(
+        "/api/listings/1", json={"user_status": "rejected", "rejection_reason": "Too small"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_status"] == "rejected"
+    assert body["rejection_reason"] == "Too small"
+
+
+def test_patch_listing_approving_after_rejection_keeps_reason_as_history(client):
+    store.create_stub_listing(1, VALID_URL)
+    client.patch("/api/listings/1", json={"user_status": "rejected", "rejection_reason": "Too small"})
+    resp = client.patch("/api/listings/1", json={"user_status": "approved"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_status"] == "approved"
+    assert body["rejection_reason"] == "Too small"
 
 
 def test_patch_listing_rejects_non_editable_field(client):
@@ -141,8 +174,8 @@ def test_patch_listing_applies_manual_edit_and_marks_sticky(client):
 
 def test_patch_listing_toggles_user_status(client):
     store.create_stub_listing(1, VALID_URL)
-    resp = client.patch("/api/listings/1", json={"user_status": "active"})
-    assert resp.json()["user_status"] == "active"
+    resp = client.patch("/api/listings/1", json={"user_status": "approved"})
+    assert resp.json()["user_status"] == "approved"
 
 
 def test_delete_listing_removes_row_and_media(client, media_dir):

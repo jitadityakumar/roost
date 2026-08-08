@@ -17,8 +17,9 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/add" element={<AddPage />} />
-            <Route path="/active" element={<ListingsPage status="active" />} />
-            <Route path="/in-review" element={<ListingsPage status="in_review" />} />
+            <Route path="/triage" element={<ListingsPage status="triage" />} />
+            <Route path="/approved" element={<ListingsPage status="approved" />} />
+            <Route path="/rejected" element={<ListingsPage status="rejected" />} />
             <Route path="/listings/:id" element={<ListingDetail />} />
           </Routes>
         </main>

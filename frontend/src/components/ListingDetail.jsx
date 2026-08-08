@@ -8,6 +8,12 @@ import MediaGrid from "./MediaGrid.jsx";
 import NearestStations from "./NearestStations.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 
+const BACK_ROUTE = {
+  triage: "/triage",
+  approved: "/approved",
+  rejected: "/rejected",
+};
+
 function formatBroadband(listing) {
   if (!listing.broadband_top_speed) return "—";
   const speed = String(listing.broadband_top_speed).replace(/mb\/?s?$/i, "").trim();
@@ -64,6 +70,9 @@ export default function ListingDetail() {
   const [media, setMedia] = useState(null);
   const [error, setError] = useState(null);
   const [editMode, setEditMode] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectError, setRejectError] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -87,10 +96,25 @@ export default function ListingDetail() {
     setListing(updated);
   }
 
-  async function handleStatusToggle() {
-    const newStatus = listing.user_status === "active" ? "in_review" : "active";
-    const updated = await api.patch(id, { user_status: newStatus });
+  async function handleApprove() {
+    const updated = await api.patch(id, { user_status: "approved" });
     setListing(updated);
+  }
+
+  function openReject() {
+    setRejectReason("");
+    setRejectError(null);
+    setRejecting(true);
+  }
+
+  async function confirmReject() {
+    if (!rejectReason.trim()) {
+      setRejectError("A reason is required.");
+      return;
+    }
+    const updated = await api.patch(id, { user_status: "rejected", rejection_reason: rejectReason.trim() });
+    setListing(updated);
+    setRejecting(false);
   }
 
   async function handleRefresh() {
@@ -116,7 +140,7 @@ export default function ListingDetail() {
     <div className="listing-detail">
       <button
         className="back-btn"
-        onClick={() => navigate(listing.user_status === "active" ? "/active" : "/in-review")}
+        onClick={() => navigate(BACK_ROUTE[listing.user_status] || "/")}
       >
         ← Back
       </button>
@@ -126,12 +150,16 @@ export default function ListingDetail() {
       <div className="detail-header">
         <h2>{listing.address || listing.url}</h2>
         <div className="detail-actions">
-          <button
-            className={`status-toggle-btn ${listing.user_status === "active" ? "warn" : ""}`}
-            onClick={handleStatusToggle}
-          >
-            {listing.user_status === "active" ? "Move → In review" : "Move → Active"}
-          </button>
+          {listing.user_status !== "approved" && (
+            <button className="status-toggle-btn" onClick={handleApprove}>
+              Approve
+            </button>
+          )}
+          {listing.user_status !== "rejected" && (
+            <button className="status-toggle-btn warn" onClick={openReject}>
+              Reject
+            </button>
+          )}
           <button className="icon-btn edit" onClick={() => setEditMode((v) => !v)} title="Edit" aria-label="Edit" aria-pressed={editMode}>
             ✎
           </button>
@@ -143,6 +171,35 @@ export default function ListingDetail() {
           </button>
         </div>
       </div>
+
+      {rejecting && (
+        <div className="reject-box">
+          <label htmlFor="reject-reason">Reason for rejecting</label>
+          <textarea
+            id="reject-reason"
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            rows={3}
+            autoFocus
+          />
+          {rejectError && <p className="error">{rejectError}</p>}
+          <div className="reject-box-actions">
+            <button className="status-toggle-btn warn" onClick={confirmReject}>
+              Confirm reject
+            </button>
+            <button className="icon-btn" onClick={() => setRejecting(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {listing.user_status === "rejected" && listing.rejection_reason && (
+        <p className="rejection-reason">Rejection reason: {listing.rejection_reason}</p>
+      )}
+      {listing.user_status !== "rejected" && listing.rejection_reason && (
+        <p className="rejection-reason muted">Last rejection reason: {listing.rejection_reason}</p>
+      )}
 
       <p>
         <a href={listing.url} target="_blank" rel="noreferrer">

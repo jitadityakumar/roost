@@ -4,8 +4,9 @@ import { api } from "../api.js";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 
 const USER_STATUS_LABEL = {
-  active: "Active",
-  in_review: "In-review",
+  triage: "Triage",
+  approved: "Approved",
+  rejected: "Rejected",
 };
 
 // Extraction flips to "done" before the media_download job (which writes
