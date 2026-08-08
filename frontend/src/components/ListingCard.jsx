@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api.js";
 
 const STATUS_LABEL = {
   queued: "Fetching details…",
@@ -14,6 +16,7 @@ const USER_STATUS_LABEL = {
 
 export default function ListingCard({ listing }) {
   const pending = listing.extraction_status !== "done";
+  const [thumbFailed, setThumbFailed] = useState(false);
 
   return (
     <Link className={`listing-card ${pending ? "pending" : ""}`} to={`/listings/${listing.id}`}>
@@ -30,16 +33,27 @@ export default function ListingCard({ listing }) {
         </div>
       ) : (
         <>
-          <div className="listing-card-header">
-            <span className="price">£{listing.price_gbp?.toLocaleString()}</span>
-            <span className={`badge badge-${listing.user_status}`}>
-              {USER_STATUS_LABEL[listing.user_status] || listing.user_status}
-            </span>
+          {!thumbFailed && (
+            <img
+              className="listing-card-thumb"
+              src={api.mediaUrl(listing.id, "photos", "01.jpeg")}
+              alt=""
+              loading="lazy"
+              onError={() => setThumbFailed(true)}
+            />
+          )}
+          <div className="listing-card-body">
+            <div className="listing-card-header">
+              <span className="price">£{listing.price_gbp?.toLocaleString()}</span>
+              <span className={`badge badge-${listing.user_status}`}>
+                {USER_STATUS_LABEL[listing.user_status] || listing.user_status}
+              </span>
+            </div>
+            <p className="address">{listing.address}</p>
+            <p className="meta">
+              {listing.bedrooms ?? "?"} bed · {listing.bathrooms ?? "?"} bath · {listing.property_type || ""}
+            </p>
           </div>
-          <p className="address">{listing.address}</p>
-          <p className="meta">
-            {listing.bedrooms ?? "?"} bed · {listing.bathrooms ?? "?"} bath · {listing.property_type || ""}
-          </p>
         </>
       )}
     </Link>

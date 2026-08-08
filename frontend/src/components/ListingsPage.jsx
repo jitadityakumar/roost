@@ -9,7 +9,6 @@ const TITLES = {
 
 export default function ListingsPage({ status }) {
   const [listings, setListings] = useState([]);
-  const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [error, setError] = useState(null);
 
@@ -35,29 +34,17 @@ export default function ListingsPage({ status }) {
     return () => clearInterval(timer);
   }, [listings, load]);
 
-  const filtered = listings
-    .filter((l) => {
-      if (!search) return true;
-      const haystack = `${l.address || ""} ${l.postcode || ""}`.toLowerCase();
-      return haystack.includes(search.toLowerCase());
-    })
-    .sort((a, b) => {
-      if (sortBy === "price_asc") return (a.price_gbp || Infinity) - (b.price_gbp || Infinity);
-      if (sortBy === "price_desc") return (b.price_gbp || -Infinity) - (a.price_gbp || -Infinity);
-      return new Date(b.created_at) - new Date(a.created_at);
-    });
+  const sorted = [...listings].sort((a, b) => {
+    if (sortBy === "price_asc") return (a.price_gbp || Infinity) - (b.price_gbp || Infinity);
+    if (sortBy === "price_desc") return (b.price_gbp || -Infinity) - (a.price_gbp || -Infinity);
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
 
   return (
     <div className="dashboard">
       <h2>{TITLES[status] || status}</h2>
 
       <div className="controls">
-        <input
-          type="text"
-          placeholder="Search address or postcode…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
           <option value="newest">Newest first</option>
           <option value="price_asc">Price: low to high</option>
@@ -67,7 +54,7 @@ export default function ListingsPage({ status }) {
 
       {error && <p className="error">{error}</p>}
 
-      {filtered.length === 0 ? (
+      {sorted.length === 0 ? (
         <p className="empty-state">
           {status === "in_review"
             ? "Nothing in review — add a property to get started."
@@ -75,7 +62,7 @@ export default function ListingsPage({ status }) {
         </p>
       ) : (
         <div className="listing-grid">
-          {filtered.map((l) => (
+          {sorted.map((l) => (
             <ListingCard key={l.id} listing={l} />
           ))}
         </div>
