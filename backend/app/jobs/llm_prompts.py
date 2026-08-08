@@ -24,3 +24,43 @@ Reply with ONLY a JSON object, no other text before or after it: {{"floor_area_s
 EPC_VISION_PROMPT = """This is a UK Energy Performance Certificate (EPC) graphic image at {image_path}. Read the image and find the current and potential energy efficiency rating.
 
 Reply with ONLY a JSON object, no other text before or after it: {{"epc_current": "<letter> (<score>)", "epc_potential": "<letter> (<score>)"}}, e.g. {{"epc_current": "C (73)", "epc_potential": "B (80)"}}. Use null for either value if it isn't legible or present on the image. Read the score number carefully off the marker position on the coloured bar — do not guess a score from the letter band alone."""
+
+# JSON schemas passed to `claude -p --output-format json --json-schema ...`
+# (see llm_client.run_claude_prompt/parse_structured_output). Prompt wording
+# above still asks for the same shape too — the schema constrains the
+# model's output at the source, the prompt text is what tells it what each
+# field *means*; kept both rather than dropping the in-prompt shape, since
+# the schema alone doesn't explain field semantics like "multiply monthly by
+# 12" or "do not infer chain_free from anything else".
+TEXT_EXTRACT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "lease_years_remaining": {"type": ["integer", "null"]},
+        "service_charge_pa": {"type": ["number", "null"]},
+        "council_tax_band": {"type": ["string", "null"]},
+        "chain_free": {"type": ["boolean", "null"]},
+        "cash_only": {"type": ["boolean", "null"]},
+    },
+    "required": ["lease_years_remaining", "service_charge_pa", "council_tax_band", "chain_free", "cash_only"],
+    "additionalProperties": False,
+}
+
+FLOOR_AREA_VISION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "floor_area_sqm": {"type": ["number", "null"]},
+        "floor_area_sqft": {"type": ["number", "null"]},
+    },
+    "required": ["floor_area_sqm", "floor_area_sqft"],
+    "additionalProperties": False,
+}
+
+EPC_VISION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "epc_current": {"type": ["string", "null"]},
+        "epc_potential": {"type": ["string", "null"]},
+    },
+    "required": ["epc_current", "epc_potential"],
+    "additionalProperties": False,
+}

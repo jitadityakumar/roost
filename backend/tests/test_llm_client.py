@@ -1,3 +1,4 @@
+import json
 import subprocess
 
 import pytest
@@ -21,6 +22,66 @@ def test_run_claude_prompt_passes_allowed_tools_when_allow_read(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     llm_client.run_claude_prompt("hello", "haiku", 10, allow_read=True)
+
+
+def test_run_claude_prompt_passes_disallowed_tools_when_deny_all(monkeypatch):
+    def fake_run(argv, capture_output, text, timeout):
+        assert argv == ["claude", "-p", "hello", "--model", "haiku", "--disallowedTools", "*"]
+        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm_client.run_claude_prompt("hello", "haiku", 10, disallow_all_tools=True)
+
+
+def test_run_claude_prompt_passes_output_format_and_schema_when_json_schema_given(monkeypatch):
+    schema = {"type": "object", "properties": {"a": {"type": ["integer", "null"]}}}
+
+    def fake_run(argv, capture_output, text, timeout):
+        assert argv == [
+            "claude",
+            "-p",
+            "hello",
+            "--model",
+            "haiku",
+            "--output-format",
+            "json",
+            "--json-schema",
+            json.dumps(schema),
+        ]
+        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm_client.run_claude_prompt("hello", "haiku", 10, json_schema=schema)
+
+
+def test_run_claude_prompt_uses_structured_output_allowlist_when_deny_all_and_schema_combined(monkeypatch):
+    # This is the exact combination text_extract uses. `--disallowedTools
+    # "*"` would also deny the CLI's own internal StructuredOutput tool
+    # (confirmed empirically against the real CLI — the model calls
+    # StructuredOutput, gets denied twice, then gives up with is_error
+    # false but no usable structured_output or parseable result). Must use
+    # `--allowedTools StructuredOutput` instead, which still implicitly
+    # denies every other tool.
+    schema = {"type": "object", "properties": {"a": {"type": ["integer", "null"]}}}
+
+    def fake_run(argv, capture_output, text, timeout):
+        assert argv == [
+            "claude",
+            "-p",
+            "hello",
+            "--model",
+            "haiku",
+            "--allowedTools",
+            "StructuredOutput",
+            "--output-format",
+            "json",
+            "--json-schema",
+            json.dumps(schema),
+        ]
+        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm_client.run_claude_prompt("hello", "haiku", 10, json_schema=schema, disallow_all_tools=True)
 
 
 def test_run_claude_prompt_raises_on_nonzero_exit(monkeypatch):
@@ -174,3 +235,95 @@ def test_extract_json_block_rejects_non_dict_json():
         llm_client.extract_json_block("null")
     with pytest.raises(llm_client.LlmCallError, match="no parseable JSON"):
         llm_client.extract_json_block("[1, 2]")
+
+
+def _envelope(**overrides):
+    base = {
+        "type": "result",
+        "subtype": "success",
+        "is_error": False,
+        "result": '{"a": 1}',
+        "total_cost_usd": 0.002,
+        "duration_ms": 750,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_parse_structured_output_prefers_structured_output_field():
+    envelope = _envelope(structured_output={"a": 1})
+    assert llm_client.parse_structured_output(json.dumps(envelope)) == {"a": 1}
+
+
+def test_parse_structured_output_falls_back_to_result_field():
+    # No structured_output key at all — falls back to tolerantly parsing the
+    # (still code-fenced, per the empirical envelope shape) result field.
+    envelope = _envelope(result='```json\n{"a": 1}\n```')
+    assert llm_client.parse_structured_output(json.dumps(envelope)) == {"a": 1}
+
+
+def test_parse_structured_output_raises_on_is_error():
+    envelope = _envelope(is_error=True, result="the model refused")
+    with pytest.raises(llm_client.LlmCallError, match="is_error"):
+        llm_client.parse_structured_output(json.dumps(envelope))
+
+
+def test_parse_structured_output_raises_on_unparseable_envelope():
+    with pytest.raises(llm_client.LlmCallError, match="unparseable claude JSON envelope"):
+        llm_client.parse_structured_output("not an envelope at all")
+
+
+def test_parse_structured_output_logs_cost_and_duration(caplog):
+    envelope = _envelope(structured_output={"a": 1}, total_cost_usd=0.0042, duration_ms=1234)
+    with caplog.at_level("INFO"):
+        llm_client.parse_structured_output(json.dumps(envelope))
+    assert "0.0042" in caplog.text
+    assert "1234" in caplog.text
+
+
+def test_parse_structured_output_logs_cost_and_duration_even_on_is_error(caplog):
+    # A failed call still accrues real cost — the log line must not be
+    # skipped just because the call ultimately raises.
+    envelope = _envelope(is_error=True, result="refused", total_cost_usd=0.0099, duration_ms=42)
+    with caplog.at_level("INFO"):
+        with pytest.raises(llm_client.LlmCallError):
+            llm_client.parse_structured_output(json.dumps(envelope))
+    assert "0.0099" in caplog.text
+    assert "42" in caplog.text
+
+
+def test_parse_structured_output_raises_on_non_dict_envelope():
+    with pytest.raises(llm_client.LlmCallError, match="not an object"):
+        llm_client.parse_structured_output(json.dumps([1, 2, 3]))
+
+
+def test_parse_structured_output_falls_back_when_structured_output_not_a_dict():
+    # structured_output present but the wrong type (e.g. a list) — treated
+    # the same as absent, falling back to parsing the result field.
+    envelope = _envelope(structured_output=[1, 2, 3], result='{"a": 1}')
+    assert llm_client.parse_structured_output(json.dumps(envelope)) == {"a": 1}
+
+
+def test_run_claude_prompt_combines_allow_read_and_json_schema(monkeypatch):
+    # The actual shape the two vision handlers use — allow_read=True and
+    # json_schema together in one call.
+    schema = {"type": "object", "properties": {"a": {"type": ["integer", "null"]}}}
+
+    def fake_run(argv, capture_output, text, timeout):
+        assert argv == [
+            "claude",
+            "-p",
+            "hello",
+            "--model",
+            "haiku",
+            "--allowedTools",
+            "Read",
+            "--output-format",
+            "json",
+            "--json-schema",
+            json.dumps(schema),
+        ]
+        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm_client.run_claude_prompt("hello", "haiku", 10, allow_read=True, json_schema=schema)

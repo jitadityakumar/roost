@@ -2,8 +2,8 @@
 for the three llm-lane job types. This is the only place that knows the CLI's
 argv shape, how to get structured data back out of its free-form stdout, and
 how to coerce that data into the types the `listings` columns expect — every
-handler calls run_claude_prompt + extract_json_block and gets back a dict of
-already-typed values.
+handler calls run_claude_prompt + parse_structured_output and gets back a
+dict of already-typed values.
 
 Model choice is per-job-type (not global) so one job type can be bumped to a
 stronger model without paying for it on the others — see JOB_TYPE_MODELS.
@@ -69,16 +69,54 @@ def cli_available() -> bool:
 _LOG_TRUNCATE_CHARS = 4000
 
 
-def run_claude_prompt(prompt: str, model: str, timeout_s: int, allow_read: bool = False) -> str:
+def run_claude_prompt(
+    prompt: str,
+    model: str,
+    timeout_s: int,
+    allow_read: bool = False,
+    json_schema: dict | None = None,
+    disallow_all_tools: bool = False,
+) -> str:
     """Invoke `claude -p <prompt> --model <model>` non-interactively and
     return raw stdout. `allow_read` grants the Read tool (only needed by the
     vision jobs, which point it at an image path embedded in the prompt) —
     text_extract has nothing to read and gets no tool access, since its
     prompt embeds attacker-influenced text (a Rightmove listing description)
-    and there's no reason to hand that a filesystem-reading tool."""
+    and there's no reason to hand that a filesystem-reading tool.
+
+    `json_schema`, when given, adds `--output-format json --json-schema
+    <schema>` so the CLI validates the model's output against the schema at
+    the source (see parse_structured_output for how the resulting envelope
+    is unpacked) instead of relying solely on prompt wording + tolerant
+    parsing.
+
+    `disallow_all_tools` denies all tool access. Omitting `--allowedTools
+    Read` alone does NOT block file reads — confirmed empirically that the
+    model can still read files via the CLI's hardcoded always-on read-only
+    Bash commands (`cat`, `head`, etc.) even with no tools explicitly
+    allowed. Used by text_extract, whose prompt embeds attacker-influenced
+    text and has no legitimate reason to touch the filesystem at all.
+
+    When `json_schema` is also given, this is implemented as `--allowedTools
+    StructuredOutput` rather than `--disallowedTools "*"`. Confirmed
+    empirically that `--disallowedTools "*"` also denies the CLI's own
+    internal `StructuredOutput` tool — the mechanism `--json-schema` output
+    actually goes through — which breaks schema output entirely (the model
+    calls StructuredOutput, gets denied twice, then gives up with no usable
+    result). `--allowedTools <name>` is an allowlist, so naming only
+    StructuredOutput still implicitly denies everything else (Bash, Read,
+    etc.) — confirmed empirically it still blocks a prompt-injected `cat`
+    attempt, same as `--disallowedTools "*"` did."""
     argv = ["claude", "-p", prompt, "--model", model]
     if allow_read:
         argv += ["--allowedTools", "Read"]
+    if disallow_all_tools:
+        if json_schema is not None:
+            argv += ["--allowedTools", "StructuredOutput"]
+        else:
+            argv += ["--disallowedTools", "*"]
+    if json_schema is not None:
+        argv += ["--output-format", "json", "--json-schema", json.dumps(json_schema)]
     try:
         result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s)
     except subprocess.TimeoutExpired as e:
@@ -152,6 +190,50 @@ def _strip_code_fence(text: str) -> str | None:
         body = body[4:]
     end = body.rfind("```")
     return body[:end].strip() if end != -1 else None
+
+
+def parse_structured_output(raw_output: str) -> dict:
+    """Unpacks the envelope `claude -p --output-format json --json-schema
+    ...` returns (see run_claude_prompt). Empirically confirmed shape (real
+    API call, 2026-08-08): {"type":"result","subtype":"success",
+    "is_error":bool,"result":"<text, still ```json-fenced even with this
+    flag>","structured_output":<schema-validated data, when present>,
+    "total_cost_usd":float,"duration_ms":int,...}. Prefers
+    `structured_output` (the actual schema-validated field) but falls back
+    to tolerantly parsing `result` via extract_json_block, in case a given
+    CLI version/response doesn't populate structured_output for some
+    reason — keeps the same resilience the free-text path already had
+    rather than trading it away for the schema feature."""
+    try:
+        envelope = json.loads(raw_output)
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "claude --output-format json produced an unparseable envelope: %s",
+            raw_output[:_LOG_TRUNCATE_CHARS],
+        )
+        raise LlmCallError(f"unparseable claude JSON envelope: {raw_output[:500]!r}") from e
+
+    if not isinstance(envelope, dict):
+        raise LlmCallError(f"claude JSON envelope was not an object: {raw_output[:500]!r}")
+
+    # Logged before the is_error check (not just on the success path) — a
+    # failed call still accrues real cost, and that's exactly the kind of
+    # thing `docker logs roost` needs to show for diagnosability.
+    logger.info(
+        "claude -p structured call: cost=$%.4f duration=%dms",
+        envelope.get("total_cost_usd") or 0.0,
+        envelope.get("duration_ms") or 0,
+    )
+
+    if envelope.get("is_error"):
+        message = str(envelope.get("result"))[:500]
+        raise LlmCallError(f"claude reported is_error for this call: {message}")
+
+    structured_output = envelope.get("structured_output")
+    if isinstance(structured_output, dict):
+        return structured_output
+
+    return extract_json_block(envelope.get("result") or "")
 
 
 # Matches the first run of digits in a string, tolerating thousands commas

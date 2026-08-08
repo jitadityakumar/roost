@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from app.jobs import handlers, queue
+from app.jobs import handlers, llm_prompts, queue
 from app.listings import store
 
 
@@ -18,7 +18,19 @@ def _job(listing_id, job_id=1):
 
 
 def _queue_response(mock_claude_cli, payload: dict):
-    mock_claude_cli["responses"].append(json.dumps(payload))
+    # Matches the real `claude -p --output-format json` envelope shape (see
+    # llm_client.parse_structured_output) — handlers now always pass
+    # json_schema, so responses must be an envelope, not a bare object.
+    envelope = {
+        "type": "result",
+        "subtype": "success",
+        "is_error": False,
+        "result": json.dumps(payload),
+        "structured_output": payload,
+        "total_cost_usd": 0.001,
+        "duration_ms": 500,
+    }
+    mock_claude_cli["responses"].append(json.dumps(envelope))
 
 
 # --- text_extract ---
@@ -52,6 +64,8 @@ def test_handle_text_extract_writes_all_fields(listing_id, mock_claude_cli):
     assert listing["cash_only"] == 0
     assert listing["cash_only_source"] == "llm"
     assert mock_claude_cli["calls"][0]["allow_read"] is False
+    assert mock_claude_cli["calls"][0]["disallow_all_tools"] is True
+    assert mock_claude_cli["calls"][0]["json_schema"] == llm_prompts.TEXT_EXTRACT_SCHEMA
 
 
 def test_handle_text_extract_only_writes_non_null_fields(listing_id, mock_claude_cli):
@@ -155,6 +169,7 @@ def test_handle_floor_area_vision_uses_sqft_directly(listing_id, media_dir, mock
     assert listing["floor_area_sqft"] == 850
     assert listing["floor_area_sqft_source"] == "llm"
     assert mock_claude_cli["calls"][0]["allow_read"] is True
+    assert mock_claude_cli["calls"][0]["json_schema"] == llm_prompts.FLOOR_AREA_VISION_SCHEMA
 
 
 def test_handle_floor_area_vision_converts_sqm_to_sqft(listing_id, media_dir, mock_claude_cli):
@@ -190,6 +205,7 @@ def test_handle_epc_vision_writes_both_fields(listing_id, media_dir, mock_claude
     assert listing["epc_current"] == "C (73)"
     assert listing["epc_potential"] == "B (80)"
     assert listing["epc_source"] == "llm"
+    assert mock_claude_cli["calls"][0]["json_schema"] == llm_prompts.EPC_VISION_SCHEMA
 
 
 def test_handle_epc_vision_raises_without_image(listing_id, media_dir):

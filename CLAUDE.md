@@ -61,11 +61,26 @@ lane filter in its query, so it already covers stale `llm`-lane leases too;
 don't add a second reclaim loop to `LlmLaneWorkerPool`).
 
 **The `llm`-lane worker shells out to the `claude` CLI**
-(`app/jobs/llm_client.py`), not a hosted API — `claude -p --model <model>`,
-non-interactive, with `--allowedTools Read` granted only to the two vision
-handlers (they need to read an image path; `text_extract`'s prompt embeds a
-Rightmove listing description, which is untrusted text with no reason to
-carry filesystem access). The container needs the `claude` CLI installed
+(`app/jobs/llm_client.py`), not a hosted API — `claude -p --model <model>
+--output-format json --json-schema <schema>`, non-interactive, with
+`--allowedTools Read` granted only to the two vision handlers (they need to
+read an image path). `text_extract`'s prompt embeds a Rightmove listing
+description — untrusted text with no reason to carry filesystem access — so
+it also gets tool access denied; omitting `--allowedTools Read` alone does
+NOT block file reads (the CLI has a hardcoded, always-on set of read-only
+Bash commands like `cat`/`head` that bypass tool permissions entirely —
+confirmed empirically and via https://code.claude.com/docs/en/permissions).
+The deny is `--allowedTools StructuredOutput`, not `--disallowedTools "*"` —
+confirmed empirically that `--disallowedTools "*"` also denies the CLI's own
+internal `StructuredOutput` tool (how `--json-schema` output is actually
+delivered), breaking schema output entirely. `--allowedTools <name>` is an
+allowlist, so naming only `StructuredOutput` still implicitly denies
+everything else. `--json-schema` makes the CLI
+validate the model's JSON output against a schema at the source
+(`llm_prompts.py`'s `*_SCHEMA` constants); the response envelope's
+`structured_output` field (preferred) or its `result` field (fallback, still
+code-fenced) is unpacked by `llm_client.parse_structured_output`. The
+container needs the `claude` CLI installed
 (see `Dockerfile`) and an authenticated session — mounted read-only from the
 host's `~/.claude` at `-v ~/.claude:/root/.claude:ro` (see `README.md`)
 rather than a separate `ANTHROPIC_API_KEY`. That mount is read-only, so a

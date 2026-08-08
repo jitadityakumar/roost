@@ -15,7 +15,7 @@ import json
 from app.config import MEDIA_DIR
 from app.jobs import llm_enqueue, llm_prompts, queue
 from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
-from app.jobs.llm_client import extract_json_block, run_claude_prompt
+from app.jobs.llm_client import parse_structured_output, run_claude_prompt
 from app.jobs.llm_client import as_bool, as_council_tax_band, as_epc_rating, as_float, as_int
 from app.jobs.rightmove_extract import (
     download_media,
@@ -151,8 +151,14 @@ def handle_text_extract(job: dict) -> None:
         return  # nothing to extract from; not an error, just a no-op completion
 
     prompt = llm_prompts.TEXT_EXTRACT_PROMPT.format(description=description)
-    raw = run_claude_prompt(prompt, JOB_TYPE_MODELS["text_extract"], TEXT_EXTRACT_TIMEOUT_S)
-    parsed = extract_json_block(raw)
+    raw = run_claude_prompt(
+        prompt,
+        JOB_TYPE_MODELS["text_extract"],
+        TEXT_EXTRACT_TIMEOUT_S,
+        json_schema=llm_prompts.TEXT_EXTRACT_SCHEMA,
+        disallow_all_tools=True,
+    )
+    parsed = parse_structured_output(raw)
 
     # Rightmove's structured livingCosts data (see PR #5) always wins over an
     # LLM read of the free-text description for the fields both can produce
@@ -208,9 +214,13 @@ def handle_floor_area_vision(job: dict) -> None:
 
     prompt = llm_prompts.FLOOR_AREA_VISION_PROMPT.format(image_path=image_path)
     raw = run_claude_prompt(
-        prompt, JOB_TYPE_MODELS["floor_area_vision"], VISION_TIMEOUT_S, allow_read=True
+        prompt,
+        JOB_TYPE_MODELS["floor_area_vision"],
+        VISION_TIMEOUT_S,
+        allow_read=True,
+        json_schema=llm_prompts.FLOOR_AREA_VISION_SCHEMA,
     )
-    parsed = extract_json_block(raw)
+    parsed = parse_structured_output(raw)
 
     sqft = as_float(parsed.get("floor_area_sqft"))
     if sqft is None:
@@ -233,8 +243,14 @@ def handle_epc_vision(job: dict) -> None:
         return  # a structured/text source already won; nothing for this job to do
 
     prompt = llm_prompts.EPC_VISION_PROMPT.format(image_path=image_path)
-    raw = run_claude_prompt(prompt, JOB_TYPE_MODELS["epc_vision"], VISION_TIMEOUT_S, allow_read=True)
-    parsed = extract_json_block(raw)
+    raw = run_claude_prompt(
+        prompt,
+        JOB_TYPE_MODELS["epc_vision"],
+        VISION_TIMEOUT_S,
+        allow_read=True,
+        json_schema=llm_prompts.EPC_VISION_SCHEMA,
+    )
+    parsed = parse_structured_output(raw)
 
     fields = {}
     current = as_epc_rating(parsed.get("epc_current"))
