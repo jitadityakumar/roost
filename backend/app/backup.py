@@ -12,7 +12,7 @@ import sys
 from datetime import datetime, timezone
 
 from app.config import BASE_DATA_DIR, MEDIA_DIR
-from app.db.connection import DB_PATH
+from app.db.connection import get_db_path
 
 BACKUP_DIR = os.environ.get("ROOST_BACKUP_DIR", os.path.join(BASE_DATA_DIR, "..", "backups"))
 KEEP_LAST_N = 7
@@ -23,10 +23,11 @@ def _timestamp() -> str:
 
 
 def backup_db(dest_path: str) -> None:
-    if not os.path.exists(DB_PATH):
-        print(f"No database at {DB_PATH}, skipping DB backup", file=sys.stderr)
+    db_path = get_db_path()
+    if not os.path.exists(db_path):
+        print(f"No database at {db_path}, skipping DB backup", file=sys.stderr)
         return
-    source = sqlite3.connect(DB_PATH)
+    source = sqlite3.connect(db_path)
     dest = sqlite3.connect(dest_path)
     try:
         source.backup(dest)

@@ -1,0 +1,99 @@
+import pytest
+
+from app.jobs import handlers, queue
+from app.listings import store
+
+
+@pytest.fixture
+def listing_id(client):  # client pulls in isolated_db + mock_rightmove_network
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    return 1
+
+
+def _job(listing_id, job_id=1):
+    return {"id": job_id, "listing_id": listing_id}
+
+
+def test_handle_rightmove_extract_maps_fields(listing_id):
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    listing = store.get_listing(listing_id)
+    assert listing["price_gbp"] == 475000
+    assert listing["address"] == "1 Test Street, Sampleton"
+    assert listing["postcode"] == "SM1 2AB"
+    assert listing["tenure"] == "Freehold"
+    assert listing["garden"] == 1
+    assert listing["garden_source"] == "rightmove"
+    assert listing["parking"] == "Garage"
+    assert listing["council_tax_band"] == "D"
+    assert listing["council_tax_band_source"] == "rightmove"
+    assert listing["service_charge_pa"] == 1200
+    assert listing["service_charge_pm"] == 100
+    assert listing["broadband_top_speed"] == "900 Mbps"
+    assert listing["broadband_top_speed_provider"] == "Testnet"
+    assert listing["extraction_status"] == "done"
+
+
+def test_handle_rightmove_extract_chains_media_download(listing_id):
+    # depends_on_job_id has a real FK to jobs(id), so the parent job must
+    # actually be enqueued (not just a fabricated job id) for this to work.
+    parent_job_id = queue.enqueue_job(listing_id, "rightmove_extract", "http")
+
+    handlers.handle_rightmove_extract(_job(listing_id, job_id=parent_job_id))
+
+    jobs = queue.get_jobs_for_listing(listing_id)
+    media_jobs = [j for j in jobs if j["job_type"] == "media_download"]
+    assert len(media_jobs) == 1
+    assert media_jobs[0]["depends_on_job_id"] == parent_job_id
+
+
+def test_handle_rightmove_extract_swallows_broadband_failure(listing_id, monkeypatch):
+    def boom(postcode):
+        raise RuntimeError("broadband API down")
+
+    monkeypatch.setattr(handlers, "fetch_broadband_summary", boom)
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    listing = store.get_listing(listing_id)
+    assert listing["extraction_status"] == "done"
+    assert listing["broadband_top_speed"] is None
+
+
+def test_handle_rightmove_extract_marks_failed_on_fetch_error(listing_id, monkeypatch):
+    def boom(url):
+        raise RuntimeError("network unreachable")
+
+    monkeypatch.setattr(handlers, "fetch_html", boom)
+
+    with pytest.raises(RuntimeError):
+        handlers.handle_rightmove_extract(_job(listing_id))
+
+    listing = store.get_listing(listing_id)
+    assert listing["extraction_status"] == "failed"
+    assert listing["extraction_error"] == "network unreachable"
+
+
+def test_handle_rightmove_extract_skips_blank_council_tax_band(listing_id, sample_property_data, monkeypatch):
+    sample_property_data["livingCosts"]["councilTaxBand"] = "TBC"
+    monkeypatch.setattr(handlers, "resolve_page_model", lambda html: {"propertyData": sample_property_data})
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    assert store.get_listing(listing_id)["council_tax_band"] is None
+
+
+def test_handle_rightmove_extract_raises_for_unknown_listing():
+    with pytest.raises(RuntimeError):
+        handlers.handle_rightmove_extract(_job(listing_id=12345))
+
+
+def test_handle_media_download_uses_latest_snapshot(listing_id):
+    store.insert_snapshot(listing_id, 500000, None, {"id": "raw-id-from-rightmove"})
+
+    handlers.handle_media_download(_job(listing_id))  # should not raise
+
+
+def test_handle_media_download_raises_without_snapshot(listing_id):
+    with pytest.raises(RuntimeError):
+        handlers.handle_media_download(_job(listing_id))

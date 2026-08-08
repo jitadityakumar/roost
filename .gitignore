@@ -20,6 +20,12 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+# e2e (Playwright)
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+
 # Editors / OS
 .DS_Store
 *.swp
