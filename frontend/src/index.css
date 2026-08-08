@@ -134,8 +134,9 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   margin-left: 0.4rem;
   background: var(--border);
 }
-.badge-active { background: #2a6f4f; color: white; }
-.badge-in_review { background: #b8860b; color: white; }
+.badge-approved { background: #2a6f4f; color: white; }
+.badge-triage { background: #b8860b; color: white; }
+.badge-rejected { background: var(--danger); color: white; }
 .badge-edited { background: #4a5cc9; color: white; }
 .badge-source { color: var(--muted); }
 .badge-pipeline-queued { background: var(--muted); color: white; }
@@ -185,7 +186,29 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   color: white;
   cursor: pointer;
 }
-.status-toggle-btn.warn { background: var(--warn); }
+.status-toggle-btn.warn { background: var(--danger); }
+
+.reject-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.reject-box textarea {
+  width: 100%;
+  font: inherit;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+.reject-box-actions { display: flex; gap: 0.5rem; }
+
+.rejection-reason { color: var(--danger); }
+.rejection-reason.muted { color: var(--muted); }
 
 .icon-btn {
   width: 2.2rem;

@@ -180,13 +180,24 @@ def apply_manual_edit(listing_id: int, fields: dict) -> dict:
         conn.close()
 
 
-def set_user_status(listing_id: int, user_status: str) -> None:
+def set_user_status(listing_id: int, user_status: str, rejection_reason: str | None = None) -> None:
+    """rejection_reason is only written when provided (i.e. the caller is
+    actually setting user_status to 'rejected'). Moving away from 'rejected'
+    later leaves the column untouched -- the reason is kept as history
+    rather than cleared, so it's still visible if the listing is rejected
+    again or the past reason is worth revisiting."""
     conn = get_connection()
     try:
-        conn.execute(
-            "UPDATE listings SET user_status = ?, updated_at = ? WHERE id = ?",
-            (user_status, _now_iso(), listing_id),
-        )
+        if rejection_reason is not None:
+            conn.execute(
+                "UPDATE listings SET user_status = ?, rejection_reason = ?, updated_at = ? WHERE id = ?",
+                (user_status, rejection_reason, _now_iso(), listing_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE listings SET user_status = ?, updated_at = ? WHERE id = ?",
+                (user_status, _now_iso(), listing_id),
+            )
         conn.commit()
     finally:
         conn.close()

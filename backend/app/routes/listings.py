@@ -43,8 +43,12 @@ class CreateListingRequest(BaseModel):
     url: str
 
 
+VALID_USER_STATUSES = ("triage", "approved", "rejected")
+
+
 class PatchListingRequest(BaseModel):
     user_status: str | None = None
+    rejection_reason: str | None = None
     fields: dict | None = None
 
 
@@ -139,9 +143,14 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
         raise HTTPException(status_code=404, detail="listing not found")
 
     if body.user_status is not None:
-        if body.user_status not in ("active", "in_review"):
+        if body.user_status not in VALID_USER_STATUSES:
             raise HTTPException(status_code=422, detail="invalid user_status")
-        store.set_user_status(listing_id, body.user_status)
+        if body.user_status == "rejected":
+            if not body.rejection_reason or not body.rejection_reason.strip():
+                raise HTTPException(status_code=422, detail="rejection_reason is required when rejecting")
+            store.set_user_status(listing_id, body.user_status, rejection_reason=body.rejection_reason.strip())
+        else:
+            store.set_user_status(listing_id, body.user_status)
 
     if body.fields:
         unknown = set(body.fields) - EDITABLE_FIELDS

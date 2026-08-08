@@ -1,10 +1,18 @@
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import ListingCard from "./ListingCard.jsx";
 
 const TITLES = {
-  active: "Active",
-  in_review: "In-review",
+  triage: "Triage",
+  approved: "Approved",
+  rejected: "Rejected",
+};
+
+const EMPTY_STATE = {
+  triage: "Nothing in triage — add a property to get started.",
+  approved: "No approved listings yet — approve one from triage.",
+  rejected: "No rejected listings.",
 };
 
 export default function ListingsPage({ status }) {
@@ -46,6 +54,9 @@ export default function ListingsPage({ status }) {
 
   return (
     <div className="dashboard">
+      <Link className="back-btn" to="/">
+        ← Back
+      </Link>
       <h2>{TITLES[status] || status}</h2>
 
       <div className="controls">
@@ -59,11 +70,7 @@ export default function ListingsPage({ status }) {
       {error && <p className="error">{error}</p>}
 
       {sorted.length === 0 ? (
-        <p className="empty-state">
-          {status === "in_review"
-            ? "Nothing in review — add a property to get started."
-            : "No active listings yet — promote one from in-review."}
-        </p>
+        <p className="empty-state">{EMPTY_STATE[status] || "Nothing here yet."}</p>
       ) : (
         <div className="listing-grid">
           {sorted.map((l) => (

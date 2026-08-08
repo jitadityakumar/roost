@@ -16,7 +16,7 @@ function makeListing(overrides = {}) {
     url: "https://www.rightmove.co.uk/properties/1",
     extraction_status: "done",
     pipeline_status: null,
-    user_status: "in_review",
+    user_status: "triage",
     price_gbp: 500000,
     address: "1 Test Street",
     bedrooms: 2,
