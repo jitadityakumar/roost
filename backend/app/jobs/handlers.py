@@ -154,7 +154,10 @@ def handle_text_extract(job: dict) -> None:
     if not description:
         return  # nothing to extract from; not an error, just a no-op completion
 
-    prompt = llm_prompts.TEXT_EXTRACT_PROMPT.format(description=description)
+    key_features = json.loads(listing.get("key_features") or "[]")
+    key_features_text = "\n".join(f"- {f}" for f in key_features) if key_features else "(none listed)"
+
+    prompt = llm_prompts.TEXT_EXTRACT_PROMPT.format(description=description, key_features=key_features_text)
     raw = run_claude_prompt(
         prompt,
         JOB_TYPE_MODELS["text_extract"],

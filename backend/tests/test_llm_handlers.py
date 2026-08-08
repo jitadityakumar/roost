@@ -93,6 +93,49 @@ def test_handle_text_extract_is_noop_when_no_description(listing_id, mock_claude
     assert mock_claude_cli["calls"] == []
 
 
+def test_handle_text_extract_includes_key_features_in_prompt(listing_id, mock_claude_cli):
+    # Real miss on listing 174827963 (see issue #10): key features said
+    # "Chain Free" but the description text alone didn't mention it.
+    store.apply_extracted_fields(
+        listing_id,
+        {"description": "A lovely flat.", "key_features": json.dumps(["Chain Free", "Garden"])},
+    )
+    _queue_response(
+        mock_claude_cli,
+        {
+            "lease_years_remaining": None,
+            "service_charge_pa": None,
+            "council_tax_band": None,
+            "chain_free": True,
+            "cash_only": None,
+        },
+    )
+
+    handlers.handle_text_extract(_job(listing_id))
+
+    prompt = mock_claude_cli["calls"][0]["prompt"]
+    assert "Chain Free" in prompt
+    assert "Garden" in prompt
+
+
+def test_handle_text_extract_handles_no_key_features(listing_id, mock_claude_cli):
+    store.apply_extracted_fields(listing_id, {"description": "A lovely flat.", "key_features": None})
+    _queue_response(
+        mock_claude_cli,
+        {
+            "lease_years_remaining": None,
+            "service_charge_pa": None,
+            "council_tax_band": None,
+            "chain_free": None,
+            "cash_only": None,
+        },
+    )
+
+    handlers.handle_text_extract(_job(listing_id))
+
+    assert mock_claude_cli["calls"][0]["prompt"] is not None
+
+
 def test_handle_text_extract_does_not_clobber_rightmove_sourced_fields(listing_id, mock_claude_cli):
     # council_tax_band came from Rightmove's structured data (PR #5); the LLM
     # read of the free-text description must not overwrite it.
