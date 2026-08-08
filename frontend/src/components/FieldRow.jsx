@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function FieldRow({ listing, field, label, sourceField, editable, onSave, boolean, editMode }) {
+export default function FieldRow({ listing, field, label, sourceField, editable, onSave, boolean, currency, editMode }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(listing[field] ?? "");
 
@@ -10,6 +10,7 @@ export default function FieldRow({ listing, field, label, sourceField, editable,
   function display(v) {
     if (v === null || v === undefined || v === "") return "—";
     if (boolean) return v ? "Yes" : "No";
+    if (currency) return `£${v}`;
     return String(v);
   }
 
