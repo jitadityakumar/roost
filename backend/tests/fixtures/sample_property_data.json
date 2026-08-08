@@ -1,0 +1,35 @@
+{
+  "id": "999999999",
+  "status": "For sale",
+  "prices": { "primaryPrice": "£475,000" },
+  "address": {
+    "displayAddress": "1 Test Street, Sampleton",
+    "outcode": "SM1",
+    "incode": "2AB"
+  },
+  "propertySubType": "Terraced",
+  "bedrooms": 3,
+  "bathrooms": 1,
+  "tenure": { "tenureType": "Freehold", "yearsRemainingOnLease": null },
+  "keyFeatures": ["Garage", "Driveway", "Close to station", "Lovely rear garden"],
+  "text": { "description": "A lovely test property.<br/>Close to everything." },
+  "listingHistory": { "listingUpdateReason": "" },
+  "nearestStations": [
+    { "name": "Sampleton", "distance": 0.3, "types": ["NATIONAL_TRAIN"] }
+  ],
+  "features": {
+    "garden": [],
+    "parking": [{ "displayText": "Garage" }]
+  },
+  "images": [{ "url": "https://example.invalid/photo1.jpeg" }],
+  "floorplans": [],
+  "epcGraphs": [],
+  "customer": {
+    "branchDisplayName": "Test Estate Agents",
+    "displayAddress": "2 Agent Road, Sampleton"
+  },
+  "livingCosts": {
+    "councilTaxBand": "D",
+    "annualServiceCharge": 1200
+  }
+}
