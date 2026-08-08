@@ -47,11 +47,16 @@ npm run dev
 
 ```
 docker build -t roost .
-docker run -p 8000:8000 -v $(pwd)/data:/data roost
+docker run -d --name roost --restart unless-stopped \
+  -p 8099:8000 -v $(pwd)/data:/data roost
 ```
 
-Then open http://localhost:8000. The `/data` volume holds the SQLite
-database and downloaded media so they survive container restarts.
+Then open http://localhost:8099. Port 8099 (not 8000) is used on the host
+because 8000 is already taken by `mortgage-calculator` on this machine.
+`--restart unless-stopped` makes the container come back up automatically
+after a reboot or Docker restart, as long as you didn't stop it manually.
+The `/data` volume holds the SQLite database and downloaded media so they
+survive container restarts.
 
 ## Data
 
