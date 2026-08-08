@@ -8,9 +8,10 @@ not a one-off bookmark.
 ## Status
 
 **Phase 1** (this build): local-only, no auth. Submit Rightmove URLs, view
-extracted listings, edit fields manually, track status (active/removed/
-suspended). No LLM enrichment worker yet (Phase 3) and no commute/mortgage
-joins yet (Phase 2) — those show as UI stubs.
+extracted listings, edit fields manually, track status (active/in-review).
+New listings start in-review; promote to active once you've checked the
+data, demote back if needed. No LLM enrichment worker yet (Phase 3) and no
+commute/mortgage joins yet (Phase 2) — those show as UI stubs.
 
 ## Stack
 

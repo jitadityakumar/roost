@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import FieldRow from "./FieldRow.jsx";
 
@@ -25,7 +26,9 @@ const FIELDS = [
   { field: "broadband_top_speed", label: "Broadband top speed", editable: false },
 ];
 
-export default function ListingDetail({ id, onBack }) {
+export default function ListingDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const [listing, setListing] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [media, setMedia] = useState(null);
@@ -67,7 +70,7 @@ export default function ListingDetail({ id, onBack }) {
   async function handleDelete() {
     if (!confirm("Delete this listing and all its media? This cannot be undone.")) return;
     await api.remove(id);
-    onBack();
+    navigate("/");
   }
 
   if (error) return <p className="error">{error}</p>;
@@ -75,7 +78,7 @@ export default function ListingDetail({ id, onBack }) {
 
   return (
     <div className="listing-detail">
-      <button className="back-btn" onClick={onBack}>
+      <button className="back-btn" onClick={() => navigate(-1)}>
         ← Back
       </button>
 
@@ -84,8 +87,7 @@ export default function ListingDetail({ id, onBack }) {
         <div className="detail-actions">
           <select value={listing.user_status} onChange={(e) => handleStatusChange(e.target.value)}>
             <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-            <option value="removed">Removed</option>
+            <option value="in_review">In-review</option>
           </select>
           <button onClick={handleRefresh}>Refresh</button>
           <button className="danger" onClick={handleDelete}>

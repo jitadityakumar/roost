@@ -11,9 +11,9 @@ export default function AddListingForm({ onAdded }) {
     setError(null);
     setSubmitting(true);
     try {
-      await api.create(url.trim());
+      const created = await api.create(url.trim());
       setUrl("");
-      onAdded();
+      onAdded(created);
     } catch (err) {
       setError(err.message);
     } finally {
