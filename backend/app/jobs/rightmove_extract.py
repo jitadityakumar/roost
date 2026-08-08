@@ -78,6 +78,7 @@ def extract_listing(prop: dict) -> dict:
         "num_epc_graphs": len(prop.get("epcGraphs") or []),
         "agent_branch": (prop.get("customer") or {}).get("branchDisplayName"),
         "agent_address": (prop.get("customer") or {}).get("displayAddress"),
+        "living_costs": prop.get("livingCosts"),
         "broadband": None,
     }
 
