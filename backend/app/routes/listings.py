@@ -49,6 +49,7 @@ VALID_USER_STATUSES = ("triage", "approved", "rejected")
 class PatchListingRequest(BaseModel):
     user_status: str | None = None
     rejection_reason: str | None = None
+    comment: str | None = None
     fields: dict | None = None
 
 
@@ -151,6 +152,9 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
             store.set_user_status(listing_id, body.user_status, rejection_reason=body.rejection_reason.strip())
         else:
             store.set_user_status(listing_id, body.user_status)
+
+    if body.comment is not None:
+        store.set_comment(listing_id, body.comment.strip() or None)
 
     if body.fields:
         unknown = set(body.fields) - EDITABLE_FIELDS

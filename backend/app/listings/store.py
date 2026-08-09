@@ -203,6 +203,18 @@ def set_user_status(listing_id: int, user_status: str, rejection_reason: str | N
         conn.close()
 
 
+def set_comment(listing_id: int, comment: str | None) -> None:
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE listings SET comment = ?, updated_at = ? WHERE id = ?",
+            (comment, _now_iso(), listing_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def set_extraction_status(listing_id: int, status: str, error: str | None = None) -> None:
     conn = get_connection()
     try:

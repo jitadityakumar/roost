@@ -69,6 +69,11 @@ export default function ListingDetail() {
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectError, setRejectError] = useState(null);
+  const [comment, setComment] = useState("");
+
+  useEffect(() => {
+    setComment(listing?.comment || "");
+  }, [listing?.comment]);
 
   const load = useCallback(async () => {
     try {
@@ -111,6 +116,11 @@ export default function ListingDetail() {
     const updated = await api.patch(id, { user_status: "rejected", rejection_reason: rejectReason.trim() });
     setListing(updated);
     setRejecting(false);
+  }
+
+  async function handleSaveComment() {
+    const updated = await api.patch(id, { comment });
+    setListing(updated);
   }
 
   async function handleRefresh() {
@@ -316,6 +326,18 @@ export default function ListingDetail() {
             ))}
           </tbody>
         </table>
+      </section>
+
+      <section className="comment-section">
+        <h3>Comment</h3>
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          rows={3}
+        />
+        <button className="status-toggle-btn" onClick={handleSaveComment}>
+          Save comment
+        </button>
       </section>
     </div>
   );
