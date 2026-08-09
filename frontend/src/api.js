@@ -22,6 +22,7 @@ export const api = {
   patch: (id, body) => request(`/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   remove: (id) => request(`/${id}`, { method: "DELETE" }),
   jobs: (id) => request(`/${id}/jobs`),
+  commute: (id) => request(`/${id}/commute`),
   mediaList: (id) => request(`/${id}/media`),
   mediaUrl: (id, category, filename) => `${BASE}/${id}/media/${category}/${filename}`,
 };

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.db.migrate import run_migrations
 from app.jobs.llm_client import cli_available
 from app.jobs.worker import HttpLaneWorkerPool, LlmLaneWorkerPool
-from app.routes import listings, media
+from app.routes import commute, listings, media
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("roost.main")
@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Roost", lifespan=lifespan)
 app.include_router(listings.router)
 app.include_router(media.router)
+app.include_router(commute.router)
 
 
 @app.get("/api/health")
