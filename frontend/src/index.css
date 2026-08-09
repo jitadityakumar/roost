@@ -509,6 +509,30 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 
 .mortgage-summary .field-value { font-variant-numeric: tabular-nums; }
 .mortgage-accent { color: var(--accent); font-weight: 600; }
+
+.crime-baseline-list { list-style: none; padding: 0; margin: 0 0 0.75rem; }
+.crime-baseline-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.crime-baseline-label { flex: 1; }
+.badge-crime-good { background: var(--accent); color: white; }
+.badge-crime-warn { background: var(--warn); color: white; }
+.badge-crime-bad { background: var(--danger); color: white; }
+.badge-crime-neutral { background: var(--muted); color: white; }
+.crime-category-table-wrap { overflow-x: auto; margin-top: 0.75rem; }
+.crime-category-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.crime-category-table th,
+.crime-category-table td {
+  text-align: left;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
 .mortgage-schedule { margin-top: 1rem; }
 .mortgage-schedule h5 { margin: 0.3rem 0; color: var(--muted); font-size: 0.85rem; }
 .mortgage-schedule-list { list-style: none; padding: 0; margin: 0; }

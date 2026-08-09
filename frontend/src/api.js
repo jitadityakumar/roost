@@ -1,5 +1,6 @@
 const BASE = "/api/listings";
 const STANDARDS_BASE = "/api/standards/rules";
+const CRIME_BASELINES_BASE = "/api/crime/baselines";
 
 async function requestFrom(base, path, options) {
   const res = await fetch(`${base}${path}`, {
@@ -27,6 +28,7 @@ export const api = {
   jobs: (id) => request(`/${id}/jobs`),
   commute: (id) => request(`/${id}/commute`),
   mortgage: (id) => request(`/${id}/mortgage`),
+  crime: (id) => request(`/${id}/crime`),
   mediaList: (id) => request(`/${id}/media`),
   mediaUrl: (id, category, filename) => `${BASE}/${id}/media/${category}/${filename}`,
 
@@ -35,5 +37,12 @@ export const api = {
     create: (body) => requestFrom(STANDARDS_BASE, "", { method: "POST", body: JSON.stringify(body) }),
     patch: (id, body) => requestFrom(STANDARDS_BASE, `/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     remove: (id) => requestFrom(STANDARDS_BASE, `/${id}`, { method: "DELETE" }),
+  },
+
+  crimeBaselines: {
+    list: () => requestFrom(CRIME_BASELINES_BASE, ""),
+    create: (body) =>
+      requestFrom(CRIME_BASELINES_BASE, "", { method: "POST", body: JSON.stringify(body) }),
+    remove: (id) => requestFrom(CRIME_BASELINES_BASE, `/${id}`, { method: "DELETE" }),
   },
 };

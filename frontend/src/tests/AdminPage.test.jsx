@@ -13,6 +13,11 @@ vi.mock("../api.js", () => ({
       patch: vi.fn(),
       remove: vi.fn(),
     },
+    crimeBaselines: {
+      list: vi.fn(),
+      create: vi.fn(),
+      remove: vi.fn(),
+    },
   },
 }));
 
@@ -26,6 +31,7 @@ function renderAdmin() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.crimeBaselines.list.mockResolvedValue([]);
 });
 
 describe("AdminPage", () => {
@@ -102,5 +108,77 @@ describe("AdminPage", () => {
     await user.click(screen.getByLabelText("Delete rule"));
 
     await waitFor(() => expect(api.standards.remove).toHaveBeenCalledWith(1));
+  });
+
+  it("shows an empty state when there are no crime baselines", async () => {
+    api.standards.list.mockResolvedValue([]);
+    renderAdmin();
+    await waitFor(() => expect(screen.getByText("No baselines yet.")).toBeInTheDocument());
+  });
+
+  it("lists existing crime baselines", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.crimeBaselines.list.mockResolvedValue([{ id: 1, label: "Home", postcode: "ZZ1 1AA" }]);
+    renderAdmin();
+    await waitFor(() => expect(screen.getByText("Home — ZZ1 1AA")).toBeInTheDocument());
+  });
+
+  it("submits a new crime baseline via the add-baseline form", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.crimeBaselines.list.mockResolvedValue([]);
+    api.crimeBaselines.create.mockResolvedValue({ id: 1, label: "Home", postcode: "ZZ1 1AA" });
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByText("No baselines yet.")).toBeInTheDocument());
+
+    await user.type(screen.getByPlaceholderText("Label (e.g. Home)"), "Home");
+    await user.type(screen.getByPlaceholderText("Postcode"), "ZZ1 1AA");
+    await user.click(screen.getByRole("button", { name: "Add baseline" }));
+
+    await waitFor(() =>
+      expect(api.crimeBaselines.create).toHaveBeenCalledWith({ label: "Home", postcode: "ZZ1 1AA" })
+    );
+  });
+
+  it("surfaces a create-baseline error inline", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.crimeBaselines.list.mockResolvedValue([]);
+    api.crimeBaselines.create.mockRejectedValue(new Error("postcode not found"));
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByText("No baselines yet.")).toBeInTheDocument());
+
+    await user.type(screen.getByPlaceholderText("Label (e.g. Home)"), "Home");
+    await user.type(screen.getByPlaceholderText("Postcode"), "NOTREAL");
+    await user.click(screen.getByRole("button", { name: "Add baseline" }));
+
+    await waitFor(() => expect(screen.getByText("postcode not found")).toBeInTheDocument());
+  });
+
+  it("deletes a crime baseline", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.crimeBaselines.list.mockResolvedValue([{ id: 1, label: "Home", postcode: "ZZ1 1AA" }]);
+    api.crimeBaselines.remove.mockResolvedValue(null);
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByLabelText("Delete baseline")).toBeInTheDocument());
+    await user.click(screen.getByLabelText("Delete baseline"));
+
+    await waitFor(() => expect(api.crimeBaselines.remove).toHaveBeenCalledWith(1));
+  });
+
+  it("hides the add-baseline form once 3 baselines exist", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.crimeBaselines.list.mockResolvedValue([
+      { id: 1, label: "A", postcode: "ZZ1 1AA" },
+      { id: 2, label: "B", postcode: "ZZ3 3CC" },
+      { id: 3, label: "C", postcode: "ZZ4 4DD" },
+    ]);
+    renderAdmin();
+    await waitFor(() => expect(screen.getByText("A — ZZ1 1AA")).toBeInTheDocument());
+    expect(screen.queryByPlaceholderText("Postcode")).not.toBeInTheDocument();
   });
 });
