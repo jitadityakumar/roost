@@ -270,6 +270,49 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   border-color: rgba(179, 38, 30, 0.4);
 }
 
+.standards-warning {
+  background: rgba(179, 38, 30, 0.12);
+  border: 1px solid rgba(179, 38, 30, 0.4);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+.standards-warning-title { font-weight: 600; color: var(--danger); margin: 0 0 0.3rem; }
+.standards-warning ul { margin: 0; padding-left: 1.2rem; }
+
+.admin-page { max-width: 640px; margin: 0 auto; }
+.admin-rules { list-style: none; padding: 0; margin: 1rem 0; }
+.admin-rule-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.admin-rule-row.disabled { opacity: 0.5; }
+.admin-rule-text { flex: 1; }
+.admin-rule-actions { display: flex; gap: 0.4rem; align-items: center; }
+
+.admin-add-rule {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.admin-add-rule select,
+.admin-add-rule input {
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
 .fields { margin: 1.5rem 0; }
 .field-row {
   display: flex;

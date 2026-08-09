@@ -8,6 +8,8 @@ from app.jobs import llm_enqueue, queue
 from app.jobs.pipeline_status import derive_pipeline_status
 from app.listings import store, url_utils
 from app.listings.serialize import serialize_listing
+from app.standards import store as standards_store
+from app.standards.evaluate import evaluate_listing
 
 router = APIRouter(prefix="/api/listings", tags=["listings"])
 
@@ -83,7 +85,9 @@ def get_listing(listing_id: int):
     listing = store.get_listing(listing_id)
     if listing is None:
         raise HTTPException(status_code=404, detail="listing not found")
-    return _serialize_with_pipeline_status(listing)
+    out = _serialize_with_pipeline_status(listing)
+    out["standards_violations"] = evaluate_listing(listing, standards_store.list_rules())
+    return out
 
 
 @router.post("/{listing_id}/refresh", status_code=202)

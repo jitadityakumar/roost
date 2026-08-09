@@ -1,7 +1,8 @@
 const BASE = "/api/listings";
+const STANDARDS_BASE = "/api/standards/rules";
 
-async function request(path, options) {
-  const res = await fetch(`${BASE}${path}`, {
+async function requestFrom(base, path, options) {
+  const res = await fetch(`${base}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -12,6 +13,8 @@ async function request(path, options) {
   if (res.status === 204) return null;
   return res.json();
 }
+
+const request = (path, options) => requestFrom(BASE, path, options);
 
 export const api = {
   list: (userStatus) =>
@@ -26,4 +29,11 @@ export const api = {
   mortgage: (id) => request(`/${id}/mortgage`),
   mediaList: (id) => request(`/${id}/media`),
   mediaUrl: (id, category, filename) => `${BASE}/${id}/media/${category}/${filename}`,
+
+  standards: {
+    list: () => requestFrom(STANDARDS_BASE, ""),
+    create: (body) => requestFrom(STANDARDS_BASE, "", { method: "POST", body: JSON.stringify(body) }),
+    patch: (id, body) => requestFrom(STANDARDS_BASE, `/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    remove: (id) => requestFrom(STANDARDS_BASE, `/${id}`, { method: "DELETE" }),
+  },
 };
