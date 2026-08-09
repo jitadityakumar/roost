@@ -64,3 +64,38 @@ describe("api.mediaUrl", () => {
     expect(api.mediaUrl(1, "photos", "01.jpeg")).toBe("/api/listings/1/media/photos/01.jpeg");
   });
 });
+
+describe("api.standards", () => {
+  it("lists rules from /api/standards/rules", async () => {
+    mockFetch({ ok: true, json: [] });
+    await api.standards.list();
+    expect(global.fetch).toHaveBeenCalledWith("/api/standards/rules", expect.any(Object));
+  });
+
+  it("creates a rule", async () => {
+    mockFetch({ ok: true, status: 201, json: { id: 1 } });
+    await api.standards.create({ field: "floor_area_sqft", operator: "lt", value: "700" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/standards/rules",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("patches a rule by id", async () => {
+    mockFetch({ ok: true, json: { id: 1, enabled: 0 } });
+    await api.standards.patch(1, { enabled: false });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/standards/rules/1",
+      expect.objectContaining({ method: "PATCH" })
+    );
+  });
+
+  it("deletes a rule by id", async () => {
+    mockFetch({ ok: true, status: 204, json: null });
+    await api.standards.remove(1);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/standards/rules/1",
+      expect.objectContaining({ method: "DELETE" })
+    );
+  });
+});

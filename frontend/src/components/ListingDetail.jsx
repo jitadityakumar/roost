@@ -207,6 +207,17 @@ export default function ListingDetail() {
         <p className="rejection-reason muted">Last rejection reason: {listing.rejection_reason}</p>
       )}
 
+      {listing.standards_violations?.length > 0 && (
+        <div className="standards-warning">
+          <p className="standards-warning-title">Doesn't meet your standards</p>
+          <ul>
+            {listing.standards_violations.map((v) => (
+              <li key={v.rule_id}>{v.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <p>
         <a href={listing.url} target="_blank" rel="noreferrer">
           View on Rightmove ↗

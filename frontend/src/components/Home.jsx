@@ -15,6 +15,9 @@ export default function Home() {
       <Link className="home-option" to="/rejected">
         View rejected
       </Link>
+      <Link className="home-option" to="/admin">
+        Admin
+      </Link>
     </div>
   );
 }
