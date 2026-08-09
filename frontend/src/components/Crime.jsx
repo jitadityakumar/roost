@@ -16,22 +16,30 @@ function ratioBadgeClass(ratio) {
   return "badge-crime-bad";
 }
 
-function BaselineSummaryRow({ baseline }) {
+function BaselineCircle({ baseline }) {
   if (baseline.error) {
     return (
-      <li className="crime-baseline-row">
-        <span className="crime-baseline-label">{baseline.label}</span>
-        <span className="error">Couldn't load: {baseline.error}</span>
-      </li>
+      <div
+        className="crime-baseline-circle badge-crime-neutral"
+        title={`Couldn't load: ${baseline.error}`}
+        aria-label={`${baseline.label}: couldn't load, ${baseline.error}`}
+      >
+        <span className="crime-baseline-postcode">{baseline.postcode}</span>
+        <span className="crime-baseline-ratio">Error</span>
+      </div>
     );
   }
   const ratio = baseline.comparison.score_ratio;
   const label = ratioLabel(ratio, baseline.comparison.candidate_score > 0);
   return (
-    <li className="crime-baseline-row">
-      <span className="crime-baseline-label">vs {baseline.label}</span>
-      <span className={`badge ${ratioBadgeClass(ratio)}`}>{label}</span>
-    </li>
+    <div
+      className={`crime-baseline-circle ${ratioBadgeClass(ratio)}`}
+      title={baseline.label}
+      aria-label={`${baseline.label}: ${label}`}
+    >
+      <span className="crime-baseline-postcode">{baseline.postcode}</span>
+      <span className="crime-baseline-ratio">{label}</span>
+    </div>
   );
 }
 
@@ -115,11 +123,11 @@ export default function Crime({ listingId, ready }) {
 
   return (
     <div className="crime-section">
-      <ul className="crime-baseline-list">
+      <div className="crime-baseline-circles">
         {data.baselines.map((baseline) => (
-          <BaselineSummaryRow key={baseline.id} baseline={baseline} />
+          <BaselineCircle key={baseline.id} baseline={baseline} />
         ))}
-      </ul>
+      </div>
       <button className="edit-btn" onClick={() => setExpanded((e) => !e)}>
         {expanded ? "Hide categories" : "Show categories"}
       </button>

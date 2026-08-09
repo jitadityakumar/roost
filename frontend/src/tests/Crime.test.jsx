@@ -57,9 +57,9 @@ describe("Crime", () => {
       ],
     });
     render(<Crime listingId={1} ready={true} />);
-    await waitFor(() => expect(screen.getByText("vs Home")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
     expect(screen.getByText("2.0x")).toBeInTheDocument();
-    expect(screen.getByText("vs Old flat")).toBeInTheDocument();
+    expect(screen.getByText("ZZ3 3CC")).toBeInTheDocument();
     expect(screen.getByText("0.8x")).toBeInTheDocument();
   });
 
@@ -69,7 +69,8 @@ describe("Crime", () => {
       baselines: [{ id: 1, label: "Home", postcode: "ZZ1 1AA", error: "boom", comparison: null }],
     });
     render(<Crime listingId={1} ready={true} />);
-    await waitFor(() => expect(screen.getByText(/Couldn't load: boom/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
+    expect(screen.getByTitle(/Couldn't load: boom/)).toBeInTheDocument();
   });
 
   it("expands to show the per-category table on click", async () => {
@@ -82,7 +83,7 @@ describe("Crime", () => {
     const user = userEvent.setup();
     render(<Crime listingId={1} ready={true} />);
 
-    await waitFor(() => expect(screen.getByText("vs Home")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
     expect(screen.queryByText("burglary")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Show categories" }));
@@ -121,7 +122,7 @@ describe("Crime", () => {
     const user = userEvent.setup();
     render(<Crime listingId={1} ready={true} />);
 
-    await waitFor(() => expect(screen.getByText("vs Home")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Show categories" }));
 
     expect(screen.getByText("public-order")).toBeInTheDocument();
