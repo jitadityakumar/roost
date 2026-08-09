@@ -11,3 +11,6 @@ MEDIA_DIR = os.path.join(BASE_DATA_DIR, "media")
 # something a public repo should hardcode). Required at call time, not
 # import time -- see app/commute/client.py.
 COMMUTE_API_BASE = os.environ.get("ROOST_COMMUTE_API_BASE")
+
+# Same reasoning as COMMUTE_API_BASE -- see app/mortgage/client.py.
+MORTGAGE_API_BASE = os.environ.get("ROOST_MORTGAGE_API_BASE")

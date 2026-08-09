@@ -436,5 +436,19 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   line-height: 1.4;
 }
 
+.mortgage-summary .field-value { font-variant-numeric: tabular-nums; }
+.mortgage-accent { color: var(--accent); font-weight: 600; }
+.mortgage-schedule { margin-top: 1rem; }
+.mortgage-schedule h5 { margin: 0.3rem 0; color: var(--muted); font-size: 0.85rem; }
+.mortgage-schedule-list { list-style: none; padding: 0; margin: 0; }
+.mortgage-schedule-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .jobs-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .jobs-table th, .jobs-table td { text-align: left; padding: 0.4rem; border-bottom: 1px solid var(--border); }
