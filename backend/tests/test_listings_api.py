@@ -163,6 +163,37 @@ def test_patch_listing_rejects_non_editable_field(client):
     assert resp.status_code == 422
 
 
+def test_patch_listing_sets_comment(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch("/api/listings/1", json={"comment": "Nice garden"})
+    assert resp.status_code == 200
+    assert resp.json()["comment"] == "Nice garden"
+
+
+def test_patch_listing_clears_comment_with_blank_string(client):
+    store.create_stub_listing(1, VALID_URL)
+    client.patch("/api/listings/1", json={"comment": "Nice garden"})
+    resp = client.patch("/api/listings/1", json={"comment": ""})
+    assert resp.status_code == 200
+    assert resp.json()["comment"] is None
+
+
+def test_patch_listing_clears_comment_with_whitespace_only(client):
+    store.create_stub_listing(1, VALID_URL)
+    client.patch("/api/listings/1", json={"comment": "Nice garden"})
+    resp = client.patch("/api/listings/1", json={"comment": "   "})
+    assert resp.status_code == 200
+    assert resp.json()["comment"] is None
+
+
+def test_patch_listing_comment_independent_of_status(client):
+    store.create_stub_listing(1, VALID_URL)
+    client.patch("/api/listings/1", json={"comment": "Nice garden"})
+    resp = client.patch("/api/listings/1", json={"user_status": "approved"})
+    assert resp.status_code == 200
+    assert resp.json()["comment"] == "Nice garden"
+
+
 def test_patch_listing_applies_manual_edit_and_marks_sticky(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch("/api/listings/1", json={"fields": {"price_gbp": 600000}})

@@ -69,6 +69,8 @@ export default function ListingDetail() {
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectError, setRejectError] = useState(null);
+  const [commentModalOpen, setCommentModalOpen] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -111,6 +113,17 @@ export default function ListingDetail() {
     const updated = await api.patch(id, { user_status: "rejected", rejection_reason: rejectReason.trim() });
     setListing(updated);
     setRejecting(false);
+  }
+
+  function openCommentModal() {
+    setCommentDraft(listing.comment || "");
+    setCommentModalOpen(true);
+  }
+
+  async function handleSaveComment() {
+    const updated = await api.patch(id, { comment: commentDraft });
+    setListing(updated);
+    setCommentModalOpen(false);
   }
 
   async function handleRefresh() {
@@ -180,7 +193,7 @@ export default function ListingDetail() {
             <button className="status-toggle-btn warn" onClick={confirmReject}>
               Confirm reject
             </button>
-            <button className="icon-btn" onClick={() => setRejecting(false)}>
+            <button className="status-toggle-btn secondary" onClick={() => setRejecting(false)}>
               Cancel
             </button>
           </div>
@@ -292,7 +305,17 @@ export default function ListingDetail() {
         />
       </section>
 
-      <section>
+      <section className="comment-section">
+        <h3>Comment</h3>
+        <p className={`comment-text ${listing.comment ? "" : "muted"}`}>
+          {listing.comment || "No comment yet."}
+        </p>
+        <button className="status-toggle-btn" onClick={openCommentModal}>
+          {listing.comment ? "Update comment" : "Add comment"}
+        </button>
+      </section>
+
+      <section className="jobs-section">
         <h3>Jobs</h3>
         <table className="jobs-table">
           <thead>
@@ -317,6 +340,28 @@ export default function ListingDetail() {
           </tbody>
         </table>
       </section>
+
+      {commentModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h3>{listing.comment ? "Update comment" : "Add comment"}</h3>
+            <textarea
+              value={commentDraft}
+              onChange={(e) => setCommentDraft(e.target.value)}
+              rows={5}
+              autoFocus
+            />
+            <div className="modal-actions">
+              <button className="status-toggle-btn" onClick={handleSaveComment}>
+                Save
+              </button>
+              <button className="status-toggle-btn secondary" onClick={() => setCommentModalOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
