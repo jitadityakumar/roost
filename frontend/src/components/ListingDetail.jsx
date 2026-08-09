@@ -7,6 +7,7 @@ import PhotoCarousel from "./PhotoCarousel.jsx";
 import MediaGrid from "./MediaGrid.jsx";
 import NearestStations from "./NearestStations.jsx";
 import Commute from "./Commute.jsx";
+import Mortgage from "./Mortgage.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 
 function formatBroadband(listing) {
@@ -282,9 +283,13 @@ export default function ListingDetail() {
         <Commute listingId={id} ready={listing.extraction_status === "done"} />
       </section>
 
-      <section className="stub-section">
+      <section>
         <h3>Mortgage</h3>
-        <p className="coming-soon">Coming soon — mortgage affordability joins land in Phase 2.</p>
+        <Mortgage
+          listingId={id}
+          priceGbp={listing.price_gbp}
+          ready={listing.extraction_status === "done"}
+        />
       </section>
 
       <section>

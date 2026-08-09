@@ -23,6 +23,7 @@ export const api = {
   remove: (id) => request(`/${id}`, { method: "DELETE" }),
   jobs: (id) => request(`/${id}/jobs`),
   commute: (id) => request(`/${id}/commute`),
+  mortgage: (id) => request(`/${id}/mortgage`),
   mediaList: (id) => request(`/${id}/media`),
   mediaUrl: (id, category, filename) => `${BASE}/${id}/media/${category}/${filename}`,
 };
