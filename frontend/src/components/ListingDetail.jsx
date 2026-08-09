@@ -6,6 +6,7 @@ import FieldRow from "./FieldRow.jsx";
 import PhotoCarousel from "./PhotoCarousel.jsx";
 import MediaGrid from "./MediaGrid.jsx";
 import NearestStations from "./NearestStations.jsx";
+import Commute from "./Commute.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 
 function formatBroadband(listing) {
@@ -276,9 +277,9 @@ export default function ListingDetail() {
         </section>
       )}
 
-      <section className="stub-section">
+      <section>
         <h3>Commute</h3>
-        <p className="coming-soon">Coming soon — commute-time joins land in Phase 2.</p>
+        <Commute listingId={id} ready={listing.extraction_status === "done"} />
       </section>
 
       <section className="stub-section">

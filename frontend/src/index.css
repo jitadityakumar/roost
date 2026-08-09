@@ -405,5 +405,36 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .stub-section { opacity: 0.6; }
 .coming-soon { font-style: italic; color: var(--muted); }
 
+.commute-station { margin-bottom: 1rem; }
+.commute-station h4 { margin-bottom: 0.3rem; }
+.commute-terminus-group h5 { margin: 0.3rem 0; color: var(--muted); font-size: 0.85rem; }
+.commute-terminus-list { list-style: none; padding: 0; margin: 0; }
+.commute-terminus-row {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.commute-terminus-line1, .commute-terminus-line2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.commute-terminus-line2 { margin-top: 0.25rem; }
+.commute-terminus-name { flex: 1; }
+.commute-also-calls-at { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+.commute-terminus-stats { color: var(--muted); white-space: nowrap; }
+.commute-terminus-operator { color: var(--muted); font-size: 0.85rem; }
+.commute-terminus-tube-lines { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.tube-line-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .jobs-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .jobs-table th, .jobs-table td { text-align: left; padding: 0.4rem; border-bottom: 1px solid var(--border); }

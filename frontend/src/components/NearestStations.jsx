@@ -10,7 +10,7 @@ const TYPE_BADGES = {
 };
 const DEFAULT_TYPE_BADGE = { letter: "?", label: "Station", bg: "#666" };
 
-function formatDistance(distance, unit) {
+export function formatDistance(distance, unit) {
   const n = Number(distance);
   if (distance === null || distance === undefined || Number.isNaN(n)) return null;
   return `${n.toFixed(2)} ${unit || "mi"}`;

@@ -245,7 +245,6 @@ def latest_snapshot_raw(listing_id: int) -> dict | None:
 def delete_listing(listing_id: int) -> None:
     conn = get_connection()
     try:
-        conn.execute("DELETE FROM commute_data WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM mortgage_scenarios WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM listing_snapshots WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM jobs WHERE listing_id = ?", (listing_id,))

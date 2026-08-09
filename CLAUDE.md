@@ -8,8 +8,9 @@ Roost tracks house listings you're considering buying. You submit a Rightmove
 URL; the backend extracts structured data (price, beds/baths, tenure,
 stations, broadband) and tracks it over time as an ongoing shortlist, not a
 one-off bookmark. Phase 1 (current state): local-only, no auth, no LLM
-enrichment worker, no commute/mortgage joins — those are UI stubs, deferred to
-later phases.
+enrichment worker (Phase 3, done), and a commute-time join against a
+sibling `london-commuter-stations` service (Phase 2, done). Mortgage-
+affordability join is still a UI stub, deferred.
 
 ## Commands
 
@@ -34,6 +35,7 @@ Docker (from repo root):
 docker build -t roost .
 docker run -p 8000:8000 -v $(pwd)/data:/data \
   -v ~/.claude:/root/.claude:ro \
+  -e ROOST_COMMUTE_API_BASE=http://<your-commuter-stations-host>:8093 \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 
@@ -146,6 +148,25 @@ to media serving needs to preserve all three checks.
 path alone (no fetch) and rejects any host outside `rightmove.co.uk` — this
 is the SSRF guard for a URL an end user supplies. Don't relax the host
 allowlist without deliberately reconsidering that.
+
+**Commute times are fetched live, never persisted.** `app/commute/` resolves
+a listing's `nearest_stations_raw` (Rightmove's `[{name, distance, types}]`)
+to CRS codes via an in-process, no-network lookup against the bundled
+`stations.csv` (`app/commute/stations.py` — National Rail only, tube/tram
+entries are filtered out by `types` before lookup, and only stations within
+`MAX_DISTANCE_MILES` are kept), then calls `london-commuter-stations`'s API
+(`app/commute/client.py`) once per resolved CRS on every
+`GET /api/listings/{id}/commute` request. That API's address is **required**
+via `ROOST_COMMUTE_API_BASE` (`app/config.py` has no in-repo default — it's
+a separate host/service, not something to hardcode into a public repo);
+`fetch_station_termini` raises a clear `CommuteApiError` if it's unset
+rather than silently no-op'ing. No SSRF allowlist needed here unlike
+`url_utils.py` — the host comes from deployer-controlled config, never
+user input. A per-station failure is returned inline (`error` set,
+`termini: null`) rather than failing the whole request, so one bad station
+doesn't take out the others. The `commute_data` table (migration `0005`)
+was dropped as part of this — it was never populated and this design has
+nothing that would populate it.
 
 ## Working in this repo
 
