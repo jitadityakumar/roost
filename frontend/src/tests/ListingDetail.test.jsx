@@ -12,6 +12,7 @@ vi.mock("../api.js", () => ({
     mediaUrl: (id, category, filename) => `/media/${id}/${category}/${filename}`,
     commute: vi.fn().mockResolvedValue({ stations: [] }),
     mortgage: vi.fn().mockResolvedValue({ result: null, error: null }),
+    crime: vi.fn().mockResolvedValue({ unavailable: null, baselines: [] }),
   },
 }));
 

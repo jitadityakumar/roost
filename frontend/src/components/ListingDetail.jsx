@@ -8,6 +8,7 @@ import MediaGrid from "./MediaGrid.jsx";
 import NearestStations from "./NearestStations.jsx";
 import Commute from "./Commute.jsx";
 import Mortgage from "./Mortgage.jsx";
+import Crime from "./Crime.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 
 function formatBroadband(listing) {
@@ -314,6 +315,11 @@ export default function ListingDetail() {
           priceGbp={listing.price_gbp}
           ready={listing.extraction_status === "done"}
         />
+      </section>
+
+      <section>
+        <h3>Crime</h3>
+        <Crime listingId={id} ready={listing.extraction_status === "done"} />
       </section>
 
       <section className="comment-section">
