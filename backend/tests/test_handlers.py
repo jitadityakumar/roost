@@ -10,8 +10,8 @@ def listing_id(client):  # client pulls in isolated_db + mock_rightmove_network
     return 1
 
 
-def _job(listing_id, job_id=1):
-    return {"id": job_id, "listing_id": listing_id}
+def _job(listing_id, job_id=1, skip_llm_chain=False):
+    return {"id": job_id, "listing_id": listing_id, "skip_llm_chain": int(skip_llm_chain)}
 
 
 def test_handle_rightmove_extract_maps_fields(listing_id):
@@ -166,6 +166,24 @@ def test_handle_rightmove_extract_still_enqueues_text_extract_when_only_some_fie
     assert len(jobs) and [j for j in jobs if j["job_type"] == "text_extract"]
 
 
+def test_handle_rightmove_extract_skip_llm_chain_still_enqueues_media_download(listing_id):
+    parent_job_id = queue.enqueue_job(listing_id, "rightmove_extract", "http", skip_llm_chain=True)
+
+    handlers.handle_rightmove_extract(_job(listing_id, job_id=parent_job_id, skip_llm_chain=True))
+
+    jobs = queue.get_jobs_for_listing(listing_id)
+    media_jobs = [j for j in jobs if j["job_type"] == "media_download"]
+    assert len(media_jobs) == 1
+    assert media_jobs[0]["skip_llm_chain"] == 1
+
+
+def test_handle_rightmove_extract_skip_llm_chain_does_not_enqueue_text_extract(listing_id):
+    handlers.handle_rightmove_extract(_job(listing_id, skip_llm_chain=True))
+
+    jobs = queue.get_jobs_for_listing(listing_id)
+    assert not [j for j in jobs if j["job_type"] == "text_extract"]
+
+
 def test_handle_media_download_chains_vision_jobs_when_media_present(listing_id, media_dir):
     import os
 
@@ -187,6 +205,25 @@ def test_handle_media_download_chains_vision_jobs_when_media_present(listing_id,
     for j in jobs:
         if j["job_type"] in ("floor_area_vision", "epc_vision"):
             assert j["depends_on_job_id"] == parent_job_id
+
+
+def test_handle_media_download_skip_llm_chain_does_not_enqueue_vision_jobs(listing_id, media_dir):
+    import os
+
+    store.insert_snapshot(listing_id, 500000, None, {"id": "raw-id-from-rightmove"})
+    floorplans_dir = os.path.join(media_dir, str(listing_id), "floorplans")
+    epc_dir = os.path.join(media_dir, str(listing_id), "epc")
+    os.makedirs(floorplans_dir)
+    os.makedirs(epc_dir)
+    open(os.path.join(floorplans_dir, "01.jpeg"), "w").close()
+    open(os.path.join(epc_dir, "01.jpeg"), "w").close()
+
+    handlers.handle_media_download(_job(listing_id, skip_llm_chain=True))
+
+    jobs = queue.get_jobs_for_listing(listing_id)
+    job_types = {j["job_type"] for j in jobs}
+    assert "floor_area_vision" not in job_types
+    assert "epc_vision" not in job_types
 
 
 def test_handle_media_download_skips_vision_jobs_without_media(listing_id, media_dir):

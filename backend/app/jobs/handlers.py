@@ -117,8 +117,11 @@ def handle_rightmove_extract(job: dict) -> None:
     store.set_extraction_status(listing_id, "done")
     store.insert_snapshot(listing_id, fields.get("price_gbp"), fields.get("rightmove_status"), prop)
 
-    queue.enqueue_job(listing_id, "media_download", "http", depends_on_job_id=job["id"])
-    if llm_enqueue.should_enqueue(listing_id, "text_extract"):
+    skip_llm_chain = bool(job.get("skip_llm_chain"))
+    queue.enqueue_job(
+        listing_id, "media_download", "http", depends_on_job_id=job["id"], skip_llm_chain=skip_llm_chain
+    )
+    if not skip_llm_chain and llm_enqueue.should_enqueue(listing_id, "text_extract"):
         queue.enqueue_job(listing_id, "text_extract", "llm", depends_on_job_id=job["id"])
 
 
@@ -140,6 +143,8 @@ def handle_media_download(job: dict) -> None:
     # might not even be claimed yet by the time rightmove_extract finishes.
     # This still satisfies "auto-chain after the rightmove extract" — just
     # transitively, via the existing rightmove_extract → media_download edge.
+    if job.get("skip_llm_chain"):
+        return
     if llm_enqueue.should_enqueue(listing_id, "floor_area_vision") and llm_enqueue.first_media_file(
         listing_id, "floorplans"
     ):

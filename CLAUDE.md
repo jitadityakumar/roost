@@ -91,15 +91,20 @@ written inside the container — if `llm`-lane jobs start failing with an auth
 error after the container's been running a while, this is the first thing to
 check.
 
-**Every Refresh re-runs all three `llm`-lane jobs, deliberately.**
+**Every Refresh re-runs all three `llm`-lane jobs, by default.**
 `llm_enqueue.should_enqueue`'s `has_pending_job` guard only blocks a
 duplicate while one is queued/running — it does not skip re-enqueueing a job
 type that already completed once. A Refresh re-scrapes and may turn up new
 description text or replaced images, so re-running `text_extract` and the
 vision jobs (even though the floorplan/EPC images usually haven't changed)
-is the current intended behavior, not an oversight — revisit only if the
-repeated LLM calls on Refresh turn out to matter at this app's actual usage
-volume.
+is the current intended default behavior, not an oversight.
+`POST /api/listings/{id}/refresh?skip_llm=true` opts a single refresh out of
+the whole llm-lane auto-chain (persisted per-job as `jobs.skip_llm_chain`,
+checked in both `handle_rightmove_extract` and `handle_media_download` since
+the vision jobs chain off `media_download`, not directly off
+`rightmove_extract`) — added for `scripts/backfill-rightmove.sh --skip-llm`,
+for bulk backfills of a plain scrape-level field (e.g. issue #26's lat/lon)
+where re-running the LLM lane on every listing would be pure unwanted spend.
 
 **Rightmove extraction wraps a standalone script, deliberately.**
 `app/jobs/rightmove_extract.py` is the original scraping logic

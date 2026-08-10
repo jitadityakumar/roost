@@ -249,6 +249,28 @@ def test_refresh_listing_404_for_unknown_id(client):
     assert client.post("/api/listings/999/refresh").status_code == 404
 
 
+def test_refresh_listing_skip_llm_persists_flag_on_job(client):
+    store.create_stub_listing(1, VALID_URL)
+    store.set_extraction_status(1, "done")
+
+    resp = client.post("/api/listings/1/refresh?skip_llm=true")
+    assert resp.status_code == 202
+
+    jobs = [j for j in queue.get_jobs_for_listing(1) if j["job_type"] == "rightmove_extract"]
+    assert len(jobs) == 1
+    assert jobs[0]["skip_llm_chain"] == 1
+
+
+def test_refresh_listing_without_skip_llm_defaults_to_false(client):
+    store.create_stub_listing(1, VALID_URL)
+    store.set_extraction_status(1, "done")
+
+    client.post("/api/listings/1/refresh")
+
+    jobs = [j for j in queue.get_jobs_for_listing(1) if j["job_type"] == "rightmove_extract"]
+    assert jobs[0]["skip_llm_chain"] == 0
+
+
 def test_llm_refresh_404_for_unknown_id(client):
     assert client.post("/api/listings/999/llm-refresh").status_code == 404
 
