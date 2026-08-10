@@ -5,23 +5,30 @@
 # field-mapping change in app/jobs/rightmove_extract.py/handlers.py, or just
 # to pull latest prices/status) instead of clicking Refresh on each one.
 #
-# IMPORTANT: /refresh always auto-chains media_download -> text_extract (and
-# floor_area_vision/epc_vision off media_download) on its own, unconditionally
-# — see CLAUDE.md: "Every Refresh re-runs all three llm-lane jobs,
-# deliberately." That means every re-fetch this script triggers already
-# makes real, billed `claude -p` calls per listing in the background,
-# whether --then-llm is passed or not. --then-llm does NOT gate whether
-# those calls happen (this script has no way to prevent them without a
-# backend code change) — it only controls whether this script *blocks*
-# until they're done. Without --then-llm, the script returns as soon as
-# rightmove_extract is enqueued and the llm-lane jobs keep running in the
-# background after it exits; with --then-llm, it waits for the whole
-# pipeline (scrape -> media download -> whichever llm-lane jobs got
-# auto-enqueued) to actually finish before returning — useful before a UX
-# review, or when you want one command's exit to mean "everything is done,"
-# not just "everything is queued." It never makes an extra explicit
-# /llm-refresh call — that would double-run (and double-bill) work the
-# auto-chain is already doing.
+# By default, /refresh auto-chains media_download -> text_extract (and
+# floor_area_vision/epc_vision off media_download) on its own, which means
+# every re-fetch this script triggers already makes real, billed
+# `claude -p` calls per listing in the background. Pass --skip-llm to opt
+# out: /refresh?skip_llm=true (see routes/listings.py, handlers.py's
+# skip_llm_chain check) still re-scrapes and re-downloads media, but never
+# enqueues any llm-lane job — use this for a plain data backfill (e.g. after
+# a rightmove_extract.py field-mapping change like adding a new field) where
+# you don't want to pay for/wait on LLM re-extraction that has nothing to do
+# with the change.
+#
+# --then-llm does NOT gate whether the llm-lane calls happen (that's
+# --skip-llm's job) — it only controls whether this script *blocks* until
+# whatever pipeline was actually enqueued finishes. Without --then-llm, the
+# script returns as soon as rightmove_extract is enqueued and everything
+# else keeps running in the background after it exits; with --then-llm, it
+# waits for the whole pipeline (scrape -> media download -> whichever
+# llm-lane jobs got auto-enqueued, none if --skip-llm) to actually finish
+# before returning — useful before a UX review, or when you want one
+# command's exit to mean "everything is done," not just "everything is
+# queued." --then-llm and --skip-llm can be combined (waits for scrape +
+# media only). This script never makes an extra explicit /llm-refresh call
+# — that would double-run (and double-bill) work the auto-chain is already
+# doing.
 #
 # "and there is new data" (per the original ask) has no cheap way to be
 # determined from outside the app (no snapshot diff exposed over the API) —
@@ -34,19 +41,22 @@ BASE_URL="${BASE_URL:-http://localhost:8099}"
 ASSUME_YES=false
 ONLY_ID=""
 THEN_LLM=false
+SKIP_LLM=false
 POLL_INTERVAL=3
 POLL_TIMEOUT=180
 
 usage() {
-  echo "Usage: $0 [--base-url URL] [--listing-id ID] [--then-llm] [-y|--yes]"
+  echo "Usage: $0 [--base-url URL] [--listing-id ID] [--then-llm] [--skip-llm] [-y|--yes]"
   echo
   echo "  --base-url URL    Roost instance to target (default: $BASE_URL)"
   echo "  --listing-id ID   Only refresh this one listing, instead of all of them"
+  echo "  --skip-llm        Re-scrape + re-download media only — don't auto-chain"
+  echo "                    text_extract/floor_area_vision/epc_vision (no billed"
+  echo "                    claude -p calls). Use for a plain data backfill."
   echo "  --then-llm        Block until each listing's full pipeline (Rightmove"
   echo "                    scrape + media download + whichever llm-lane jobs got"
-  echo "                    auto-enqueued) finishes, instead of returning as soon as"
-  echo "                    the scrape is enqueued. Llm-lane jobs run either way —"
-  echo "                    see the comment at the top of this script."
+  echo "                    auto-enqueued, none if --skip-llm) finishes, instead of"
+  echo "                    returning as soon as the scrape is enqueued."
   echo "  -y, --yes         Skip the confirmation prompt"
 }
 
@@ -55,6 +65,7 @@ while [ $# -gt 0 ]; do
     --base-url) BASE_URL="$2"; shift 2 ;;
     --listing-id) ONLY_ID="$2"; shift 2 ;;
     --then-llm) THEN_LLM=true; shift ;;
+    --skip-llm) SKIP_LLM=true; shift ;;
     -y|--yes) ASSUME_YES=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
@@ -79,8 +90,12 @@ if [ "$count" -eq 0 ]; then
 fi
 
 echo "About to re-fetch $count listing(s) from Rightmove at $BASE_URL."
-echo "This also auto-chains real, billed claude -p calls per listing (see script"
-echo "header) regardless of --then-llm."
+if [ "$SKIP_LLM" = true ]; then
+  echo "--skip-llm set: no llm-lane jobs will be enqueued (no billed claude -p calls)."
+else
+  echo "This also auto-chains real, billed claude -p calls per listing (see script"
+  echo "header) — pass --skip-llm to opt out."
+fi
 if [ "$THEN_LLM" = true ]; then
   echo "--then-llm set: this script will block until each listing's full pipeline finishes."
 fi
@@ -93,7 +108,7 @@ if [ "$ASSUME_YES" != true ]; then
 fi
 
 for id in $ids; do
-  curl -sf -X POST "$BASE_URL/api/listings/$id/refresh" >/dev/null
+  curl -sf -X POST "$BASE_URL/api/listings/$id/refresh?skip_llm=$SKIP_LLM" >/dev/null
   echo "listing $id: enqueued rightmove_extract"
 done
 

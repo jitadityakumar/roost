@@ -31,5 +31,10 @@
   "livingCosts": {
     "councilTaxBand": "D",
     "annualServiceCharge": 1200
+  },
+  "location": {
+    "latitude": 51.5074,
+    "longitude": -0.1278,
+    "pinType": "APPROXIMATE_POINT"
   }
 }

@@ -60,6 +60,7 @@ def extract_added_on(root: dict) -> str | None:
 
 
 def extract_listing(prop: dict, listing_added_on: str | None = None) -> dict:
+    location = prop.get("location") or {}
     return {
         "id": prop.get("id"),
         "url": f"https://www.rightmove.co.uk/properties/{prop.get('id')}",
@@ -87,6 +88,9 @@ def extract_listing(prop: dict, listing_added_on: str | None = None) -> dict:
         "agent_branch": (prop.get("customer") or {}).get("branchDisplayName"),
         "agent_address": (prop.get("customer") or {}).get("displayAddress"),
         "living_costs": prop.get("livingCosts"),
+        "latitude": location.get("latitude"),
+        "longitude": location.get("longitude"),
+        "pin_type": location.get("pinType"),
         "broadband": None,
     }
 

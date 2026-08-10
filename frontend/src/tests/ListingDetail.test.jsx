@@ -60,3 +60,24 @@ describe("ListingDetail standards warning", () => {
     expect(screen.queryByText("Doesn't meet your standards")).not.toBeInTheDocument();
   });
 });
+
+describe("ListingDetail Google Maps link", () => {
+  it("links to Google Maps with lat/lon when present", async () => {
+    api.get.mockResolvedValue(baseListing({ latitude: 51.5074, longitude: -0.1278 }));
+    renderDetail();
+
+    const link = await screen.findByText(/Open in Google Maps/);
+    expect(link.closest("a")).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/search/?api=1&query=51.5074,-0.1278"
+    );
+  });
+
+  it("omits the Google Maps link when lat/lon are missing", async () => {
+    api.get.mockResolvedValue(baseListing());
+    renderDetail();
+
+    await waitFor(() => expect(screen.getByText(/View on Rightmove/)).toBeInTheDocument());
+    expect(screen.queryByText(/Open in Google Maps/)).not.toBeInTheDocument();
+  });
+});
