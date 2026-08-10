@@ -223,6 +223,18 @@ export default function ListingDetail() {
         <a href={listing.url} target="_blank" rel="noreferrer">
           View on Rightmove ↗
         </a>
+        {listing.latitude != null && listing.longitude != null && (
+          <>
+            {" · "}
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${listing.latitude},${listing.longitude}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open in Google Maps ↗
+            </a>
+          </>
+        )}
       </p>
 
       {listing.pipeline_status && (

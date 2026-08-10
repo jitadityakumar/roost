@@ -34,6 +34,9 @@ def test_handle_rightmove_extract_maps_fields(listing_id):
     assert listing["extraction_status"] == "done"
     assert listing["listing_added_on"] == "2026-01-15"
     assert listing["rightmove_fetched_at"] is not None
+    assert listing["latitude"] == 51.5074
+    assert listing["longitude"] == -0.1278
+    assert listing["pin_type"] == "APPROXIMATE_POINT"
 
 
 def test_handle_rightmove_extract_handles_missing_added_on(listing_id, sample_property_data, monkeypatch):

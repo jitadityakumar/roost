@@ -68,6 +68,9 @@ def handle_rightmove_extract(job: dict) -> None:
         "rightmove_status": json.dumps(extracted.get("status")) if extracted.get("status") else None,
         "listing_added_on": normalize.parse_yyyymmdd_date(extracted.get("listing_added_on")),
         "rightmove_fetched_at": datetime.now(timezone.utc).isoformat(),
+        "latitude": extracted.get("latitude"),
+        "longitude": extracted.get("longitude"),
+        "pin_type": extracted.get("pin_type"),
     }
 
     if extracted.get("lease_years_remaining") is not None:
