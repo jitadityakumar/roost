@@ -13,6 +13,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from app.commute import walk_store
+from app.commute.stations import latlong_for_crs, resolve_crs_codes
+from app.commute.walking import WalkingApiError, compute_walk_distance
 from app.config import MEDIA_DIR
 from app.jobs import llm_enqueue, llm_prompts, queue
 from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
@@ -117,12 +120,44 @@ def handle_rightmove_extract(job: dict) -> None:
     store.set_extraction_status(listing_id, "done")
     store.insert_snapshot(listing_id, fields.get("price_gbp"), fields.get("rightmove_status"), prop)
 
+    _compute_station_walk_distances(
+        listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
+    )
+
     skip_llm_chain = bool(job.get("skip_llm_chain"))
     queue.enqueue_job(
         listing_id, "media_download", "http", depends_on_job_id=job["id"], skip_llm_chain=skip_llm_chain
     )
     if not skip_llm_chain and llm_enqueue.should_enqueue(listing_id, "text_extract"):
         queue.enqueue_job(listing_id, "text_extract", "llm", depends_on_job_id=job["id"])
+
+
+def _compute_station_walk_distances(
+    listing_id: int, latitude: float | None, longitude: float | None, nearest_stations_raw: list[dict]
+) -> None:
+    """Real walking distance/duration (Google Routes API v2) to every
+    station resolve_crs_codes() would surface for this listing, computed
+    once here at scrape time and stored -- never a live call on page load.
+    A missing listing lat/lon (Rightmove's location block can be absent) or
+    a per-station Maps failure just means that station keeps no stored
+    value; the frontend falls back to Rightmove's raw distance for it. This
+    must never raise -- the rightmove_extract job has already succeeded by
+    the time this runs."""
+    if latitude is None or longitude is None:
+        return
+
+    rows = []
+    for station in resolve_crs_codes(nearest_stations_raw):
+        latlong = latlong_for_crs(station["crs"])
+        if latlong is None:
+            continue
+        try:
+            result = compute_walk_distance(latitude, longitude, latlong[0], latlong[1])
+        except WalkingApiError:
+            continue
+        rows.append({"crs": station["crs"], **result})
+
+    walk_store.replace_walk_distances(listing_id, rows)
 
 
 def handle_media_download(job: dict) -> None:

@@ -472,6 +472,10 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 }
 .station-name { flex: 1; }
 .station-distance { color: var(--muted); font-size: 0.9rem; }
+.station-walk-duration { font-size: 0.9rem; font-weight: 600; }
+.station-walk-duration-good { color: var(--accent); }
+.station-walk-duration-warn { color: var(--warn); }
+.station-walk-duration-bad { color: var(--danger); }
 
 .stub-section { opacity: 0.6; }
 .coming-soon { font-style: italic; color: var(--muted); }

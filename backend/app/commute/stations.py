@@ -22,7 +22,17 @@ def _load_name_to_crs() -> dict[str, str]:
         return {row["stationName"]: row["crsCode"] for row in csv.DictReader(f)}
 
 
+def _load_crs_to_latlong() -> dict[str, tuple[float, float]]:
+    with open(STATIONS_CSV, newline="", encoding="utf-8") as f:
+        return {row["crsCode"]: (float(row["lat"]), float(row["long"])) for row in csv.DictReader(f)}
+
+
 _NAME_TO_CRS = _load_name_to_crs()
+_CRS_TO_LATLONG = _load_crs_to_latlong()
+
+
+def latlong_for_crs(crs: str) -> tuple[float, float] | None:
+    return _CRS_TO_LATLONG.get(crs)
 
 
 def strip_station_suffix(name: str) -> str:

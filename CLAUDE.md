@@ -35,9 +35,14 @@ Docker (from repo root):
 docker build -t roost .
 docker run -p 8000:8000 -v $(pwd)/data:/data \
   -v ~/.claude:/root/.claude:ro \
-  -e ROOST_COMMUTE_API_BASE=http://<your-commuter-stations-host>:8093 \
+  --env-file .env \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
+`.env` (gitignored, not tracked in this repo) holds the host-specific
+`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, and
+`GOOGLE_MAPS_API_KEY` vars -- deliberately passed via `--env-file` rather
+than inline `-e`/python-dotenv, since inline flags leave the key visible in
+shell history / `ps aux`.
 
 There is no automated test suite yet — verification so far has been manual
 end-to-end runs against real Rightmove listings and a running Docker
@@ -172,6 +177,22 @@ user input. A per-station failure is returned inline (`error` set,
 doesn't take out the others. The `commute_data` table (migration `0005`)
 was dropped as part of this — it was never populated and this design has
 nothing that would populate it.
+
+**Station walking distance/duration is the opposite: computed once and
+persisted, unlike the live commute-termini call above.** `app/commute/
+walking.py` calls Google's Routes API v2 (`travelMode: WALK`, reusing
+`GOOGLE_MAPS_API_KEY` from `rail-disruption-monitor`) once per station
+`resolve_crs_codes()` resolves, from the listing's `latitude`/`longitude`
+(migration `0009`) to each station's lat/long in `stations.csv`. This runs
+inline in `handle_rightmove_extract` (`app/jobs/handlers.py`) — every
+scrape, `/refresh`, and backfill run covers it automatically, no separate
+job type or opt-out. Results are stored in `station_walk_distances`
+(migration `0011`, `app/commute/walk_store.py`), rows deleted and
+reinserted wholesale per listing on each recompute. A per-station Maps
+failure (including an unset `GOOGLE_MAPS_API_KEY`) is caught and logged in
+`_compute_station_walk_distances`, not raised — the rightmove_extract job
+still succeeds, and `GET /api/listings/{id}/commute` falls back to
+Rightmove's raw straight-line `distance` for that station.
 
 ## Working in this repo
 
