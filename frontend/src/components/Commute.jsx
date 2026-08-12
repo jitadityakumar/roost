@@ -82,8 +82,8 @@ function TerminusList({ label, group }) {
 // Same good/warn/bad tier convention as the crime-baseline badges
 // (badge-crime-good/warn/bad in index.css).
 function walkDurationClass(minutes) {
-  if (minutes <= 10) return "station-walk-duration-good";
-  if (minutes <= 20) return "station-walk-duration-warn";
+  if (minutes <= 7) return "station-walk-duration-good";
+  if (minutes <= 15) return "station-walk-duration-warn";
   return "station-walk-duration-bad";
 }
 
