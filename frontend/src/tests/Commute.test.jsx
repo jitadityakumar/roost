@@ -182,7 +182,7 @@ describe("Commute", () => {
     };
   }
 
-  it("shows the computed walk distance/duration as a maps link, colored green for a short walk", async () => {
+  it("shows the computed walk distance/duration together as one maps link, colored green for a short walk", async () => {
     api.commute.mockResolvedValue({
       stations: [
         stationWithWalk({
@@ -194,17 +194,38 @@ describe("Commute", () => {
     });
     render(<Commute listingId={1} ready={true} />);
 
-    const link = await screen.findByRole("link", { name: /6 min walk/ });
+    const link = await screen.findByRole("link", { name: /500m · 6 min walk/ });
     expect(link).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&travelmode=walking");
     expect(link).toHaveClass("station-walk-duration-good");
-    expect(screen.getByText("(0.31 mi)")).toBeInTheDocument();
+    expect(screen.queryByText("(0.31 mi)")).not.toBeInTheDocument();
+  });
+
+  it("switches from meters to one-decimal km above 1000m", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        stationWithWalk({ walk_distance_meters: 1250, walk_duration_seconds: 900, walk_maps_url: "https://maps/x" }),
+      ],
+    });
+    render(<Commute listingId={1} ready={true} />);
+    await screen.findByRole("link", { name: /1\.3km · 15 min walk/ });
   });
 
   it("colors a medium walk amber and a long walk red", async () => {
     api.commute.mockResolvedValue({
       stations: [
-        stationWithWalk({ crs: "A", walk_duration_seconds: 15 * 60, walk_maps_url: "https://maps/a" }),
-        stationWithWalk({ crs: "B", name: "Woking", walk_duration_seconds: 25 * 60, walk_maps_url: "https://maps/b" }),
+        stationWithWalk({
+          crs: "A",
+          walk_distance_meters: 1200,
+          walk_duration_seconds: 15 * 60,
+          walk_maps_url: "https://maps/a",
+        }),
+        stationWithWalk({
+          crs: "B",
+          name: "Woking",
+          walk_distance_meters: 2000,
+          walk_duration_seconds: 25 * 60,
+          walk_maps_url: "https://maps/b",
+        }),
       ],
     });
     render(<Commute listingId={1} ready={true} />);

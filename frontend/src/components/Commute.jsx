@@ -79,8 +79,6 @@ function TerminusList({ label, group }) {
   );
 }
 
-const METERS_PER_MILE = 1609.344;
-
 // Same good/warn/bad tier convention as the crime-baseline badges
 // (badge-crime-good/warn/bad in index.css).
 function walkDurationClass(minutes) {
@@ -89,28 +87,34 @@ function walkDurationClass(minutes) {
   return "station-walk-duration-bad";
 }
 
+// 845 -> "845m", 1250 -> "1.3km" -- meters below 1km, one-decimal km above,
+// matching how Google Maps itself switches units.
+function formatWalkMeters(meters) {
+  return meters < 1000 ? `${Math.round(meters)}m` : `${(meters / 1000).toFixed(1)}km`;
+}
+
 function StationCommute({ station }) {
-  const walkDistanceMiles =
-    station.walk_distance_meters != null ? station.walk_distance_meters / METERS_PER_MILE : null;
-  const distanceLabel = formatDistance(walkDistanceMiles ?? station.distance);
-  const walkMinutes =
-    station.walk_duration_seconds != null ? Math.round(station.walk_duration_seconds / 60) : null;
+  const hasWalkData = station.walk_distance_meters != null && station.walk_duration_seconds != null;
+  const walkMinutes = hasWalkData ? Math.round(station.walk_duration_seconds / 60) : null;
+  const walkLabel = hasWalkData
+    ? `${formatWalkMeters(station.walk_distance_meters)} · ${walkMinutes} min walk`
+    : null;
   const walkClass = walkMinutes != null ? `station-walk-duration ${walkDurationClass(walkMinutes)}` : null;
+  const fallbackDistanceLabel = hasWalkData ? null : formatDistance(station.distance);
 
   return (
     <div className="commute-station">
       <h4>
         {station.name}{" "}
-        {distanceLabel && <span className="station-distance">({distanceLabel})</span>}
-        {walkMinutes != null &&
+        {walkLabel &&
           (station.walk_maps_url ? (
             <a className={walkClass} href={station.walk_maps_url} target="_blank" rel="noreferrer">
-              {" "}
-              · {walkMinutes} min walk ↗
+              ({walkLabel}) ↗
             </a>
           ) : (
-            <span className={walkClass}> · {walkMinutes} min walk</span>
+            <span className={walkClass}>({walkLabel})</span>
           ))}
+        {fallbackDistanceLabel && <span className="station-distance">({fallbackDistanceLabel})</span>}
       </h4>
       {station.error && <p className="error">Couldn't load commute times for this station.</p>}
       {station.termini && (
