@@ -167,4 +167,60 @@ describe("Commute", () => {
     render(<Commute listingId={1} ready={true} />);
     await waitFor(() => expect(screen.getByText(/network down/)).toBeInTheDocument());
   });
+
+  function stationWithWalk(overrides) {
+    return {
+      name: "Clapham Junction",
+      crs: "CLJ",
+      distance: 0.4,
+      error: null,
+      termini: null,
+      walk_distance_meters: null,
+      walk_duration_seconds: null,
+      walk_maps_url: null,
+      ...overrides,
+    };
+  }
+
+  it("shows the computed walk distance/duration as a maps link, colored green for a short walk", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        stationWithWalk({
+          walk_distance_meters: 500,
+          walk_duration_seconds: 360,
+          walk_maps_url: "https://www.google.com/maps/dir/?api=1&travelmode=walking",
+        }),
+      ],
+    });
+    render(<Commute listingId={1} ready={true} />);
+
+    const link = await screen.findByRole("link", { name: /6 min walk/ });
+    expect(link).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&travelmode=walking");
+    expect(link).toHaveClass("station-walk-duration-good");
+    expect(screen.getByText("(0.31 mi)")).toBeInTheDocument();
+  });
+
+  it("colors a medium walk amber and a long walk red", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        stationWithWalk({ crs: "A", walk_duration_seconds: 15 * 60, walk_maps_url: "https://maps/a" }),
+        stationWithWalk({ crs: "B", name: "Woking", walk_duration_seconds: 25 * 60, walk_maps_url: "https://maps/b" }),
+      ],
+    });
+    render(<Commute listingId={1} ready={true} />);
+
+    const amber = await screen.findByRole("link", { name: /15 min walk/ });
+    expect(amber).toHaveClass("station-walk-duration-warn");
+    const red = screen.getByRole("link", { name: /25 min walk/ });
+    expect(red).toHaveClass("station-walk-duration-bad");
+  });
+
+  it("falls back to Rightmove's raw distance and plain text (no link) when no walk data is stored", async () => {
+    api.commute.mockResolvedValue({ stations: [stationWithWalk({})] });
+    render(<Commute listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText(/Clapham Junction/)).toBeInTheDocument());
+    expect(screen.getByText("(0.40 mi)")).toBeInTheDocument();
+    expect(screen.queryByText(/min walk/)).not.toBeInTheDocument();
+  });
 });

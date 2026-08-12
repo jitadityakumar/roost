@@ -103,6 +103,61 @@ def test_handle_rightmove_extract_raises_for_unknown_listing():
         handlers.handle_rightmove_extract(_job(listing_id=12345))
 
 
+def test_handle_rightmove_extract_stores_walk_distances_for_resolved_stations(listing_id, monkeypatch):
+    from app.commute import walk_store
+
+    monkeypatch.setattr(
+        handlers,
+        "resolve_crs_codes",
+        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
+    )
+    monkeypatch.setattr(handlers, "latlong_for_crs", lambda crs: (51.4695, -0.1706))
+    monkeypatch.setattr(
+        handlers, "compute_walk_distance", lambda *a: {"distance_meters": 500, "duration_seconds": 360}
+    )
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    assert walk_store.get_walk_distances(listing_id) == {
+        "CLJ": {"distance_meters": 500, "duration_seconds": 360}
+    }
+
+
+def test_handle_rightmove_extract_swallows_walking_api_failure(listing_id, monkeypatch):
+    from app.commute import walk_store
+    from app.commute.walking import WalkingApiError
+
+    monkeypatch.setattr(
+        handlers,
+        "resolve_crs_codes",
+        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
+    )
+    monkeypatch.setattr(handlers, "latlong_for_crs", lambda crs: (51.4695, -0.1706))
+
+    def boom(*a):
+        raise WalkingApiError("no key")
+
+    monkeypatch.setattr(handlers, "compute_walk_distance", boom)
+
+    handlers.handle_rightmove_extract(_job(listing_id))  # should not raise
+
+    assert store.get_listing(listing_id)["extraction_status"] == "done"
+    assert walk_store.get_walk_distances(listing_id) == {}
+
+
+def test_handle_rightmove_extract_skips_walk_distances_without_listing_latlon(
+    listing_id, sample_property_data, monkeypatch
+):
+    from app.commute import walk_store
+
+    sample_property_data.pop("location", None)
+    monkeypatch.setattr(handlers, "resolve_page_model", lambda html: {"propertyData": sample_property_data})
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    assert walk_store.get_walk_distances(listing_id) == {}
+
+
 def test_handle_media_download_uses_latest_snapshot(listing_id, media_dir):
     store.insert_snapshot(listing_id, 500000, None, {"id": "raw-id-from-rightmove"})
 

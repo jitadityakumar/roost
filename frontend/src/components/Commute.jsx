@@ -79,14 +79,38 @@ function TerminusList({ label, group }) {
   );
 }
 
+const METERS_PER_MILE = 1609.344;
+
+// Same good/warn/bad tier convention as the crime-baseline badges
+// (badge-crime-good/warn/bad in index.css).
+function walkDurationClass(minutes) {
+  if (minutes <= 10) return "station-walk-duration-good";
+  if (minutes <= 20) return "station-walk-duration-warn";
+  return "station-walk-duration-bad";
+}
+
 function StationCommute({ station }) {
+  const walkDistanceMiles =
+    station.walk_distance_meters != null ? station.walk_distance_meters / METERS_PER_MILE : null;
+  const distanceLabel = formatDistance(walkDistanceMiles ?? station.distance);
+  const walkMinutes =
+    station.walk_duration_seconds != null ? Math.round(station.walk_duration_seconds / 60) : null;
+  const walkClass = walkMinutes != null ? `station-walk-duration ${walkDurationClass(walkMinutes)}` : null;
+
   return (
     <div className="commute-station">
       <h4>
         {station.name}{" "}
-        {formatDistance(station.distance) && (
-          <span className="station-distance">({formatDistance(station.distance)})</span>
-        )}
+        {distanceLabel && <span className="station-distance">({distanceLabel})</span>}
+        {walkMinutes != null &&
+          (station.walk_maps_url ? (
+            <a className={walkClass} href={station.walk_maps_url} target="_blank" rel="noreferrer">
+              {" "}
+              · {walkMinutes} min walk ↗
+            </a>
+          ) : (
+            <span className={walkClass}> · {walkMinutes} min walk</span>
+          ))}
       </h4>
       {station.error && <p className="error">Couldn't load commute times for this station.</p>}
       {station.termini && (
