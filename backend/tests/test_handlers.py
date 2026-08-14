@@ -10,8 +10,13 @@ def listing_id(client):  # client pulls in isolated_db + mock_rightmove_network
     return 1
 
 
-def _job(listing_id, job_id=1, skip_llm_chain=False):
-    return {"id": job_id, "listing_id": listing_id, "skip_llm_chain": int(skip_llm_chain)}
+def _job(listing_id, job_id=1, skip_llm_chain=False, skip_maps=False):
+    return {
+        "id": job_id,
+        "listing_id": listing_id,
+        "skip_llm_chain": int(skip_llm_chain),
+        "skip_maps": int(skip_maps),
+    }
 
 
 def test_handle_rightmove_extract_maps_fields(listing_id):
@@ -37,6 +42,32 @@ def test_handle_rightmove_extract_maps_fields(listing_id):
     assert listing["latitude"] == 51.5074
     assert listing["longitude"] == -0.1278
     assert listing["pin_type"] == "APPROXIMATE_POINT"
+
+
+def test_handle_rightmove_extract_nulls_lease_years_for_freehold_zero(listing_id, sample_property_data, monkeypatch):
+    sample_property_data["tenure"] = {"tenureType": "FREEHOLD", "yearsRemainingOnLease": 0}
+    monkeypatch.setattr(handlers, "resolve_page_model", lambda html: {"propertyData": sample_property_data})
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    listing = store.get_listing(listing_id)
+    assert listing["tenure"] == "FREEHOLD"
+    assert listing["lease_years_remaining"] is None
+    assert listing["lease_years_remaining_source"] is None
+
+
+def test_handle_rightmove_extract_keeps_lease_years_for_non_freehold_zero(
+    listing_id, sample_property_data, monkeypatch
+):
+    sample_property_data["tenure"] = {"tenureType": "LEASEHOLD", "yearsRemainingOnLease": 0}
+    monkeypatch.setattr(handlers, "resolve_page_model", lambda html: {"propertyData": sample_property_data})
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    listing = store.get_listing(listing_id)
+    assert listing["tenure"] == "LEASEHOLD"
+    assert listing["lease_years_remaining"] == 0
+    assert listing["lease_years_remaining_source"] == "rightmove"
 
 
 def test_handle_rightmove_extract_handles_missing_added_on(listing_id, sample_property_data, monkeypatch):
@@ -156,6 +187,56 @@ def test_handle_rightmove_extract_skips_walk_distances_without_listing_latlon(
     handlers.handle_rightmove_extract(_job(listing_id))
 
     assert walk_store.get_walk_distances(listing_id) == {}
+
+
+def test_handle_rightmove_extract_skip_maps_does_not_call_walking_api(listing_id, monkeypatch):
+    from app.commute import walk_store
+
+    monkeypatch.setattr(
+        handlers,
+        "resolve_crs_codes",
+        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
+    )
+    monkeypatch.setattr(handlers, "latlong_for_crs", lambda crs: (51.4695, -0.1706))
+
+    def boom(*a):
+        raise AssertionError("compute_walk_distance should not be called when skip_maps is set")
+
+    monkeypatch.setattr(handlers, "compute_walk_distance", boom)
+
+    handlers.handle_rightmove_extract(_job(listing_id, skip_maps=True))
+
+    assert store.get_listing(listing_id)["extraction_status"] == "done"
+    assert walk_store.get_walk_distances(listing_id) == {}
+
+
+def test_handle_rightmove_extract_skip_maps_leaves_existing_walk_distances_untouched(listing_id, monkeypatch):
+    from app.commute import walk_store
+
+    monkeypatch.setattr(
+        handlers,
+        "resolve_crs_codes",
+        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
+    )
+    monkeypatch.setattr(handlers, "latlong_for_crs", lambda crs: (51.4695, -0.1706))
+    monkeypatch.setattr(
+        handlers, "compute_walk_distance", lambda *a: {"distance_meters": 500, "duration_seconds": 360}
+    )
+    handlers.handle_rightmove_extract(_job(listing_id))
+    assert walk_store.get_walk_distances(listing_id) == {
+        "CLJ": {"distance_meters": 500, "duration_seconds": 360}
+    }
+
+    def boom(*a):
+        raise AssertionError("compute_walk_distance should not be called when skip_maps is set")
+
+    monkeypatch.setattr(handlers, "compute_walk_distance", boom)
+
+    handlers.handle_rightmove_extract(_job(listing_id, skip_maps=True))
+
+    assert walk_store.get_walk_distances(listing_id) == {
+        "CLJ": {"distance_meters": 500, "duration_seconds": 360}
+    }
 
 
 def test_handle_media_download_uses_latest_snapshot(listing_id, media_dir):

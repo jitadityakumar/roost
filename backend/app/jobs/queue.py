@@ -33,16 +33,17 @@ def enqueue_job(
     lane: str,
     depends_on_job_id: int | None = None,
     skip_llm_chain: bool = False,
+    skip_maps: bool = False,
 ) -> int:
     now = _now_iso()
     conn = get_connection()
     try:
         cur = conn.execute(
             """
-            INSERT INTO jobs (listing_id, job_type, lane, status, depends_on_job_id, skip_llm_chain, created_at, updated_at)
-            VALUES (?, ?, ?, 'queued', ?, ?, ?, ?)
+            INSERT INTO jobs (listing_id, job_type, lane, status, depends_on_job_id, skip_llm_chain, skip_maps, created_at, updated_at)
+            VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?)
             """,
-            (listing_id, job_type, lane, depends_on_job_id, int(skip_llm_chain), now, now),
+            (listing_id, job_type, lane, depends_on_job_id, int(skip_llm_chain), int(skip_maps), now, now),
         )
         conn.commit()
         return cur.lastrowid
