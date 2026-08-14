@@ -67,3 +67,15 @@ def test_station_search(client):
 def test_station_search_blank_query_returns_empty(client):
     resp = client.get("/api/destinations/stations/search", params={"q": ""})
     assert resp.json() == []
+
+
+def test_station_search_matches_by_crs_code(client):
+    resp = client.get("/api/destinations/stations/search", params={"q": "pad"})
+    results = resp.json()
+    assert results[0]["crs"] == "PAD"
+
+
+def test_station_search_matches_crs_case_insensitively(client):
+    resp = client.get("/api/destinations/stations/search", params={"q": "PAD"})
+    results = resp.json()
+    assert results[0]["crs"] == "PAD"

@@ -47,12 +47,38 @@ describe("FrequentDestinations", () => {
     render(<FrequentDestinations listingId={1} ready={true} />);
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
-    expect(screen.getByText("24 min")).toBeInTheDocument();
+    expect(screen.getByText("24m")).toBeInTheDocument();
     expect(screen.getByText(/direct · South Western Railway · via Woking \(WOK\)/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View on Train Journey Planner/ })).toHaveAttribute(
       "href",
       "http://planner.example/results?from_=WOK&to=PAD"
     );
+  });
+
+  it("formats durations over an hour as 1h21m", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Airport",
+        day_of_week: 5,
+        day_label: "Saturday",
+        time: "06:00",
+        station_name: "Gatwick Airport",
+        resolved: true,
+        duration_minutes: 81,
+        kind: "direct",
+        num_changes: 0,
+        operator: "Southern",
+        origin_crs: "WOK",
+        origin_name: "Woking",
+        departure_time: "06:10:00",
+        arrival_time: "07:31:00",
+        planner_url: null,
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText("1h21m")).toBeInTheDocument());
   });
 
   it("renders an unresolved destination with a manual-search fallback link", async () => {

@@ -40,6 +40,8 @@ def test_get_destinations_shows_unresolved_when_no_stored_journey(client, listin
     assert body[0]["resolved"] is False
     assert body[0]["name"] == "Office"
     assert body[0]["day_label"] == "Monday"
+    assert body[0]["station_name"] == "Paddington"
+    assert body[0]["crs"] == "PAD"
 
 
 def test_refresh_destinations_computes_and_returns_result(client, listing_id, monkeypatch):

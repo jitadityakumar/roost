@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
+// Mirrors train-journey-planner's own app/main.py::format_duration -- "45m"
+// under an hour, "2h" for an exact number of hours, "1h6m" otherwise --
+// rather than a bare minute count, matching the deep-linked planner_url's
+// own results page.
+function formatDuration(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h${minutes}m`;
+}
+
 function DestinationRow({ destination }) {
   if (!destination.resolved) {
     return (
@@ -37,7 +49,7 @@ function DestinationRow({ destination }) {
         <span className="destination-name">
           {destination.name} <span className="destination-station">· {destination.station_name}</span>
         </span>
-        <span className="destination-duration good">{destination.duration_minutes} min</span>
+        <span className="destination-duration good">{formatDuration(destination.duration_minutes)}</span>
       </div>
       <div className="destination-line2">
         <span className="destination-target">

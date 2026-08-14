@@ -16,6 +16,8 @@ def _serialize(destination: dict, journeys: dict) -> dict:
     out = {
         "destination_id": destination["id"],
         "name": destination["name"],
+        "station_name": destination["station_name"],
+        "crs": destination["crs"],
         "day_of_week": destination["day_of_week"],
         "day_label": _DAY_LABELS[destination["day_of_week"]],
         "time": destination["time"],
