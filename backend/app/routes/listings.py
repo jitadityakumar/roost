@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import MEDIA_DIR
+from app.commute.stations import crs_for_name
+from app.commute.walk_store import get_walk_distances
 from app.jobs import llm_enqueue, queue
 from app.jobs.pipeline_status import derive_pipeline_status
 from app.listings import store, url_utils
@@ -14,10 +16,30 @@ from app.standards.evaluate import evaluate_listing
 router = APIRouter(prefix="/api/listings", tags=["listings"])
 
 
+def _attach_walk_data(listing_id: int, out: dict) -> None:
+    """Attach stored walk_distance_meters/walk_duration_seconds onto each
+    nearest_stations_raw entry (unfiltered top-3, straight-line distance) so
+    NearestStations can show real walk figures alongside it for whichever
+    entries we happen to have computed walk data for -- see context.md's
+    "Station walking distance" section. Only single-listing responses carry
+    this (not the list endpoint), same "keep it off the hot path" precedent
+    as the standards-rules evaluation above."""
+    nearest = out.get("nearest_stations_raw")
+    if not isinstance(nearest, list) or not nearest:
+        return
+    walk_distances = get_walk_distances(listing_id)
+    for entry in nearest:
+        crs = crs_for_name(entry.get("name", "")) if "NATIONAL_TRAIN" in (entry.get("types") or []) else None
+        walk = walk_distances.get(crs) if crs else None
+        entry["walk_distance_meters"] = walk["distance_meters"] if walk else None
+        entry["walk_duration_seconds"] = walk["duration_seconds"] if walk else None
+
+
 def _serialize_with_pipeline_status(listing: dict) -> dict:
     statuses = queue.latest_job_statuses_for_listings([listing["id"]])
     out = serialize_listing(listing)
     out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
+    _attach_walk_data(listing["id"], out)
     return out
 
 

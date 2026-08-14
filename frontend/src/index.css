@@ -472,6 +472,13 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   line-height: 1;
 }
 .station-name { flex: 1; }
+.station-distance-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  flex-shrink: 0;
+}
 .station-distance { color: var(--muted); font-size: 0.9rem; }
 .station-walk-duration { font-size: 0.9rem; font-weight: 600; }
 .station-walk-duration-good { color: var(--accent); }
