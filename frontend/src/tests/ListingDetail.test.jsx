@@ -1,12 +1,14 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import ListingDetail from "../components/ListingDetail.jsx";
 import { api } from "../api.js";
 
 vi.mock("../api.js", () => ({
   api: {
     get: vi.fn(),
+    patch: vi.fn(),
     jobs: vi.fn().mockResolvedValue([]),
     mediaList: vi.fn().mockResolvedValue({ photos: [], floorplans: [], epc: [] }),
     mediaUrl: (id, category, filename) => `/media/${id}/${category}/${filename}`,
@@ -29,11 +31,24 @@ function baseListing(overrides = {}) {
   };
 }
 
-function renderDetail() {
+function renderDetail(initialEntry = "/listings/1") {
   return render(
-    <MemoryRouter initialEntries={["/listings/1"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/listings/:id" element={<ListingDetail />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
+function renderDetailWithDestinations(initialEntry) {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route path="/listings/:id" element={<ListingDetail />} />
+        <Route path="/triage" element={<p>Triage list</p>} />
+        <Route path="/approved" element={<p>Approved list</p>} />
+        <Route path="/rejected" element={<p>Rejected list</p>} />
       </Routes>
     </MemoryRouter>
   );
@@ -79,5 +94,33 @@ describe("ListingDetail Google Maps link", () => {
 
     await waitFor(() => expect(screen.getByText(/View on Rightmove/)).toBeInTheDocument());
     expect(screen.queryByText(/Open in Google Maps/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ListingDetail back button", () => {
+  it("labels and navigates to the origin list from router state, even after approving", async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(baseListing({ user_status: "triage" }));
+    api.patch.mockResolvedValue(baseListing({ user_status: "approved" }));
+
+    renderDetailWithDestinations({ pathname: "/listings/1", state: { from: "triage" } });
+
+    const backBtn = await screen.findByRole("button", { name: "← Back to Triage" });
+    await user.click(await screen.findByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith("1", { user_status: "approved" }));
+
+    // Origin list is remembered even though the listing's own status just changed.
+    expect(screen.getByRole("button", { name: "← Back to Triage" })).toBeInTheDocument();
+    await user.click(backBtn);
+    expect(screen.getByText("Triage list")).toBeInTheDocument();
+  });
+
+  it("falls back to the listing's current status when there is no origin state", async () => {
+    api.get.mockResolvedValue(baseListing({ user_status: "approved" }));
+
+    renderDetailWithDestinations("/listings/1");
+
+    const backBtn = await screen.findByRole("button", { name: "← Back to Approved" });
+    expect(backBtn).toBeInTheDocument();
   });
 });

@@ -10,6 +10,7 @@ import Commute from "./Commute.jsx";
 import Mortgage from "./Mortgage.jsx";
 import Crime from "./Crime.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
+import { USER_STATUS_LABEL } from "../userStatus.js";
 
 function formatBroadband(listing) {
   if (!listing.broadband_top_speed) return "—";
@@ -36,12 +37,6 @@ function latestJobsByType(jobs) {
   for (const j of jobs) latest.set(j.job_type, j);
   return Array.from(latest.values());
 }
-
-const USER_STATUS_LABEL = {
-  triage: "Triage",
-  approved: "Approved",
-  rejected: "Rejected",
-};
 
 const FIELDS = [
   { field: "price_gbp", label: "Price", editable: true, currency: true },

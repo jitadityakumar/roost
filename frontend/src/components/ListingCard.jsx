@@ -2,12 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
-
-const USER_STATUS_LABEL = {
-  triage: "Triage",
-  approved: "Approved",
-  rejected: "Rejected",
-};
+import { USER_STATUS_LABEL } from "../userStatus.js";
 
 // Extraction flips to "done" before the media_download job (which writes
 // the photo files) has necessarily finished, so the photo list can come

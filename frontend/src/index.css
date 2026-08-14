@@ -171,7 +171,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .added-list { list-style: none; padding: 0; margin-top: 1.5rem; }
 .added-list li { padding: 0.4rem 0; }
 
-.back-btn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; margin-bottom: 1rem; }
+.back-btn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; margin-bottom: 1rem; font: inherit; }
 
 .detail-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
 .detail-header h2 { margin: 0; }

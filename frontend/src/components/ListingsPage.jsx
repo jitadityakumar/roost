@@ -2,12 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import ListingCard from "./ListingCard.jsx";
-
-const TITLES = {
-  triage: "Triage",
-  approved: "Approved",
-  rejected: "Rejected",
-};
+import { USER_STATUS_LABEL } from "../userStatus.js";
 
 const EMPTY_STATE = {
   triage: "Nothing in triage — add a property to get started.",
@@ -57,7 +52,7 @@ export default function ListingsPage({ status }) {
       <Link className="back-btn" to="/">
         ← Back to Home
       </Link>
-      <h2>{TITLES[status] || status}</h2>
+      <h2>{USER_STATUS_LABEL[status] || status}</h2>
 
       <div className="controls">
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
