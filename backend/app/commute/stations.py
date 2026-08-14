@@ -68,11 +68,12 @@ def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
     for entry in nearest_stations_raw:
         if "NATIONAL_TRAIN" not in (entry.get("types") or []):
             continue
-        crs = crs_for_name(entry.get("name", ""))
+        name = strip_station_suffix(entry.get("name", ""))
+        crs = _NAME_TO_CRS.get(name)
         if not crs or crs in seen_crs:
             continue
         seen_crs.add(crs)
-        resolved.append({"name": strip_station_suffix(entry.get("name", "")), "crs": crs, "distance": entry.get("distance")})
+        resolved.append({"name": name, "crs": crs, "distance": entry.get("distance")})
 
     if not any(r["distance"] is not None for r in resolved):
         return resolved

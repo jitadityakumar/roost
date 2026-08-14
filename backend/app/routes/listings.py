@@ -21,9 +21,11 @@ def _attach_walk_data(listing_id: int, out: dict) -> None:
     nearest_stations_raw entry (unfiltered top-3, straight-line distance) so
     NearestStations can show real walk figures alongside it for whichever
     entries we happen to have computed walk data for -- see context.md's
-    "Station walking distance" section. Only single-listing responses carry
-    this (not the list endpoint), same "keep it off the hot path" precedent
-    as the standards-rules evaluation above."""
+    "Station walking distance" section. Runs on every single-listing
+    response (`_serialize_with_pipeline_status`, used by GET/POST/PATCH on
+    one listing), never on the list endpoint (`_serialize_many_with_
+    pipeline_status`) -- same "keep it off the hot path" precedent as the
+    standards-rules evaluation above."""
     nearest = out.get("nearest_stations_raw")
     if not isinstance(nearest, list) or not nearest:
         return

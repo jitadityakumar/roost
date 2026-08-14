@@ -53,7 +53,11 @@ export default function NearestStations({ stations }) {
                   {formatWalkMeters(s.walk_distance_meters)} · {walkMinutes} min walk
                 </span>
               )}
-              <span className="station-distance" title="As the crow flies (Rightmove data)">
+              <span
+                className="station-distance"
+                title="As the crow flies (Rightmove data)"
+                aria-label={`As the crow flies: ${formatDistance(s.distance, s.unit)}`}
+              >
                 {formatDistance(s.distance, s.unit)}
               </span>
             </span>

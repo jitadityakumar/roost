@@ -211,6 +211,23 @@ def test_get_commute_excludes_station_beyond_half_mile_fallback_with_no_walk_dat
     assert resp.json()["stations"] == []
 
 
+def test_get_commute_includes_station_at_exactly_half_mile_fallback_boundary(client, monkeypatch):
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    store.create_stub_listing(4, "https://www.rightmove.co.uk/properties/4")
+    store.apply_extracted_fields(
+        4,
+        {
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Guildford Station", "distance": 0.5, "types": ["NATIONAL_TRAIN"]}]
+            )
+        },
+    )
+    resp = client.get("/api/listings/4/commute")
+    assert [s["crs"] for s in resp.json()["stations"]] == ["GLD"]
+
+
 # --- walking API client ----------------------------------------------------
 
 def test_compute_walk_distance_raises_clearly_when_key_unset(monkeypatch):
