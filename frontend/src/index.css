@@ -568,6 +568,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .jobs-table th, .jobs-table td { text-align: left; padding: 0.4rem; border-bottom: 1px solid var(--border); }
 
 /* Frequent destinations -- admin form */
+.badge-station { background: var(--accent); color: white; }
 .status-toggle-btn.ghost {
   background: none;
   color: var(--accent);

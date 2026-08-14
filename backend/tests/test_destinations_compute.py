@@ -126,6 +126,15 @@ def test_compute_for_listing_prefers_upcoming_over_past_journeys(monkeypatch):
     assert journeys[d["id"]]["duration_minutes"] == 24
 
 
+def test_compute_for_listing_stores_nothing_when_every_journey_is_past(monkeypatch):
+    store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [_journey(10, is_past=True)]})
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    assert journey_store.get_journeys(1) == {}
+
+
 def test_compute_for_listing_no_candidate_stations_stores_nothing(monkeypatch):
     store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
     monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: pytest.fail("should not be called"))

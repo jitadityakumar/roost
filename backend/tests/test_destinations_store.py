@@ -47,6 +47,14 @@ def test_update_unknown_destination_returns_none():
     assert store.update_destination(999, enabled=False) is None
 
 
+def test_update_destination_normalizes_crs_name_station_name():
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+    updated = store.update_destination(d["id"], crs=" pad ", name="  Work  ", station_name="  Paddington  ")
+    assert updated["crs"] == "PAD"
+    assert updated["name"] == "Work"
+    assert updated["station_name"] == "Paddington"
+
+
 def test_delete_destination():
     d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
     store.delete_destination(d["id"])

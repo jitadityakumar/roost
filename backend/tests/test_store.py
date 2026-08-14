@@ -88,3 +88,32 @@ def test_delete_listing_cascades(listing_id):
 
     assert store.get_listing(listing_id) is None
     assert queue.get_jobs_for_listing(listing_id) == []
+
+
+def test_delete_listing_cascades_station_walk_distances_and_destination_journeys(listing_id):
+    from app.commute import walk_store
+    from app.destinations import journey_store as destination_journey_store
+    from app.destinations import store as destinations_store
+
+    walk_store.replace_walk_distances(listing_id, [{"crs": "WOK", "distance_meters": 400, "duration_seconds": 300}])
+    destination = destinations_store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+    destination_journey_store.replace_single(
+        listing_id,
+        destination["id"],
+        {
+            "duration_minutes": 24,
+            "kind": "direct",
+            "num_changes": 0,
+            "operator": "South Western Railway",
+            "origin_crs": "WOK",
+            "origin_name": "Woking",
+            "departure_time": "08:40:00",
+            "arrival_time": "09:04:00",
+        },
+    )
+
+    store.delete_listing(listing_id)
+
+    assert store.get_listing(listing_id) is None
+    assert walk_store.get_walk_distances(listing_id) == {}
+    assert destination_journey_store.get_journeys(listing_id) == {}

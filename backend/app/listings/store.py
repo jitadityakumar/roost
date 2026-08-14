@@ -260,6 +260,14 @@ def delete_listing(listing_id: int) -> None:
         conn.execute("DELETE FROM mortgage_scenarios WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM listing_snapshots WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM jobs WHERE listing_id = ?", (listing_id,))
+        # station_walk_distances (0011) and destination_journeys (0014) both
+        # have a NOT NULL, non-cascading FK on listings(id) -- with
+        # PRAGMA foreign_keys=ON this delete would otherwise raise
+        # IntegrityError for any listing that has ever had a walk distance
+        # or frequent-destination journey computed (i.e. most listings,
+        # since both now run automatically at scrape time).
+        conn.execute("DELETE FROM station_walk_distances WHERE listing_id = ?", (listing_id,))
+        conn.execute("DELETE FROM destination_journeys WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM listings WHERE id = ?", (listing_id,))
         conn.commit()
     finally:

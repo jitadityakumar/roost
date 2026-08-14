@@ -1,26 +1,33 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.commute.stations import search_stations
 from app.destinations import compute, store
 
 router = APIRouter(prefix="/api/destinations", tags=["destinations"])
 
+# Same HH:MM pattern as store._TIME_RE -- enforced here too so a malformed
+# time produces FastAPI's own clean 422 instead of falling through to
+# store.py's ValueError path (both end up 422, but keeping the shape and
+# bounds check at the API boundary means a request that's merely
+# out-of-range never depends on getting as far as the store layer).
+_TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
+
 
 class CreateDestinationRequest(BaseModel):
     name: str
     crs: str
     station_name: str
-    day_of_week: int
-    time: str
+    day_of_week: int = Field(ge=0, le=6)
+    time: str = Field(pattern=_TIME_PATTERN)
 
 
 class PatchDestinationRequest(BaseModel):
     name: str | None = None
     crs: str | None = None
     station_name: str | None = None
-    day_of_week: int | None = None
-    time: str | None = None
+    day_of_week: int | None = Field(default=None, ge=0, le=6)
+    time: str | None = Field(default=None, pattern=_TIME_PATTERN)
     enabled: bool | None = None
 
 

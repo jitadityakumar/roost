@@ -24,12 +24,16 @@ recomputing just that one destination -- see that function's docstring.
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import time
 
 from app.commute.stations import resolve_crs_codes
 from app.destinations import journey_store, store
 from app.destinations.client import TrainPlannerApiError, fetch_journeys
 from app.listings import store as listings_store
 from app.listings.serialize import serialize_listing
+
+logger = logging.getLogger(__name__)
 
 
 def next_occurrence(day_of_week: int, time_str: str, now: dt.datetime | None = None) -> dt.datetime:
@@ -51,8 +55,13 @@ def _num_changes(journey: dict) -> int:
 
 
 def _best_journey(journeys: list[dict]) -> dict | None:
-    upcoming = [j for j in journeys if not j.get("is_past")] or journeys
+    upcoming = [j for j in journeys if not j.get("is_past")]
     if not upcoming:
+        # Every returned journey has already departed -- since the query is
+        # always for a future next_occurrence(), this should be rare (only
+        # near the boundary of "today, right around the target time"). Treat
+        # it the same as "no route found" rather than storing an
+        # already-departed train as the answer.
         return None
     return min(upcoming, key=lambda j: (j["duration_minutes"], _num_changes(j)))
 
@@ -142,7 +151,9 @@ def compute_for_destination(destination_id: int) -> None:
     if destination is None:
         return
 
-    for listing in listings_store.list_listings():
+    started = time.monotonic()
+    listings = listings_store.list_listings()
+    for listing in listings:
         listing_id = listing["id"]
         if not destination["enabled"]:
             journey_store.delete_for_destination(listing_id, destination_id)
@@ -151,3 +162,11 @@ def compute_for_destination(destination_id: int) -> None:
         origins = resolve_crs_codes(serialized.get("nearest_stations_raw") or [])
         row = _best_across_origins(destination, origins) if origins else None
         journey_store.replace_single(listing_id, destination_id, row)
+
+    elapsed = time.monotonic() - started
+    logger.info(
+        "compute_for_destination(%s): backfilled %d listings in %.1fs",
+        destination_id,
+        len(listings),
+        elapsed,
+    )

@@ -69,8 +69,14 @@ def update_destination(destination_id: int, **changes) -> dict | None:
             _validate_day_of_week(merged["day_of_week"])
         if "time" in changes:
             _validate_time(merged["time"])
-        if "name" in changes and not str(merged["name"]).strip():
-            raise ValueError("name is required")
+        if "name" in changes:
+            if not str(merged["name"]).strip():
+                raise ValueError("name is required")
+            merged["name"] = str(merged["name"]).strip()
+        if "crs" in changes:
+            merged["crs"] = str(merged["crs"]).strip().upper()
+        if "station_name" in changes:
+            merged["station_name"] = str(merged["station_name"]).strip()
 
         to_write = {k: merged[k] for k in ("name", "crs", "station_name", "day_of_week", "time", "enabled")}
         set_clause = ", ".join(f"{k} = ?" for k in to_write)

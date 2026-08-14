@@ -65,10 +65,21 @@ function DestinationForm({ onAdded, onCancel }) {
       setResults([]);
       return;
     }
+    let cancelled = false;
     const timer = setTimeout(() => {
-      api.destinations.searchStations(query).then(setResults).catch(() => setResults([]));
+      api.destinations
+        .searchStations(query)
+        .then((r) => {
+          if (!cancelled) setResults(r);
+        })
+        .catch(() => {
+          if (!cancelled) setResults([]);
+        });
     }, 200);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [query]);
 
   async function handleSubmit(e) {

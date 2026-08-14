@@ -16,6 +16,14 @@ def test_create_destination_rejects_invalid_time(client):
     assert resp.status_code == 422
 
 
+def test_create_destination_rejects_out_of_range_day_of_week(client):
+    resp = client.post(
+        "/api/destinations",
+        json={"name": "Office", "crs": "PAD", "station_name": "Paddington", "day_of_week": 7, "time": "08:30"},
+    )
+    assert resp.status_code == 422
+
+
 def test_list_destinations(client):
     client.post(
         "/api/destinations",
