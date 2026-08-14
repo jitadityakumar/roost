@@ -40,6 +40,154 @@ function describeRule(rule) {
 
 const MAX_BASELINES = 3;
 
+const DAY_OPTIONS = [
+  { value: 0, label: "Monday" },
+  { value: 1, label: "Tuesday" },
+  { value: 2, label: "Wednesday" },
+  { value: 3, label: "Thursday" },
+  { value: 4, label: "Friday" },
+  { value: 5, label: "Saturday" },
+  { value: 6, label: "Sunday" },
+];
+
+function DestinationForm({ onAdded, onCancel }) {
+  const [name, setName] = useState("");
+  const [dayOfWeek, setDayOfWeek] = useState(0);
+  const [time, setTime] = useState("08:30");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [station, setStation] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api.destinations.searchStations(query).then(setResults).catch(() => setResults([]));
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError(null);
+    if (!name.trim() || !station) {
+      setError("Name and station are both required.");
+      return;
+    }
+    try {
+      await api.destinations.create({
+        name: name.trim(),
+        crs: station.crs,
+        station_name: station.name,
+        day_of_week: dayOfWeek,
+        time,
+      });
+      onAdded();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <form className="admin-add-rule destination-form" onSubmit={handleSubmit}>
+      {error && <p className="error">{error}</p>}
+      <div>
+        <label className="form-label" htmlFor="dest-name">Name</label>
+        <input
+          id="dest-name"
+          type="text"
+          placeholder="e.g. Office, Mum &amp; Dad's"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+
+      <div>
+        <span className="form-label">Type</span>
+        <div className="radio-group" role="radiogroup" aria-label="Destination type">
+          <label className="radio-option">
+            <input type="radio" name="dest-type" value="station" checked readOnly />
+            Station
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <label className="form-label" htmlFor="station-search">Nearest station</label>
+        {station ? (
+          <div className="station-chip">
+            <span>
+              <span className="station-chip-name">{station.name}</span>
+              <span className="station-chip-crs">{station.crs}</span>
+            </span>
+            <button type="button" onClick={() => setStation(null)} aria-label="Clear station">
+              ✕
+            </button>
+          </div>
+        ) : (
+          <div className="station-search-wrap">
+            <input
+              id="station-search"
+              type="text"
+              placeholder="Search station name…"
+              autoComplete="off"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {results.length > 0 && (
+              <div className="station-search-results">
+                {results.map((s) => (
+                  <div
+                    key={s.crs}
+                    className="station-search-result"
+                    onClick={() => {
+                      setStation(s);
+                      setQuery("");
+                      setResults([]);
+                    }}
+                  >
+                    <span>{s.name}</span>
+                    <span className="station-search-result-crs">{s.crs}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="form-row">
+        <div>
+          <label className="form-label" htmlFor="dest-day">Day</label>
+          <select id="dest-day" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>
+            {DAY_OPTIONS.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="form-label" htmlFor="dest-time">Time</label>
+          <input id="dest-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="form-actions">
+        <button type="button" className="status-toggle-btn secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="status-toggle-btn" disabled={!name.trim() || !station}>
+          Add destination
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function AdminPage() {
   const navigate = useNavigate();
   const [rules, setRules] = useState([]);
@@ -53,6 +201,10 @@ export default function AdminPage() {
   const [baselineError, setBaselineError] = useState(null);
   const [baselineLabel, setBaselineLabel] = useState("");
   const [baselinePostcode, setBaselinePostcode] = useState("");
+
+  const [destinations, setDestinations] = useState([]);
+  const [destinationError, setDestinationError] = useState(null);
+  const [showDestinationForm, setShowDestinationForm] = useState(false);
 
   const kind = fieldType(field);
   const operators = operatorsFor(kind);
@@ -73,10 +225,29 @@ export default function AdminPage() {
     }
   }
 
+  async function loadDestinations() {
+    try {
+      setDestinations(await api.destinations.list());
+    } catch (err) {
+      setDestinationError(err.message);
+    }
+  }
+
   useEffect(() => {
     load();
     loadBaselines();
+    loadDestinations();
   }, []);
+
+  async function handleDestinationAdded() {
+    setShowDestinationForm(false);
+    await loadDestinations();
+  }
+
+  async function handleDeleteDestination(destination) {
+    await api.destinations.remove(destination.id);
+    await loadDestinations();
+  }
 
   function handleFieldChange(nextField) {
     setField(nextField);
@@ -265,6 +436,52 @@ export default function AdminPage() {
             Add baseline
           </button>
         </form>
+      )}
+
+      <h2>Frequent destinations</h2>
+      <p className="hint">
+        Places you travel to often (office, family, an airport terminal). Roost computes the
+        best train journey from every station near a listing to each destination's day/time,
+        once, when the listing is added — recompute manually from the listing detail page.
+      </p>
+
+      {destinationError && <p className="error">{destinationError}</p>}
+
+      {destinations.length === 0 ? (
+        <p className="empty-state">No destinations yet.</p>
+      ) : (
+        <ul className="admin-rules">
+          {destinations.map((destination) => (
+            <li key={destination.id} className="admin-rule-row">
+              <span className="admin-rule-text">
+                <div className="admin-rule-title">{destination.name}</div>
+                <div className="admin-rule-sub">
+                  <span className="badge badge-station">Station</span>
+                  {DAY_OPTIONS[destination.day_of_week].label} · {destination.time} · nearest station{" "}
+                  {destination.station_name} ({destination.crs})
+                </div>
+              </span>
+              <span className="admin-rule-actions">
+                <button
+                  className="icon-btn danger"
+                  onClick={() => handleDeleteDestination(destination)}
+                  title="Delete"
+                  aria-label="Delete destination"
+                >
+                  ✕
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {showDestinationForm ? (
+        <DestinationForm onAdded={handleDestinationAdded} onCancel={() => setShowDestinationForm(false)} />
+      ) : (
+        <button className="status-toggle-btn ghost" type="button" onClick={() => setShowDestinationForm(true)}>
+          + New destination
+        </button>
       )}
     </div>
   );

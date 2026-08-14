@@ -52,6 +52,26 @@ def strip_station_suffix(name: str) -> str:
     return _SUFFIX_RE.sub("", name)
 
 
+def search_stations(query: str, limit: int = 8) -> list[dict]:
+    """Case-insensitive substring match against every National Rail station
+    name in stations.csv, for the frequent-destinations admin's station
+    typeahead (issue #28) -- reuses the same dataset resolve_crs_codes()
+    already loads rather than depending on a network call to a separate
+    service. Matches on the raw display name (not the punctuation-
+    normalized lookup key), so results read naturally in the UI."""
+    q = query.strip().lower()
+    if not q:
+        return []
+    with open(STATIONS_CSV, newline="", encoding="utf-8") as f:
+        matches = [
+            {"name": row["stationName"], "crs": row["crsCode"]}
+            for row in csv.DictReader(f)
+            if q in row["stationName"].lower()
+        ]
+    matches.sort(key=lambda s: (not s["name"].lower().startswith(q), s["name"]))
+    return matches[:limit]
+
+
 def crs_for_name(name: str) -> str | None:
     """Resolve a single Rightmove station name to a CRS code, same
     suffix-stripping + punctuation-normalizing lookup resolve_crs_codes uses

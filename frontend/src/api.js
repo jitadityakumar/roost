@@ -1,6 +1,7 @@
 const BASE = "/api/listings";
 const STANDARDS_BASE = "/api/standards/rules";
 const CRIME_BASELINES_BASE = "/api/crime/baselines";
+const DESTINATIONS_BASE = "/api/destinations";
 
 async function requestFrom(base, path, options) {
   const res = await fetch(`${base}${path}`, {
@@ -45,4 +46,14 @@ export const api = {
       requestFrom(CRIME_BASELINES_BASE, "", { method: "POST", body: JSON.stringify(body) }),
     remove: (id) => requestFrom(CRIME_BASELINES_BASE, `/${id}`, { method: "DELETE" }),
   },
+
+  destinations: {
+    list: () => requestFrom(DESTINATIONS_BASE, ""),
+    create: (body) => requestFrom(DESTINATIONS_BASE, "", { method: "POST", body: JSON.stringify(body) }),
+    remove: (id) => requestFrom(DESTINATIONS_BASE, `/${id}`, { method: "DELETE" }),
+    searchStations: (q) => requestFrom(DESTINATIONS_BASE, `/stations/search?q=${encodeURIComponent(q)}`),
+  },
+
+  listingDestinations: (id) => request(`/${id}/destinations`),
+  refreshListingDestinations: (id) => request(`/${id}/destinations/refresh`, { method: "POST" }),
 };

@@ -39,10 +39,10 @@ docker run -p 8000:8000 -v $(pwd)/data:/data \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 `.env` (gitignored, not tracked in this repo) holds the host-specific
-`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, and
-`GOOGLE_MAPS_API_KEY` vars -- deliberately passed via `--env-file` rather
-than inline `-e`/python-dotenv, since inline flags leave the key visible in
-shell history / `ps aux`.
+`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `GOOGLE_MAPS_API_KEY`,
+and `ROOST_TRAIN_PLANNER_BASE` vars -- deliberately passed via `--env-file`
+rather than inline `-e`/python-dotenv, since inline flags leave the key
+visible in shell history / `ps aux`.
 
 There is no automated test suite yet — verification so far has been manual
 end-to-end runs against real Rightmove listings and a running Docker
@@ -193,6 +193,35 @@ failure (including an unset `GOOGLE_MAPS_API_KEY`) is caught and logged in
 `_compute_station_walk_distances`, not raised — the rightmove_extract job
 still succeeds, and `GET /api/listings/{id}/commute` falls back to
 Rightmove's raw straight-line `distance` for that station.
+
+**Frequent-destination journeys, computed once and persisted (issue #28) --
+same "compute at scrape time, never live" precedent as station walking
+distance above.** `app/destinations/` lets the admin define named
+destinations (`frequent_destinations`, migration `0013`) with a target
+day-of-week + time and the CRS code of the destination's own nearest
+station (resolved via a station-name typeahead, `GET
+/api/destinations/stations/search`, backed by the same `stations.csv`
+`app/commute/stations.py` already loads -- no extra network call). For each
+enabled destination, `app/destinations/compute.py` queries
+`train-journey-planner`'s `/api/journeys` (`app/destinations/client.py`,
+address required via `ROOST_TRAIN_PLANNER_BASE`, no in-repo default -- same
+reasoning as `ROOST_COMMUTE_API_BASE`) from every station
+`resolve_crs_codes()` surfaces for the listing to the destination's CRS, for
+the next upcoming occurrence of its day/time, and keeps the fastest
+(fewest-changes tiebreak) result across all candidate origins. This runs
+inline in `handle_rightmove_extract`, unconditionally (**not** gated by
+`skip_maps` -- that flag exists to dodge Google's *billed* Routes API,
+whereas train-journey-planner is local/free), and again on manual
+`POST /api/listings/{id}/destinations/refresh`. Results are stored in
+`destination_journeys` (migration `0014`, `app/destinations/journey_store.py`),
+rows deleted and reinserted wholesale per listing on each recompute. A
+destination with no route found in any candidate origin (unresolvable CRS,
+service down, or train-journey-planner genuinely has nothing) simply gets no
+stored row -- `GET /api/listings/{id}/destinations` reports that as
+`resolved: false`, which the frontend renders as "no route found" rather
+than an error. This is the train-first primary path from issue #28; a
+Google Maps fallback for destinations with no nearby national-rail station
+is tracked separately as issue #25, not built here.
 
 ## Working in this repo
 
