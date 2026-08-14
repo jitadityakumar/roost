@@ -77,6 +77,31 @@ def test_resolve_returns_everything_when_no_station_has_a_distance():
     assert {r["crs"] for r in resolved} == {"CLJ", "WOK"}
 
 
+def test_resolve_normalizes_periods_against_unpunctuated_csv_name():
+    # Rightmove sends "St. Helier Station"; stations.csv has "St Helier"
+    # (no period) -- real mismatch found live against listing 175007846.
+    stations = [{"name": "St. Helier Station", "distance": 0.45, "types": ["NATIONAL_TRAIN"]}]
+    resolved = resolve_crs_codes(stations)
+    assert [r["crs"] for r in resolved] == ["SIH"]
+
+
+def test_resolve_normalizes_curly_apostrophe():
+    stations = [{"name": "St James’ Park Station", "distance": 0.1, "types": ["NATIONAL_TRAIN"]}]
+    resolved = resolve_crs_codes(stations)
+    assert [r["crs"] for r in resolved] == ["SJP"]
+
+
+def test_resolve_does_not_collapse_whitespace_across_distinct_stations():
+    # "How Wood" (HWW) and "Howwood" (HOZ) are genuinely different stations
+    # -- normalization must not strip the space between "How" and "Wood".
+    stations = [
+        {"name": "How Wood Station", "distance": 0.1, "types": ["NATIONAL_TRAIN"]},
+        {"name": "Howwood Station", "distance": 0.2, "types": ["NATIONAL_TRAIN"]},
+    ]
+    resolved = resolve_crs_codes(stations)
+    assert {r["crs"] for r in resolved} == {"HWW", "HOZ"}
+
+
 # --- route ---------------------------------------------------------------
 
 @pytest.fixture
@@ -355,6 +380,12 @@ def test_crs_for_name_returns_none_for_unresolvable_name():
     from app.commute.stations import crs_for_name
 
     assert crs_for_name("Not A Real Station") is None
+
+
+def test_crs_for_name_normalizes_period():
+    from app.commute.stations import crs_for_name
+
+    assert crs_for_name("St. Helier Station") == "SIH"
 
 
 # --- nearest_stations_raw walk-data attachment (GET /api/listings/{id}) ----
