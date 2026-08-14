@@ -77,7 +77,16 @@ def handle_rightmove_extract(job: dict) -> None:
     }
 
     lease_years_remaining = extracted.get("lease_years_remaining")
-    if (extracted.get("tenure") or "").upper() == "FREEHOLD" and lease_years_remaining == 0:
+    is_freehold_zero = (extracted.get("tenure") or "").upper() == "FREEHOLD" and lease_years_remaining == 0
+    if is_freehold_zero and listing.get("lease_years_remaining_source") not in (None, "rightmove"):
+        # A non-rightmove source (the LLM lane) has already populated this
+        # field from a genuine lease mention in the description/key
+        # features -- leave it alone. Without this guard, a later re-scrape
+        # of the same still-freehold-0 listing would silently null it back
+        # out on every run, since Rightmove keeps sending 0 forever for a
+        # freehold property.
+        pass
+    elif is_freehold_zero:
         # Freehold listings shouldn't have a lease at all -- a 0 here is
         # someone filling out Rightmove's form without understanding that 0
         # and "not applicable" aren't the same thing, not a real "0 years
