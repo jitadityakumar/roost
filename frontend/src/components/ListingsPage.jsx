@@ -55,7 +55,7 @@ export default function ListingsPage({ status }) {
   return (
     <div className="dashboard">
       <Link className="back-btn" to="/">
-        ← Back
+        ← Back to Home
       </Link>
       <h2>{TITLES[status] || status}</h2>
 
@@ -74,7 +74,7 @@ export default function ListingsPage({ status }) {
       ) : (
         <div className="listing-grid">
           {sorted.map((l) => (
-            <ListingCard key={l.id} listing={l} />
+            <ListingCard key={l.id} listing={l} fromStatus={status} />
           ))}
         </div>
       )}
