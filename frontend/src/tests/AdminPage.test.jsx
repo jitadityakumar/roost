@@ -18,6 +18,12 @@ vi.mock("../api.js", () => ({
       create: vi.fn(),
       remove: vi.fn(),
     },
+    destinations: {
+      list: vi.fn(),
+      create: vi.fn(),
+      remove: vi.fn(),
+      searchStations: vi.fn(),
+    },
   },
 }));
 
@@ -32,6 +38,7 @@ function renderAdmin() {
 beforeEach(() => {
   vi.resetAllMocks();
   api.crimeBaselines.list.mockResolvedValue([]);
+  api.destinations.list.mockResolvedValue([]);
 });
 
 describe("AdminPage", () => {
@@ -180,5 +187,79 @@ describe("AdminPage", () => {
     renderAdmin();
     await waitFor(() => expect(screen.getByText("A — ZZ1 1AA")).toBeInTheDocument());
     expect(screen.queryByPlaceholderText("Postcode")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty state when there are no frequent destinations", async () => {
+    api.standards.list.mockResolvedValue([]);
+    renderAdmin();
+    await waitFor(() => expect(screen.getByText("No destinations yet.")).toBeInTheDocument());
+  });
+
+  it("lists existing frequent destinations", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.destinations.list.mockResolvedValue([
+      { id: 1, name: "Office", crs: "PAD", station_name: "Paddington", day_of_week: 0, time: "08:30", enabled: 1 },
+    ]);
+    renderAdmin();
+    await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
+    expect(screen.getByText(/Monday · 08:30 · nearest station Paddington \(PAD\)/)).toBeInTheDocument();
+  });
+
+  it("opens the new-destination form, searches a station, and submits", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.destinations.searchStations.mockResolvedValue([{ name: "Paddington", crs: "PAD" }]);
+    api.destinations.create.mockResolvedValue({ id: 1 });
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByText("No destinations yet.")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "+ New destination" }));
+
+    await user.type(screen.getByPlaceholderText("e.g. Office, Mum & Dad's"), "Office");
+    await user.type(screen.getByPlaceholderText("Search station name…"), "padd");
+
+    await waitFor(() => expect(screen.getByText("Paddington")).toBeInTheDocument());
+    await user.click(screen.getByText("Paddington"));
+
+    await user.click(screen.getByRole("button", { name: "Add destination" }));
+
+    await waitFor(() =>
+      expect(api.destinations.create).toHaveBeenCalledWith({
+        name: "Office",
+        crs: "PAD",
+        station_name: "Paddington",
+        day_of_week: 0,
+        time: "08:30",
+      })
+    );
+  });
+
+  it("cancels the new-destination form without submitting", async () => {
+    api.standards.list.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByText("No destinations yet.")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "+ New destination" }));
+    expect(screen.getByPlaceholderText("e.g. Office, Mum & Dad's")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByPlaceholderText("e.g. Office, Mum & Dad's")).not.toBeInTheDocument();
+    expect(api.destinations.create).not.toHaveBeenCalled();
+  });
+
+  it("deletes a frequent destination", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.destinations.list.mockResolvedValue([
+      { id: 1, name: "Office", crs: "PAD", station_name: "Paddington", day_of_week: 0, time: "08:30", enabled: 1 },
+    ]);
+    api.destinations.remove.mockResolvedValue(null);
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByLabelText("Delete destination")).toBeInTheDocument());
+    await user.click(screen.getByLabelText("Delete destination"));
+
+    await waitFor(() => expect(api.destinations.remove).toHaveBeenCalledWith(1));
   });
 });

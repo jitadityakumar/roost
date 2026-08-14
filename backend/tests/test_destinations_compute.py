@@ -1,0 +1,303 @@
+import datetime as dt
+
+import pytest
+
+from app.destinations import compute, journey_store, store
+from app.destinations.client import TrainPlannerApiError
+from app.listings import store as listings_store
+
+STATIONS_RAW = [
+    {"name": "Woking Station", "distance": 0.2, "types": ["NATIONAL_TRAIN"]},
+    {"name": "Clapham Junction Station", "distance": 0.6, "types": ["NATIONAL_TRAIN"]},
+]
+
+
+@pytest.fixture(autouse=True)
+def listing():
+    listings_store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+
+
+def _journey(duration_minutes, kind="direct", operator="South Western Railway", is_past=False, interchange_crs="CLJ"):
+    if kind == "direct":
+        return {
+            "kind": "direct",
+            "departure_time": "08:40:00",
+            "arrival_time": "09:04:00",
+            "duration_minutes": duration_minutes,
+            "is_past": is_past,
+            "direct": {"operator": operator},
+            "interchange": None,
+        }
+    return {
+        "kind": "interchange",
+        "departure_time": "08:35:00",
+        "arrival_time": "09:10:00",
+        "duration_minutes": duration_minutes,
+        "is_past": is_past,
+        "direct": None,
+        "interchange": {
+            "leg1": {"operator": operator},
+            "interchange": {"crs_code": interchange_crs, "name": "Clapham Junction"},
+        },
+    }
+
+
+# --- next_occurrence --------------------------------------------------------
+
+def test_next_occurrence_later_today():
+    now = dt.datetime(2026, 8, 17, 8, 0)  # Monday
+    result = compute.next_occurrence(0, "08:30", now=now)
+    assert result == dt.datetime(2026, 8, 17, 8, 30)
+
+
+def test_next_occurrence_rolls_to_next_week_when_time_already_passed_today():
+    now = dt.datetime(2026, 8, 17, 9, 0)  # Monday, past 08:30
+    result = compute.next_occurrence(0, "08:30", now=now)
+    assert result == dt.datetime(2026, 8, 24, 8, 30)
+
+
+def test_next_occurrence_finds_next_matching_weekday():
+    now = dt.datetime(2026, 8, 19, 12, 0)  # Wednesday
+    result = compute.next_occurrence(0, "08:30", now=now)  # next Monday
+    assert result == dt.datetime(2026, 8, 24, 8, 30)
+
+
+# --- compute_for_listing -----------------------------------------------
+
+def test_compute_for_listing_picks_best_across_origins(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    def fake_fetch_journeys(from_crs, to_crs, date, time):
+        if from_crs == "WOK":
+            return {"journeys": [_journey(24)]}
+        return {"journeys": [_journey(40)]}
+
+    monkeypatch.setattr(compute, "fetch_journeys", fake_fetch_journeys)
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journeys = journey_store.get_journeys(1)
+    assert journeys[d["id"]]["duration_minutes"] == 24
+    assert journeys[d["id"]]["origin_crs"] == "WOK"
+    assert journeys[d["id"]]["operator"] == "South Western Railway"
+
+
+def test_compute_for_listing_stores_interchange_crs_for_a_change_journey(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    monkeypatch.setattr(
+        compute, "fetch_journeys", lambda *a, **k: {"journeys": [_journey(45, kind="interchange", interchange_crs="CLJ")]}
+    )
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["kind"] == "interchange"
+    assert journey["num_changes"] == 1
+    assert journey["interchange_crs"] == "CLJ"
+
+
+def test_compute_for_listing_direct_journey_has_no_interchange_crs(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [_journey(24)]})
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["interchange_crs"] is None
+
+
+def test_compute_for_listing_skips_origin_on_api_error(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    def fake_fetch_journeys(from_crs, to_crs, date, time):
+        if from_crs == "WOK":
+            raise TrainPlannerApiError("boom")
+        return {"journeys": [_journey(40)]}
+
+    monkeypatch.setattr(compute, "fetch_journeys", fake_fetch_journeys)
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journeys = journey_store.get_journeys(1)
+    assert journeys[d["id"]]["duration_minutes"] == 40
+    assert journeys[d["id"]]["origin_crs"] == "CLJ"
+
+
+def test_compute_for_listing_stores_nothing_when_no_route_found(monkeypatch):
+    store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": []})
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    assert journey_store.get_journeys(1) == {}
+
+
+def test_compute_for_listing_ignores_disabled_destination(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+    store.update_destination(d["id"], enabled=False)
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [_journey(24)]})
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    assert journey_store.get_journeys(1) == {}
+
+
+def test_compute_for_listing_prefers_upcoming_over_past_journeys(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    def fake_fetch_journeys(from_crs, to_crs, date, time):
+        return {"journeys": [_journey(10, is_past=True), _journey(24)]}
+
+    monkeypatch.setattr(compute, "fetch_journeys", fake_fetch_journeys)
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journeys = journey_store.get_journeys(1)
+    assert journeys[d["id"]]["duration_minutes"] == 24
+
+
+def test_compute_for_listing_stores_nothing_when_every_journey_is_past(monkeypatch):
+    store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [_journey(10, is_past=True)]})
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    assert journey_store.get_journeys(1) == {}
+
+
+def test_compute_for_listing_no_candidate_stations_stores_nothing(monkeypatch):
+    store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: pytest.fail("should not be called"))
+    compute.compute_for_listing(1, [])
+    assert journey_store.get_journeys(1) == {}
+
+
+# --- multi-change fallback (train-journey-planner issue #26) ---------------
+
+def _multi_change_journey(duration_minutes, num_changes=2, change_crs=("CLJ", "HRH"), is_past=False):
+    legs = [{"operator": "Southern", "destination": {"crs_code": crs, "name": crs}} for crs in change_crs]
+    legs.append({"operator": "Southern", "destination": {"crs_code": "PUL", "name": "Pulborough"}})
+    return {
+        "departure_time": "08:35:00",
+        "arrival_time": "09:20:00",
+        "duration_minutes": duration_minutes,
+        "num_changes": num_changes,
+        "is_past": is_past,
+        "legs": legs,
+    }
+
+
+def test_compute_for_listing_falls_back_to_multi_change_when_direct_empty_and_sidecar_healthy(monkeypatch):
+    d = store.create_destination("Office", "PUL", "Pulborough", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [], "sidecar_healthy": True})
+    monkeypatch.setattr(
+        compute, "fetch_multi_change_journeys", lambda *a, **k: {"journeys": [_multi_change_journey(70)]}
+    )
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["kind"] == "multi_change"
+    assert journey["num_changes"] == 2
+    assert journey["duration_minutes"] == 70
+    assert journey["interchange_crs"] == "CLJ, HRH"
+    assert journey["operator"] == "Southern"
+
+
+def test_compute_for_listing_does_not_call_multi_change_when_sidecar_unhealthy(monkeypatch):
+    store.create_destination("Office", "PUL", "Pulborough", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [], "sidecar_healthy": False})
+    monkeypatch.setattr(
+        compute, "fetch_multi_change_journeys", lambda *a, **k: pytest.fail("should not be called")
+    )
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    assert journey_store.get_journeys(1) == {}
+
+
+def test_compute_for_listing_does_not_call_multi_change_when_direct_already_found_a_journey(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    monkeypatch.setattr(
+        compute, "fetch_journeys", lambda *a, **k: {"journeys": [_journey(24)], "sidecar_healthy": True}
+    )
+    monkeypatch.setattr(
+        compute, "fetch_multi_change_journeys", lambda *a, **k: pytest.fail("should not be called")
+    )
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["kind"] == "direct"
+
+
+def test_compute_for_listing_skips_origin_when_multi_change_also_errors(monkeypatch):
+    store.create_destination("Office", "PUL", "Pulborough", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [], "sidecar_healthy": True})
+
+    def fake_multi(*a, **k):
+        raise TrainPlannerApiError("boom")
+
+    monkeypatch.setattr(compute, "fetch_multi_change_journeys", fake_multi)
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    assert journey_store.get_journeys(1) == {}
+
+
+def test_compute_for_listing_skips_multi_change_once_a_direct_result_is_already_found(monkeypatch):
+    """A later origin's empty-and-healthy /api/journeys response must not
+    trigger a multi-change call once an earlier origin already produced a
+    direct/interchange candidate -- a 2-5 change result can never beat an
+    already-found 0/1-change one, so the call would be pure waste."""
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    def fake_fetch_journeys(from_crs, to_crs, date, time):
+        if from_crs == "WOK":
+            return {"journeys": [_journey(24)], "sidecar_healthy": True}
+        return {"journeys": [], "sidecar_healthy": True}
+
+    monkeypatch.setattr(compute, "fetch_journeys", fake_fetch_journeys)
+    monkeypatch.setattr(
+        compute, "fetch_multi_change_journeys", lambda *a, **k: pytest.fail("should not be called")
+    )
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["kind"] == "direct"
+    assert journey["origin_crs"] == "WOK"
+
+
+def test_compute_for_listing_skips_multi_change_once_a_multi_change_result_is_already_found(monkeypatch):
+    """Same short-circuit, but the already-found candidate is itself a
+    multi_change result from an earlier origin -- a second, slow OTP round
+    trip for a later origin is still skipped rather than probed for a
+    theoretically-better multi-change result."""
+    d = store.create_destination("Office", "PUL", "Pulborough", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [], "sidecar_healthy": True})
+
+    calls = []
+
+    def fake_multi(from_crs, to_crs, date, time):
+        calls.append(from_crs)
+        return {"journeys": [_multi_change_journey(70)]}
+
+    monkeypatch.setattr(compute, "fetch_multi_change_journeys", fake_multi)
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["kind"] == "multi_change"
+    assert calls == ["WOK"]
+
+
+def test_compute_for_listing_multi_change_prefers_upcoming_over_past(monkeypatch):
+    d = store.create_destination("Office", "PUL", "Pulborough", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [], "sidecar_healthy": True})
+    monkeypatch.setattr(
+        compute,
+        "fetch_multi_change_journeys",
+        lambda *a, **k: {"journeys": [_multi_change_journey(10, is_past=True), _multi_change_journey(70)]},
+    )
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["duration_minutes"] == 70

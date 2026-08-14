@@ -19,3 +19,6 @@ MORTGAGE_API_BASE = os.environ.get("ROOST_MORTGAGE_API_BASE")
 # app/commute/walking.py. No in-repo default; a missing key means walk
 # distances just aren't computed (caught and logged per-station, not fatal).
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
+
+# Same reasoning as COMMUTE_API_BASE -- see app/destinations/client.py.
+TRAIN_PLANNER_BASE = os.environ.get("ROOST_TRAIN_PLANNER_BASE")

@@ -9,7 +9,17 @@ from fastapi.staticfiles import StaticFiles
 from app.db.migrate import run_migrations
 from app.jobs.llm_client import cli_available
 from app.jobs.worker import HttpLaneWorkerPool, LlmLaneWorkerPool
-from app.routes import commute, crime, crime_baselines, listings, media, mortgage, standards
+from app.routes import (
+    commute,
+    crime,
+    crime_baselines,
+    destination_journeys,
+    destinations,
+    listings,
+    media,
+    mortgage,
+    standards,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("roost.main")
@@ -49,6 +59,8 @@ app.include_router(mortgage.router)
 app.include_router(standards.router)
 app.include_router(crime.router)
 app.include_router(crime_baselines.router)
+app.include_router(destinations.router)
+app.include_router(destination_journeys.router)
 
 
 @app.get("/api/health")

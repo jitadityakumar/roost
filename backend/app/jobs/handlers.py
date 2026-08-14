@@ -17,6 +17,7 @@ from app.commute import walk_store
 from app.commute.stations import latlong_for_crs, resolve_crs_codes
 from app.commute.walking import WalkingApiError, compute_walk_distance
 from app.config import MEDIA_DIR
+from app.destinations.compute import compute_for_listing
 from app.jobs import llm_enqueue, llm_prompts, queue
 from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
 from app.jobs.llm_client import parse_structured_output, run_claude_prompt
@@ -143,6 +144,11 @@ def handle_rightmove_extract(job: dict) -> None:
         _compute_station_walk_distances(
             listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
         )
+
+    # Not gated by skip_maps -- that flag exists specifically to dodge
+    # Google's billed Routes API during bulk backfill; train-journey-planner
+    # is a local/free service, so there's no cost pressure to skip this.
+    compute_for_listing(listing_id, extracted.get("nearest_stations") or [])
 
     skip_llm_chain = bool(job.get("skip_llm_chain"))
     queue.enqueue_job(

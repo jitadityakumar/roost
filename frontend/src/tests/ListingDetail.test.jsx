@@ -15,6 +15,8 @@ vi.mock("../api.js", () => ({
     commute: vi.fn().mockResolvedValue({ stations: [] }),
     mortgage: vi.fn().mockResolvedValue({ result: null, error: null }),
     crime: vi.fn().mockResolvedValue({ unavailable: null, baselines: [] }),
+    listingDestinations: vi.fn().mockResolvedValue([]),
+    refreshListingDestinations: vi.fn().mockResolvedValue([]),
   },
 }));
 

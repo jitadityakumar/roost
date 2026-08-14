@@ -9,6 +9,7 @@ import NearestStations from "./NearestStations.jsx";
 import Commute from "./Commute.jsx";
 import Mortgage from "./Mortgage.jsx";
 import Crime from "./Crime.jsx";
+import FrequentDestinations from "./FrequentDestinations.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 import { USER_STATUS_LABEL } from "../userStatus.js";
 
@@ -322,6 +323,10 @@ export default function ListingDetail() {
       <section>
         <h3>Commute</h3>
         <Commute listingId={id} ready={listing.extraction_status === "done"} />
+      </section>
+
+      <section>
+        <FrequentDestinations listingId={id} ready={listing.extraction_status === "done"} />
       </section>
 
       <section>

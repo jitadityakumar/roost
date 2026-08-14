@@ -566,3 +566,94 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .jobs-section h3 { color: var(--muted); }
 .jobs-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; color: var(--muted); }
 .jobs-table th, .jobs-table td { text-align: left; padding: 0.4rem; border-bottom: 1px solid var(--border); }
+
+/* Frequent destinations -- admin form */
+.badge-station { background: var(--accent); color: white; }
+.status-toggle-btn.ghost {
+  background: none;
+  color: var(--accent);
+  border: 1px dashed var(--border);
+  width: 100%;
+  margin-top: 1rem;
+}
+.admin-add-rule.destination-form {
+  flex-direction: column;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+.form-row { display: flex; gap: 0.5rem; }
+.form-row > * { flex: 1; min-width: 0; }
+.form-label { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 0.3rem; }
+.form-actions { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
+.form-actions .status-toggle-btn { flex: 1; }
+.destination-form-status { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+
+.radio-group { display: flex; gap: 1.2rem; align-items: center; }
+.radio-option { display: flex; align-items: center; gap: 0.4rem; font-size: 0.92rem; }
+.radio-option input { width: auto; accent-color: var(--accent); }
+
+.station-search-wrap { position: relative; }
+.station-search-results {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 10;
+}
+.station-search-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.station-search-result:hover { background: var(--border); }
+.station-search-result-crs { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
+.station-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+.station-chip-name { font-weight: 500; }
+.station-chip-crs { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; margin-left: 0.4rem; }
+.station-chip button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.15rem;
+}
+
+/* Frequent destinations -- listing detail section */
+.section-heading { display: flex; align-items: center; justify-content: space-between; margin-top: 1.5rem; }
+.section-heading h3 { margin: 0; }
+
+.destination-list { list-style: none; padding: 0; margin: 0; }
+.destination-row { padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
+.destination-row:last-child { border-bottom: none; }
+.destination-line1 { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; }
+.destination-name { font-weight: 600; }
+.destination-station { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+.destination-duration { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.destination-duration.good { color: var(--accent); }
+.destination-line2 { display: flex; justify-content: space-between; gap: 0.6rem; margin-top: 0.2rem; color: var(--muted); font-size: 0.85rem; }
+.destination-target { white-space: nowrap; }
+.destination-route { text-align: right; }
+.destination-unresolved { color: var(--muted); font-size: 0.85rem; font-style: italic; margin-top: 0.2rem; }
+.destination-line3 { margin-top: 0.25rem; font-size: 0.82rem; }
