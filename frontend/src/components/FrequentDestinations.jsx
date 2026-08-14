@@ -35,19 +35,19 @@ function DestinationRow({ destination }) {
     );
   }
 
-  const routeLabel = [
-    destination.kind === "direct" ? "direct" : `${destination.num_changes} change`,
-    destination.operator,
-    `via ${destination.origin_name} (${destination.origin_crs})`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const routeLabel =
+    destination.kind === "direct"
+      ? "direct"
+      : `${destination.num_changes} change${destination.num_changes === 1 ? "" : "s"} (via ${destination.interchange_crs})`;
 
   return (
     <li className="destination-row">
       <div className="destination-line1">
         <span className="destination-name">
-          {destination.name} <span className="destination-station">· {destination.station_name}</span>
+          {destination.name}{" "}
+          <span className="destination-station">
+            · {destination.origin_crs} → {destination.crs}
+          </span>
         </span>
         <span className="destination-duration good">{formatDuration(destination.duration_minutes)}</span>
       </div>

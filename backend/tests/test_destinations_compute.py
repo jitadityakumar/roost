@@ -17,7 +17,7 @@ def listing():
     listings_store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
 
 
-def _journey(duration_minutes, kind="direct", operator="South Western Railway", is_past=False):
+def _journey(duration_minutes, kind="direct", operator="South Western Railway", is_past=False, interchange_crs="CLJ"):
     if kind == "direct":
         return {
             "kind": "direct",
@@ -35,7 +35,10 @@ def _journey(duration_minutes, kind="direct", operator="South Western Railway", 
         "duration_minutes": duration_minutes,
         "is_past": is_past,
         "direct": None,
-        "interchange": {"leg1": {"operator": operator}},
+        "interchange": {
+            "leg1": {"operator": operator},
+            "interchange": {"crs_code": interchange_crs, "name": "Clapham Junction"},
+        },
     }
 
 
@@ -76,6 +79,30 @@ def test_compute_for_listing_picks_best_across_origins(monkeypatch):
     assert journeys[d["id"]]["duration_minutes"] == 24
     assert journeys[d["id"]]["origin_crs"] == "WOK"
     assert journeys[d["id"]]["operator"] == "South Western Railway"
+
+
+def test_compute_for_listing_stores_interchange_crs_for_a_change_journey(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    monkeypatch.setattr(
+        compute, "fetch_journeys", lambda *a, **k: {"journeys": [_journey(45, kind="interchange", interchange_crs="CLJ")]}
+    )
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["kind"] == "interchange"
+    assert journey["num_changes"] == 1
+    assert journey["interchange_crs"] == "CLJ"
+
+
+def test_compute_for_listing_direct_journey_has_no_interchange_crs(monkeypatch):
+    d = store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: {"journeys": [_journey(24)]})
+    compute.compute_for_listing(1, STATIONS_RAW)
+
+    journey = journey_store.get_journeys(1)[d["id"]]
+    assert journey["interchange_crs"] is None
 
 
 def test_compute_for_listing_skips_origin_on_api_error(monkeypatch):

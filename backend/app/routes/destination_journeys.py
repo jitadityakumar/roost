@@ -35,6 +35,7 @@ def _serialize(destination: dict, journeys: dict) -> dict:
                 "operator": journey["operator"],
                 "origin_crs": journey["origin_crs"],
                 "origin_name": journey["origin_name"],
+                "interchange_crs": journey["interchange_crs"],
                 "departure_time": journey["departure_time"],
                 "arrival_time": journey["arrival_time"],
                 "computed_at": journey["computed_at"],

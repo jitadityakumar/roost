@@ -72,6 +72,17 @@ def _operator(journey: dict) -> str | None:
     return (journey.get("interchange") or {}).get("leg1", {}).get("operator")
 
 
+def _interchange_crs(journey: dict) -> str | None:
+    """CRS code of the station where the change happens, for an
+    "interchange" journey -- None for a direct journey. train-journey-
+    planner's /api/journeys only ever returns 0 or 1 changes (its
+    InterchangeTripOut has a single `interchange: StationOut`, not a list),
+    so this is always a single code today."""
+    if journey["kind"] != "interchange":
+        return None
+    return (journey.get("interchange") or {}).get("interchange", {}).get("crs_code")
+
+
 def _best_across_origins(destination: dict, origins: list[dict]) -> dict | None:
     """Best (fastest, fewest-changes tiebreak) journey to `destination` found
     across every candidate origin station, as a destination_journeys row
@@ -108,6 +119,7 @@ def _best_across_origins(destination: dict, origins: list[dict]) -> dict | None:
         "operator": _operator(best),
         "origin_crs": best_origin["crs"],
         "origin_name": best_origin["name"],
+        "interchange_crs": _interchange_crs(best),
         "departure_time": best["departure_time"],
         "arrival_time": best["arrival_time"],
     }

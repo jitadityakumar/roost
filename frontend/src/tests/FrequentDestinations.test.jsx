@@ -23,7 +23,7 @@ describe("FrequentDestinations", () => {
     );
   });
 
-  it("renders a resolved destination with duration, route, and planner link", async () => {
+  it("renders a resolved direct destination with duration, route, and planner link", async () => {
     api.listingDestinations.mockResolvedValue([
       {
         destination_id: 1,
@@ -32,6 +32,7 @@ describe("FrequentDestinations", () => {
         day_label: "Monday",
         time: "08:30",
         station_name: "Paddington",
+        crs: "PAD",
         resolved: true,
         duration_minutes: 24,
         kind: "direct",
@@ -39,6 +40,7 @@ describe("FrequentDestinations", () => {
         operator: "South Western Railway",
         origin_crs: "WOK",
         origin_name: "Woking",
+        interchange_crs: null,
         departure_time: "08:40:00",
         arrival_time: "09:04:00",
         planner_url: "http://planner.example/results?from_=WOK&to=PAD",
@@ -48,11 +50,44 @@ describe("FrequentDestinations", () => {
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
     expect(screen.getByText("24m")).toBeInTheDocument();
-    expect(screen.getByText(/direct · South Western Railway · via Woking \(WOK\)/)).toBeInTheDocument();
+    expect(screen.getByText("· WOK → PAD")).toBeInTheDocument();
+    expect(screen.getByText("direct")).toBeInTheDocument();
+    expect(screen.queryByText(/South Western Railway/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View on Train Journey Planner/ })).toHaveAttribute(
       "href",
       "http://planner.example/results?from_=WOK&to=PAD"
     );
+  });
+
+  it("renders an interchange destination's change station instead of the operator", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Bandol",
+        day_of_week: 6,
+        day_label: "Sunday",
+        time: "12:00",
+        station_name: "London Road (Guildford)",
+        crs: "LRD",
+        resolved: true,
+        duration_minutes: 45,
+        kind: "interchange",
+        num_changes: 1,
+        operator: "South Western Railway",
+        origin_crs: "SUR",
+        origin_name: "Surbiton",
+        interchange_crs: "CLJ",
+        departure_time: "12:05:00",
+        arrival_time: "12:50:00",
+        planner_url: "http://planner.example/results?from_=SUR&to=LRD",
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText("Bandol")).toBeInTheDocument());
+    expect(screen.getByText("· SUR → LRD")).toBeInTheDocument();
+    expect(screen.getByText("1 change (via CLJ)")).toBeInTheDocument();
+    expect(screen.queryByText(/South Western Railway/)).not.toBeInTheDocument();
   });
 
   it("formats durations over an hour as 1h21m", async () => {
