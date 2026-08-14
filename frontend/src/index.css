@@ -587,6 +587,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .form-label { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 0.3rem; }
 .form-actions { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
 .form-actions .status-toggle-btn { flex: 1; }
+.destination-form-status { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
 
 .radio-group { display: flex; gap: 1.2rem; align-items: center; }
 .radio-option { display: flex; align-items: center; gap: 0.4rem; font-size: 0.92rem; }

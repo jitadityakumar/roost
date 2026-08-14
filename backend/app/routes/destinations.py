@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.commute.stations import search_stations
-from app.destinations import store
+from app.destinations import compute, store
 
 router = APIRouter(prefix="/api/destinations", tags=["destinations"])
 
@@ -31,10 +31,19 @@ def list_destinations():
 
 @router.post("", status_code=201)
 def create_destination(body: CreateDestinationRequest):
+    # Backfills every existing listing synchronously before returning --
+    # train-journey-planner is local/free, unlike the Google Maps walking-
+    # distance calls that need an opt-out for bulk backfill cost, so there's
+    # no reason to make the admin remember a separate backfill step. This
+    # does mean the request takes longer (roughly one train-journey-planner
+    # round trip per candidate station per listing) -- the frontend shows a
+    # loading state on the Add button for exactly this reason.
     try:
-        return store.create_destination(body.name, body.crs, body.station_name, body.day_of_week, body.time)
+        created = store.create_destination(body.name, body.crs, body.station_name, body.day_of_week, body.time)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    compute.compute_for_destination(created["id"])
+    return created
 
 
 @router.patch("/{destination_id}")
@@ -46,6 +55,12 @@ def patch_destination(destination_id: int, body: PatchDestinationRequest):
         raise HTTPException(status_code=422, detail=str(e))
     if updated is None:
         raise HTTPException(status_code=404, detail="destination not found")
+    # Any of day_of_week/time/crs/enabled changing invalidates every
+    # existing listing's stored journey for this destination -- simplest
+    # correct behavior is to always recompute rather than tracking which
+    # specific fields actually changed.
+    if changes:
+        compute.compute_for_destination(destination_id)
     return updated
 
 

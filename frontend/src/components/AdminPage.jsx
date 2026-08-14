@@ -58,6 +58,7 @@ function DestinationForm({ onAdded, onCancel }) {
   const [results, setResults] = useState([]);
   const [station, setStation] = useState(null);
   const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -77,6 +78,7 @@ function DestinationForm({ onAdded, onCancel }) {
       setError("Name and station are both required.");
       return;
     }
+    setSubmitting(true);
     try {
       await api.destinations.create({
         name: name.trim(),
@@ -88,6 +90,7 @@ function DestinationForm({ onAdded, onCancel }) {
       onAdded();
     } catch (err) {
       setError(err.message);
+      setSubmitting(false);
     }
   }
 
@@ -176,12 +179,18 @@ function DestinationForm({ onAdded, onCancel }) {
         </div>
       </div>
 
+      {submitting && (
+        <p className="hint destination-form-status">
+          <span className="spinner" /> Computing journeys for every listing…
+        </p>
+      )}
+
       <div className="form-actions">
-        <button type="button" className="status-toggle-btn secondary" onClick={onCancel}>
+        <button type="button" className="status-toggle-btn secondary" onClick={onCancel} disabled={submitting}>
           Cancel
         </button>
-        <button type="submit" className="status-toggle-btn" disabled={!name.trim() || !station}>
-          Add destination
+        <button type="submit" className="status-toggle-btn" disabled={submitting || !name.trim() || !station}>
+          {submitting ? "Adding…" : "Add destination"}
         </button>
       </div>
     </form>
