@@ -16,10 +16,23 @@ MAX_DISTANCE_MILES = 1.0
 
 _SUFFIX_RE = re.compile(r"\s+(Station|Tram Stop)$")
 
+# Strip periods and both straight/curly apostrophes, lowercase, collapse
+# whitespace -- but never touch spaces themselves. Rightmove sends names
+# like "St. Helier Station" while stations.csv has "St Helier" (validated:
+# zero periods anywhere in stations.csv); collapsing whitespace too would
+# be unsafe -- "How Wood" (CRS HWW) and "Howwood" (CRS HOZ) are genuinely
+# different stations that would collide if spaces were stripped.
+_PUNCT_RE = re.compile(r"[.’']")
+
+
+def _normalize_name(name: str) -> str:
+    name = _PUNCT_RE.sub("", name)
+    return re.sub(r"\s+", " ", name).strip().lower()
+
 
 def _load_name_to_crs() -> dict[str, str]:
     with open(STATIONS_CSV, newline="", encoding="utf-8") as f:
-        return {row["stationName"]: row["crsCode"] for row in csv.DictReader(f)}
+        return {_normalize_name(row["stationName"]): row["crsCode"] for row in csv.DictReader(f)}
 
 
 def _load_crs_to_latlong() -> dict[str, tuple[float, float]]:
@@ -41,10 +54,11 @@ def strip_station_suffix(name: str) -> str:
 
 def crs_for_name(name: str) -> str | None:
     """Resolve a single Rightmove station name to a CRS code, same
-    suffix-stripping lookup resolve_crs_codes uses per-entry. Used to attach
-    stored walk data to nearest_stations_raw entries that resolve_crs_codes
-    itself may not surface (e.g. beyond MAX_DISTANCE_MILES)."""
-    return _NAME_TO_CRS.get(strip_station_suffix(name))
+    suffix-stripping + punctuation-normalizing lookup resolve_crs_codes uses
+    per-entry. Used to attach stored walk data to nearest_stations_raw
+    entries that resolve_crs_codes itself may not surface (e.g. beyond
+    MAX_DISTANCE_MILES)."""
+    return _NAME_TO_CRS.get(_normalize_name(strip_station_suffix(name)))
 
 
 def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
@@ -69,7 +83,7 @@ def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
         if "NATIONAL_TRAIN" not in (entry.get("types") or []):
             continue
         name = strip_station_suffix(entry.get("name", ""))
-        crs = _NAME_TO_CRS.get(name)
+        crs = _NAME_TO_CRS.get(_normalize_name(name))
         if not crs or crs in seen_crs:
             continue
         seen_crs.add(crs)
