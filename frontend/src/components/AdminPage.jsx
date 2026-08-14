@@ -136,7 +136,7 @@ export default function AdminPage() {
   return (
     <div className="admin-page">
       <button className="back-btn" onClick={() => navigate("/")}>
-        ← Back
+        ← Back to Home
       </button>
       <h2>Standards</h2>
       <p className="hint">

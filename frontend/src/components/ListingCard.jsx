@@ -2,12 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
-
-const USER_STATUS_LABEL = {
-  triage: "Triage",
-  approved: "Approved",
-  rejected: "Rejected",
-};
+import { USER_STATUS_LABEL } from "../userStatus.js";
 
 // Extraction flips to "done" before the media_download job (which writes
 // the photo files) has necessarily finished, so the photo list can come
@@ -19,7 +14,7 @@ const USER_STATUS_LABEL = {
 const THUMB_MAX_RETRIES = 8;
 const THUMB_RETRY_DELAY_MS = 2000;
 
-export default function ListingCard({ listing }) {
+export default function ListingCard({ listing, fromStatus }) {
   const pending = listing.extraction_status !== "done";
   const [thumbFilename, setThumbFilename] = useState(null);
 
@@ -53,7 +48,11 @@ export default function ListingCard({ listing }) {
   }, [listing.id, pending]);
 
   return (
-    <Link className={`listing-card ${pending ? "pending" : ""}`} to={`/listings/${listing.id}`}>
+    <Link
+      className={`listing-card ${pending ? "pending" : ""}`}
+      to={`/listings/${listing.id}`}
+      state={{ from: fromStatus }}
+    >
       {pending ? (
         <div className="stub-card">
           <span className={`spinner ${listing.pipeline_status === "failed" ? "failed" : ""}`} />

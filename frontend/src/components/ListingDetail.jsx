@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import DOMPurify from "dompurify";
 import { api } from "../api.js";
 import FieldRow from "./FieldRow.jsx";
@@ -10,6 +10,7 @@ import Commute from "./Commute.jsx";
 import Mortgage from "./Mortgage.jsx";
 import Crime from "./Crime.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
+import { USER_STATUS_LABEL } from "../userStatus.js";
 
 function formatBroadband(listing) {
   if (!listing.broadband_top_speed) return "—";
@@ -62,6 +63,7 @@ const FIELDS = [
 export default function ListingDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [listing, setListing] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [media, setMedia] = useState(null);
@@ -142,14 +144,16 @@ export default function ListingDetail() {
   if (error) return <p className="error">{error}</p>;
   if (!listing) return <p>Loading…</p>;
 
+  const backTo = location.state?.from || listing.user_status;
+
   const photoUrls = media ? media.photos.map((f) => api.mediaUrl(id, "photos", f)) : [];
   const floorplanUrls = media ? media.floorplans.map((f) => api.mediaUrl(id, "floorplans", f)) : [];
   const epcUrls = media ? media.epc.map((f) => api.mediaUrl(id, "epc", f)) : [];
 
   return (
     <div className="listing-detail">
-      <button className="back-btn" onClick={() => navigate(`/${listing.user_status}`)}>
-        ← Back
+      <button className="back-btn" onClick={() => navigate(`/${backTo}`)}>
+        ← Back to {USER_STATUS_LABEL[backTo] || backTo}
       </button>
 
       {photoUrls.length > 0 && <PhotoCarousel images={photoUrls} />}
