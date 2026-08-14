@@ -49,20 +49,20 @@ def test_resolve_dedupes_by_crs():
     assert len(resolved) == 1
 
 
-def test_resolve_includes_all_stations_within_half_a_mile():
+def test_resolve_includes_all_stations_within_a_mile():
     stations = [
         {"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]},
         {"name": "Woking Station", "distance": 0.2, "types": ["NATIONAL_TRAIN"]},
-        {"name": "Barnes Station", "distance": 0.5, "types": ["NATIONAL_TRAIN"]},
+        {"name": "Barnes Station", "distance": 1.0, "types": ["NATIONAL_TRAIN"]},
     ]
     resolved = resolve_crs_codes(stations)
     assert {r["crs"] for r in resolved} == {"CLJ", "WOK", "BNS"}
 
 
-def test_resolve_excludes_stations_beyond_half_a_mile():
+def test_resolve_excludes_stations_beyond_a_mile():
     stations = [
         {"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]},
-        {"name": "Guildford Station", "distance": 0.51, "types": ["NATIONAL_TRAIN"]},
+        {"name": "Guildford Station", "distance": 1.01, "types": ["NATIONAL_TRAIN"]},
     ]
     resolved = resolve_crs_codes(stations)
     assert [r["crs"] for r in resolved] == ["CLJ"]
@@ -168,6 +168,64 @@ def test_get_commute_no_maps_url_when_listing_has_no_latlon(client, listing_id):
     resp = client.get(f"/api/listings/{listing_id}/commute")
     station = resp.json()["stations"][0]
     assert station["walk_maps_url"] is None
+
+
+def test_get_commute_excludes_station_with_walk_over_30_minutes(client, listing_id):
+    from app.commute.walk_store import replace_walk_distances
+
+    replace_walk_distances(listing_id, [{"crs": "CLJ", "distance_meters": 2500, "duration_seconds": 1801}])
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    assert resp.json()["stations"] == []
+
+
+def test_get_commute_includes_station_with_walk_at_exactly_30_minutes(client, listing_id, monkeypatch):
+    from app.commute.walk_store import replace_walk_distances
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    replace_walk_distances(listing_id, [{"crs": "CLJ", "distance_meters": 2400, "duration_seconds": 1800}])
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    assert [s["crs"] for s in resp.json()["stations"]] == ["CLJ"]
+
+
+def test_get_commute_falls_back_to_raw_distance_when_no_walk_data_and_within_half_mile(client, listing_id, monkeypatch):
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    # listing_id's only station (CLJ) is at raw distance 0.4mi, no stored walk data.
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    assert [s["crs"] for s in resp.json()["stations"]] == ["CLJ"]
+
+
+def test_get_commute_excludes_station_beyond_half_mile_fallback_with_no_walk_data(client):
+    store.create_stub_listing(3, "https://www.rightmove.co.uk/properties/3")
+    store.apply_extracted_fields(
+        3,
+        {
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Guildford Station", "distance": 0.9, "types": ["NATIONAL_TRAIN"]}]
+            )
+        },
+    )
+    resp = client.get("/api/listings/3/commute")
+    assert resp.json()["stations"] == []
+
+
+def test_get_commute_includes_station_at_exactly_half_mile_fallback_boundary(client, monkeypatch):
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    store.create_stub_listing(4, "https://www.rightmove.co.uk/properties/4")
+    store.apply_extracted_fields(
+        4,
+        {
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Guildford Station", "distance": 0.5, "types": ["NATIONAL_TRAIN"]}]
+            )
+        },
+    )
+    resp = client.get("/api/listings/4/commute")
+    assert [s["crs"] for s in resp.json()["stations"]] == ["GLD"]
 
 
 # --- walking API client ----------------------------------------------------
@@ -285,3 +343,58 @@ def test_latlong_for_crs_returns_none_for_unknown_crs():
     from app.commute.stations import latlong_for_crs
 
     assert latlong_for_crs("ZZZ") is None
+
+
+def test_crs_for_name_strips_suffix_and_resolves():
+    from app.commute.stations import crs_for_name
+
+    assert crs_for_name("Clapham Junction Station") == "CLJ"
+
+
+def test_crs_for_name_returns_none_for_unresolvable_name():
+    from app.commute.stations import crs_for_name
+
+    assert crs_for_name("Not A Real Station") is None
+
+
+# --- nearest_stations_raw walk-data attachment (GET /api/listings/{id}) ----
+
+def test_get_listing_attaches_walk_data_to_nearest_stations(client):
+    from app.commute.walk_store import replace_walk_distances
+
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    store.apply_extracted_fields(
+        1,
+        {
+            "nearest_stations_raw": json.dumps(
+                [
+                    {"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]},
+                    {"name": "Becontree Station", "distance": 0.2, "types": ["LONDON_UNDERGROUND"]},
+                ]
+            )
+        },
+    )
+    replace_walk_distances(1, [{"crs": "CLJ", "distance_meters": 500, "duration_seconds": 360}])
+
+    resp = client.get("/api/listings/1")
+    nearest = resp.json()["nearest_stations_raw"]
+    assert nearest[0]["walk_distance_meters"] == 500
+    assert nearest[0]["walk_duration_seconds"] == 360
+    assert nearest[1]["walk_distance_meters"] is None
+    assert nearest[1]["walk_duration_seconds"] is None
+
+
+def test_get_listing_nearest_stations_walk_data_none_when_nothing_stored(client):
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    store.apply_extracted_fields(
+        1,
+        {
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]}]
+            )
+        },
+    )
+    resp = client.get("/api/listings/1")
+    nearest = resp.json()["nearest_stations_raw"]
+    assert nearest[0]["walk_distance_meters"] is None
+    assert nearest[0]["walk_duration_seconds"] is None

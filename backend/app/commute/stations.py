@@ -12,7 +12,7 @@ import re
 
 STATIONS_CSV = os.path.join(os.path.dirname(__file__), "stations.csv")
 
-MAX_DISTANCE_MILES = 0.5
+MAX_DISTANCE_MILES = 1.0
 
 _SUFFIX_RE = re.compile(r"\s+(Station|Tram Stop)$")
 
@@ -39,6 +39,14 @@ def strip_station_suffix(name: str) -> str:
     return _SUFFIX_RE.sub("", name)
 
 
+def crs_for_name(name: str) -> str | None:
+    """Resolve a single Rightmove station name to a CRS code, same
+    suffix-stripping lookup resolve_crs_codes uses per-entry. Used to attach
+    stored walk data to nearest_stations_raw entries that resolve_crs_codes
+    itself may not surface (e.g. beyond MAX_DISTANCE_MILES)."""
+    return _NAME_TO_CRS.get(strip_station_suffix(name))
+
+
 def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
     """Filter to National Rail entries, strip the Rightmove suffix, and
     resolve each to a CRS code. Tube/tram-only stations (absent from
@@ -47,9 +55,11 @@ def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
     tube/tram-only. Dedupes by CRS code (equidistant Rightmove entries can
     resolve to the same station).
 
-    Only stations within `MAX_DISTANCE_MILES` are returned, since a commute
-    from further away isn't realistically walkable. A station with no
-    distance is dropped by this filter (nothing to compare against), but
+    Only stations within `MAX_DISTANCE_MILES` are returned -- this is the
+    candidate set for walking-distance computation (handlers.py), not the
+    final "is this commute worth showing" cutoff; routes/commute.py applies
+    its own walk-duration-based filter on top of this list. A station with
+    no distance is dropped by this filter (nothing to compare against), but
     not from resolution otherwise -- if none of the resolved stations have
     a distance at all, the filter is skipped and everything resolved is
     returned rather than silently producing an empty list."""

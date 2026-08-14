@@ -1,3 +1,5 @@
+import { formatWalkMeters, walkDurationClass } from "./walkFormat.js";
+
 // Brand colors identify each network without reproducing its trademarked
 // logo (TfL roundel, National Rail double-arrow, etc.) in the repo.
 const TYPE_BADGES = {
@@ -21,29 +23,47 @@ export default function NearestStations({ stations }) {
 
   return (
     <ul className="station-list">
-      {stations.map((s, i) => (
-        <li key={`${s.name}-${i}`} className="station-row">
-          <span className="station-icons">
-            {(Array.isArray(s.types) && s.types.length > 0 ? s.types : ["_"]).map((t, j) => {
-              const { letter, label, bg } = TYPE_BADGES[t] || DEFAULT_TYPE_BADGE;
-              return (
-                <span
-                  key={`${t}-${j}`}
-                  className="station-badge"
-                  style={{ backgroundColor: bg }}
-                  role="img"
-                  title={label}
-                  aria-label={label}
-                >
-                  {letter}
+      {stations.map((s, i) => {
+        const hasWalkData = s.walk_distance_meters != null && s.walk_duration_seconds != null;
+        const walkMinutes = hasWalkData ? Math.round(s.walk_duration_seconds / 60) : null;
+
+        return (
+          <li key={`${s.name}-${i}`} className="station-row">
+            <span className="station-icons">
+              {(Array.isArray(s.types) && s.types.length > 0 ? s.types : ["_"]).map((t, j) => {
+                const { letter, label, bg } = TYPE_BADGES[t] || DEFAULT_TYPE_BADGE;
+                return (
+                  <span
+                    key={`${t}-${j}`}
+                    className="station-badge"
+                    style={{ backgroundColor: bg }}
+                    role="img"
+                    title={label}
+                    aria-label={label}
+                  >
+                    {letter}
+                  </span>
+                );
+              })}
+            </span>
+            <span className="station-name">{s.name}</span>
+            <span className="station-distance-wrap">
+              {hasWalkData && (
+                <span className={`station-walk-duration ${walkDurationClass(walkMinutes)}`}>
+                  {formatWalkMeters(s.walk_distance_meters)} · {walkMinutes} min walk
                 </span>
-              );
-            })}
-          </span>
-          <span className="station-name">{s.name}</span>
-          <span className="station-distance">{formatDistance(s.distance, s.unit)}</span>
-        </li>
-      ))}
+              )}
+              <span
+                className="station-distance"
+                title="As the crow flies (Rightmove data)"
+                aria-label={`As the crow flies: ${formatDistance(s.distance, s.unit)}`}
+              >
+                {formatDistance(s.distance, s.unit)}
+              </span>
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }

@@ -36,4 +36,30 @@ describe("NearestStations", () => {
     expect(screen.getByText("Sampleton")).toBeInTheDocument();
     expect(screen.queryByText(/mi/)).not.toBeInTheDocument();
   });
+
+  it("shows walking distance and time alongside the raw distance when stored", () => {
+    render(
+      <NearestStations
+        stations={[
+          {
+            name: "Sampleton",
+            distance: 0.3,
+            types: ["NATIONAL_TRAIN"],
+            walk_distance_meters: 845,
+            walk_duration_seconds: 720,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("0.30 mi")).toBeInTheDocument();
+    expect(screen.getByText("845m · 12 min walk")).toBeInTheDocument();
+  });
+
+  it("omits walking distance and time when not stored, keeping the raw distance", () => {
+    render(<NearestStations stations={[{ name: "Sampleton", distance: 0.3, types: ["NATIONAL_TRAIN"] }]} />);
+
+    expect(screen.getByText("0.30 mi")).toBeInTheDocument();
+    expect(screen.queryByText(/min walk/)).not.toBeInTheDocument();
+  });
 });
