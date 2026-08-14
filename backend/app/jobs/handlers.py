@@ -76,8 +76,27 @@ def handle_rightmove_extract(job: dict) -> None:
         "pin_type": extracted.get("pin_type"),
     }
 
-    if extracted.get("lease_years_remaining") is not None:
-        fields["lease_years_remaining"] = extracted["lease_years_remaining"]
+    lease_years_remaining = extracted.get("lease_years_remaining")
+    is_freehold_zero = (extracted.get("tenure") or "").upper() == "FREEHOLD" and lease_years_remaining == 0
+    if is_freehold_zero and listing.get("lease_years_remaining_source") not in (None, "rightmove"):
+        # A non-rightmove source (the LLM lane) has already populated this
+        # field from a genuine lease mention in the description/key
+        # features -- leave it alone. Without this guard, a later re-scrape
+        # of the same still-freehold-0 listing would silently null it back
+        # out on every run, since Rightmove keeps sending 0 forever for a
+        # freehold property.
+        pass
+    elif is_freehold_zero:
+        # Freehold listings shouldn't have a lease at all -- a 0 here is
+        # someone filling out Rightmove's form without understanding that 0
+        # and "not applicable" aren't the same thing, not a real "0 years
+        # remaining" figure. Clear the source (rather than stamping
+        # "rightmove") so a genuine mention in the description/key features
+        # can still let the LLM lane populate it.
+        fields["lease_years_remaining"] = None
+        fields["lease_years_remaining_source"] = None
+    elif lease_years_remaining is not None:
+        fields["lease_years_remaining"] = lease_years_remaining
         fields["lease_years_remaining_source"] = "rightmove"
 
     living_costs = extracted.get("living_costs") or {}
@@ -120,9 +139,10 @@ def handle_rightmove_extract(job: dict) -> None:
     store.set_extraction_status(listing_id, "done")
     store.insert_snapshot(listing_id, fields.get("price_gbp"), fields.get("rightmove_status"), prop)
 
-    _compute_station_walk_distances(
-        listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
-    )
+    if not job.get("skip_maps"):
+        _compute_station_walk_distances(
+            listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
+        )
 
     skip_llm_chain = bool(job.get("skip_llm_chain"))
     queue.enqueue_job(
