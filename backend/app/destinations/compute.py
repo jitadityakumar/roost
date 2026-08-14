@@ -14,6 +14,28 @@ frontend renders that as "no route found", which issue #28 explicitly
 scopes as a flag for #25's Google Maps fallback to eventually act on, not
 something this module raises or retries over.
 
+**2+ change journeys (train-journey-planner issue #26):** per origin, if
+/api/journeys comes back with zero journeys, this module follows train-
+journey-planner's own documented two-step call contract and additionally
+tries /api/journeys/multi-change (its OTP-sidecar-backed 2-5 change
+fallback tier) -- but only when that first response's own
+sidecar_healthy flag says it's worth the extra network round-trip, since
+the endpoint always degrades to an empty result rather than erroring when
+the sidecar is down. A multi-change result is tagged kind="multi_change"
+(a dict key train-journey-planner's own JourneyOut doesn't carry, since
+that endpoint returns a bare list of MultiChangeJourneyOut with no "kind"
+field) so _num_changes/_operator/_interchange_crs below can treat all
+three kinds uniformly. Never a second call once *any* earlier origin has already produced a
+candidate (of any kind) -- once `best` is set, a later origin's own
+/api/journeys is still tried (it's free), but a slow OTP-backed
+multi-change round-trip for that origin is skipped, since a 2-5 change
+result from a different origin is never going to beat an
+already-found candidate once _num_changes is factored into the tiebreak.
+This trades a small amount of missed cross-origin optimality on the
+multi-change tier for avoiding redundant slow calls, matching train-
+journey-planner's own "don't call multi-change unconditionally" guidance
+in spirit.
+
 **Backfill on destination create/edit**: unlike the walking-distance Google
 Maps calls, train-journey-planner is local/free, so there's no cost reason
 to make the admin run a separate backfill step after adding or editing a
@@ -29,7 +51,7 @@ import time
 
 from app.commute.stations import resolve_crs_codes
 from app.destinations import journey_store, store
-from app.destinations.client import TrainPlannerApiError, fetch_journeys
+from app.destinations.client import TrainPlannerApiError, fetch_journeys, fetch_multi_change_journeys
 from app.listings import store as listings_store
 from app.listings.serialize import serialize_listing
 
@@ -51,6 +73,8 @@ def next_occurrence(day_of_week: int, time_str: str, now: dt.datetime | None = N
 
 
 def _num_changes(journey: dict) -> int:
+    if journey["kind"] == "multi_change":
+        return journey.get("num_changes", 0)
     return 0 if journey["kind"] == "direct" else 1
 
 
@@ -69,15 +93,28 @@ def _best_journey(journeys: list[dict]) -> dict | None:
 def _operator(journey: dict) -> str | None:
     if journey["kind"] == "direct":
         return (journey.get("direct") or {}).get("operator")
+    if journey["kind"] == "multi_change":
+        legs = journey.get("legs") or []
+        return legs[0].get("operator") if legs else None
     return (journey.get("interchange") or {}).get("leg1", {}).get("operator")
 
 
 def _interchange_crs(journey: dict) -> str | None:
-    """CRS code of the station where the change happens, for an
-    "interchange" journey -- None for a direct journey. train-journey-
-    planner's /api/journeys only ever returns 0 or 1 changes (its
-    InterchangeTripOut has a single `interchange: StationOut`, not a list),
-    so this is always a single code today."""
+    """CRS code(s) of the station(s) where a change happens -- None for a
+    direct journey. For an "interchange" journey, train-journey-planner's
+    /api/journeys only ever returns 0 or 1 changes (its InterchangeTripOut
+    has a single `interchange: StationOut`, not a list), so this is a
+    single code. For a "multi_change" journey (train-journey-planner's
+    2-5 change fallback tier, issue #26 there), MultiChangeJourneyOut has
+    no equivalent single field -- the change stations are every leg's own
+    destination except the journey's final leg (that one's destination is
+    the overall destination, not a change) -- so this returns a
+    comma-joined list of CRS codes instead of a single code. The frontend's
+    routeLabel formatting already handles either shape unchanged."""
+    if journey["kind"] == "multi_change":
+        legs = journey.get("legs") or []
+        crs_codes = [c for leg in legs[:-1] if (c := (leg.get("destination") or {}).get("crs_code"))]
+        return ", ".join(crs_codes) if crs_codes else None
     if journey["kind"] != "interchange":
         return None
     return (journey.get("interchange") or {}).get("interchange", {}).get("crs_code")
@@ -99,7 +136,26 @@ def _best_across_origins(destination: dict, origins: list[dict]) -> dict | None:
             response = fetch_journeys(origin["crs"], destination["crs"], target.date(), target.time())
         except TrainPlannerApiError:
             continue
-        candidate = _best_journey(response.get("journeys") or [])
+        journeys = response.get("journeys") or []
+        if not journeys and response.get("sidecar_healthy") and best is None:
+            # Second stage of train-journey-planner's documented two-step
+            # call contract -- only worth trying when the first response
+            # itself says the sidecar is healthy, since the endpoint
+            # otherwise just degrades to an empty result anyway. Also
+            # skipped once an earlier origin has already found a
+            # direct/interchange result: a multi-change (2-5 change)
+            # journey from a different origin is never going to be
+            # preferred over an already-found 0/1-change journey once
+            # _num_changes is factored into the tiebreak below, so paying
+            # for the slow OTP-backed round-trip here would be pure waste.
+            try:
+                multi_response = fetch_multi_change_journeys(
+                    origin["crs"], destination["crs"], target.date(), target.time()
+                )
+            except TrainPlannerApiError:
+                multi_response = {}
+            journeys = [dict(j, kind="multi_change") for j in (multi_response.get("journeys") or [])]
+        candidate = _best_journey(journeys)
         if candidate is None:
             continue
         if best is None or (candidate["duration_minutes"], _num_changes(candidate)) < (

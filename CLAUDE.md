@@ -223,6 +223,26 @@ than an error. This is the train-first primary path from issue #28; a
 Google Maps fallback for destinations with no nearby national-rail station
 is tracked separately as issue #25, not built here.
 
+**2-5 change journeys, via train-journey-planner's OTP-sidecar-backed
+fallback tier (its own issue #26).** Per origin, if `/api/journeys` comes
+back with zero journeys *and* that response's own `sidecar_healthy` is
+`true`, `compute.py::_best_across_origins` makes a second call to
+`GET /api/journeys/multi-change` (`client.py::fetch_multi_change_journeys`)
+-- following train-journey-planner's own documented two-step call contract
+exactly (never called unconditionally, never called when the sidecar is
+already known unhealthy). Unlike `/api/journeys`, this endpoint never
+503s (train-journey-planner deliberately excludes it from its DB
+concurrency gate) and never hard-fails, so there's no retry loop here --
+only the same error handling as `fetch_journeys`. A multi-change result is
+tagged `kind: "multi_change"` (the raw `MultiChangeJourneyOut` has no
+`kind` field of its own) so `_num_changes`/`_operator`/`_interchange_crs`
+can treat all three kinds uniformly; `interchange_crs`
+(`destination_journeys`, migration `0016` widened its `kind` CHECK) is
+reused to hold a comma-joined list of every change station's CRS code for
+this kind, not a single code -- the frontend's existing route-label
+formatting (`FrequentDestinations.jsx`) already renders any `num_changes`
+correctly and needed no changes.
+
 ## Working in this repo
 
 This is a **public** repository. Never commit real listing data, credentials,
