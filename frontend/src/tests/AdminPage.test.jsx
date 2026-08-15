@@ -248,7 +248,7 @@ describe("AdminPage", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderAdmin();
 
-    await waitFor(() => expect(screen.getByText(/Backfilling journeys… 3\/10/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Backfilling journeys… 30% \(3\/10\)/)).toBeInTheDocument());
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);

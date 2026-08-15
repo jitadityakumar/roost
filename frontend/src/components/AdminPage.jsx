@@ -523,7 +523,8 @@ export default function AdminPage() {
                         />
                       </div>
                       <span className="backfill-progress-label">
-                        Backfilling journeys… {backfill.done}/{backfill.total}
+                        Backfilling journeys… {backfill.total ? Math.round((backfill.done / backfill.total) * 100) : 0}%
+                        ({backfill.done}/{backfill.total})
                       </span>
                     </div>
                   )}
