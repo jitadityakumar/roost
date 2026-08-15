@@ -1,9 +1,11 @@
 import json
+import threading
 import time
 
 import pytest
 
-from app.destinations import compute, journey_store
+from app.destinations import backfill_status, compute, journey_store
+from app.destinations import store as destinations_store
 from app.listings import store as listings_store
 
 STATIONS_RAW = [{"name": "Woking Station", "distance": 0.2, "types": ["NATIONAL_TRAIN"]}]
@@ -122,8 +124,6 @@ def test_create_destination_does_not_block_on_backfill(client, existing_listing,
     the backfill finishes, not after. Uses an event so the fake
     fetch_journeys blocks until the test explicitly releases it, proving the
     POST response doesn't wait on it."""
-    import threading
-
     release = threading.Event()
 
     def slow_fetch(*a, **k):
@@ -145,3 +145,77 @@ def test_create_destination_does_not_block_on_backfill(client, existing_listing,
 
     release.set()
     _wait_for_backfill(client, destination_id)
+
+
+def test_compute_for_destination_marks_backfill_failed_on_exception(existing_listing, monkeypatch):
+    """Code-review follow-up on issue #36: a mid-backfill exception must not
+    leave backfill_status stuck on 'running' forever -- the status route
+    would otherwise report a dead backfill as still in progress
+    indefinitely. Calls compute_for_destination directly (bypassing the
+    route/thread) so the exception can be asserted on directly instead of
+    only observed as a background-thread warning."""
+    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: _direct_journey(24))
+    d = destinations_store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(compute.journey_store, "replace_single", boom)
+
+    # Mirrors what the route does synchronously before spawning the thread.
+    backfill_status.start(d["id"], total=1)
+
+    with pytest.raises(RuntimeError):
+        compute.compute_for_destination(d["id"])
+
+    assert backfill_status.get(d["id"])["status"] == "failed"
+
+
+def test_patch_while_a_backfill_is_already_running_is_queued_not_dropped(client, existing_listing, monkeypatch):
+    """Code-review follow-up on issue #36: a PATCH arriving while an earlier
+    backfill (from create, or a previous PATCH) is still running must not be
+    silently dropped -- it should run once the in-flight one finishes,
+    picking up the destination's fields as of whenever it actually runs."""
+    first_call_release = threading.Event()
+    calls = []
+
+    def fetch_journeys(from_crs, to_crs, date, time_):
+        calls.append(time_)
+        if len(calls) == 1:
+            first_call_release.wait(timeout=2.0)
+            return _direct_journey(24)
+        return _direct_journey(40)
+
+    monkeypatch.setattr(compute, "fetch_journeys", fetch_journeys)
+
+    destination_id = client.post(
+        "/api/destinations",
+        json={"name": "Office", "crs": "PAD", "station_name": "Paddington", "day_of_week": 0, "time": "08:30"},
+    ).json()["id"]
+
+    # The create's backfill is now blocked inside fetch_journeys. A PATCH
+    # arriving while it's still 'running' must still succeed and must not
+    # get dropped.
+    status_before_patch = client.get(f"/api/destinations/{destination_id}/backfill-status").json()
+    assert status_before_patch["status"] == "running"
+
+    resp = client.patch(f"/api/destinations/{destination_id}", json={"time": "09:00"})
+    assert resp.status_code == 200
+
+    first_call_release.set()
+
+    # Don't rely on backfill-status transiently reading 'done' here -- it
+    # flips 'running' -> 'done' -> 'running' (queued rerun) -> 'done' again,
+    # and polling status alone can't distinguish which 'done' it caught.
+    # Poll the actual stored value instead: only the rerun (using the
+    # PATCH's 09:00) can produce 40.
+    deadline = time.monotonic() + 2.0
+    duration = None
+    while time.monotonic() < deadline:
+        journeys = journey_store.get_journeys(existing_listing)
+        duration = journeys.get(destination_id, {}).get("duration_minutes")
+        if duration == 40:
+            break
+        time.sleep(0.01)
+
+    assert duration == 40, "PATCH's backfill was dropped instead of queued behind the running one"

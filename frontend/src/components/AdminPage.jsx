@@ -527,6 +527,12 @@ export default function AdminPage() {
                       </span>
                     </div>
                   )}
+                  {backfill?.status === "failed" && (
+                    <p className="backfill-progress-error">
+                      Backfill failed partway ({backfill.done}/{backfill.total} listings updated) — edit
+                      the destination again to retry.
+                    </p>
+                  )}
                 </span>
                 <span className="admin-rule-actions">
                   <button

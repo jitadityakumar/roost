@@ -601,6 +601,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   transition: width 0.3s ease;
 }
 .backfill-progress-label { font-size: 0.75rem; color: var(--muted); }
+.backfill-progress-error { font-size: 0.75rem; color: var(--danger); margin: 0.4rem 0 0; }
 
 .radio-group { display: flex; gap: 1.2rem; align-items: center; }
 .radio-option { display: flex; align-items: center; gap: 0.4rem; font-size: 0.92rem; }
