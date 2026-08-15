@@ -551,12 +551,17 @@ export default function AdminPage() {
         </ul>
       )}
 
-      {showDestinationForm ? (
-        <DestinationForm onAdded={handleDestinationAdded} onCancel={() => setShowDestinationForm(false)} />
-      ) : (
-        <button className="status-toggle-btn ghost" type="button" onClick={() => setShowDestinationForm(true)}>
-          + New destination
-        </button>
+      <button className="status-toggle-btn ghost" type="button" onClick={() => setShowDestinationForm(true)}>
+        + New destination
+      </button>
+
+      {showDestinationForm && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h3>New destination</h3>
+            <DestinationForm onAdded={handleDestinationAdded} onCancel={() => setShowDestinationForm(false)} />
+          </div>
+        </div>
       )}
     </div>
   );
