@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import {
@@ -91,14 +91,14 @@ function DestinationForm({ onAdded, onCancel }) {
     }
     setSubmitting(true);
     try {
-      await api.destinations.create({
+      const created = await api.destinations.create({
         name: name.trim(),
         crs: station.crs,
         station_name: station.name,
         day_of_week: dayOfWeek,
         time,
       });
-      onAdded();
+      onAdded(created);
     } catch (err) {
       setError(err.message);
       setSubmitting(false);
@@ -190,12 +190,6 @@ function DestinationForm({ onAdded, onCancel }) {
         </div>
       </div>
 
-      {submitting && (
-        <p className="hint destination-form-status">
-          <span className="spinner" /> Computing journeys for every listing…
-        </p>
-      )}
-
       <div className="form-actions">
         <button type="button" className="status-toggle-btn secondary" onClick={onCancel} disabled={submitting}>
           Cancel
@@ -225,6 +219,13 @@ export default function AdminPage() {
   const [destinations, setDestinations] = useState([]);
   const [destinationError, setDestinationError] = useState(null);
   const [showDestinationForm, setShowDestinationForm] = useState(false);
+  // destinationId -> {status, done, total} -- see GitHub issue #36. Polled
+  // from the backend's in-memory backfill_status (not persisted there
+  // either), so this is purely a "is a backfill running right now, and how
+  // far along" display, reconstructed on every mount rather than trusted
+  // as durable state.
+  const [backfills, setBackfills] = useState({});
+  const mountedRef = useRef(true);
 
   const kind = fieldType(field);
   const operators = operatorsFor(kind);
@@ -247,21 +248,51 @@ export default function AdminPage() {
 
   async function loadDestinations() {
     try {
-      setDestinations(await api.destinations.list());
+      const list = await api.destinations.list();
+      setDestinations(list);
+      return list;
     } catch (err) {
       setDestinationError(err.message);
+      return [];
+    }
+  }
+
+  // Polls a single destination's backfill status until it stops running --
+  // used both right after this tab starts a backfill (create/edit) and on
+  // mount for every existing destination, so navigating away mid-backfill
+  // and coming back still shows live progress (not just "it happened to
+  // finish while I was gone").
+  async function pollBackfillStatus(destinationId) {
+    let status;
+    try {
+      status = await api.destinations.backfillStatus(destinationId);
+    } catch {
+      return; // best-effort progress display -- a failed poll just stops silently
+    }
+    if (!mountedRef.current) return;
+    setBackfills((prev) => ({ ...prev, [destinationId]: status }));
+    if (status.status === "running") {
+      setTimeout(() => pollBackfillStatus(destinationId), 1000);
     }
   }
 
   useEffect(() => {
+    mountedRef.current = true;
     load();
     loadBaselines();
-    loadDestinations();
+    loadDestinations().then((list) => {
+      list.forEach((d) => pollBackfillStatus(d.id));
+    });
+    return () => {
+      mountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleDestinationAdded() {
+  async function handleDestinationAdded(created) {
     setShowDestinationForm(false);
     await loadDestinations();
+    if (created?.id) pollBackfillStatus(created.id);
   }
 
   async function handleDeleteDestination(destination) {
@@ -471,28 +502,45 @@ export default function AdminPage() {
         <p className="empty-state">No destinations yet.</p>
       ) : (
         <ul className="admin-rules">
-          {destinations.map((destination) => (
-            <li key={destination.id} className="admin-rule-row">
-              <span className="admin-rule-text">
-                <div className="admin-rule-title">{destination.name}</div>
-                <div className="admin-rule-sub">
-                  <span className="badge badge-station">Station</span>
-                  {DAY_OPTIONS[destination.day_of_week].label} · {destination.time} · nearest station{" "}
-                  {destination.station_name} ({destination.crs})
-                </div>
-              </span>
-              <span className="admin-rule-actions">
-                <button
-                  className="icon-btn danger"
-                  onClick={() => handleDeleteDestination(destination)}
-                  title="Delete"
-                  aria-label="Delete destination"
-                >
-                  ✕
-                </button>
-              </span>
-            </li>
-          ))}
+          {destinations.map((destination) => {
+            const backfill = backfills[destination.id];
+            return (
+              <li key={destination.id} className="admin-rule-row">
+                <span className="admin-rule-text">
+                  <div className="admin-rule-title">{destination.name}</div>
+                  <div className="admin-rule-sub">
+                    <span className="badge badge-station">Station</span>
+                    {DAY_OPTIONS[destination.day_of_week].label} · {destination.time} · nearest station{" "}
+                    {destination.station_name} ({destination.crs})
+                  </div>
+                  {backfill?.status === "running" && (
+                    <div className="backfill-progress" role="progressbar" aria-label="Backfill progress"
+                      aria-valuenow={backfill.done} aria-valuemin={0} aria-valuemax={backfill.total}>
+                      <div className="backfill-progress-track">
+                        <div
+                          className="backfill-progress-fill"
+                          style={{ width: `${backfill.total ? (backfill.done / backfill.total) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <span className="backfill-progress-label">
+                        Backfilling journeys… {backfill.done}/{backfill.total}
+                      </span>
+                    </div>
+                  )}
+                </span>
+                <span className="admin-rule-actions">
+                  <button
+                    className="icon-btn danger"
+                    onClick={() => handleDeleteDestination(destination)}
+                    title="Delete"
+                    aria-label="Delete destination"
+                  >
+                    ✕
+                  </button>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
 
