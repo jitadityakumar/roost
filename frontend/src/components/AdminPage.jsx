@@ -271,7 +271,7 @@ export default function AdminPage() {
     }
     if (!mountedRef.current) return;
     setBackfills((prev) => ({ ...prev, [destinationId]: status }));
-    if (status.status === "running") {
+    if (status.status === "queued" || status.status === "running") {
       setTimeout(() => pollBackfillStatus(destinationId), 1000);
     }
   }
@@ -513,6 +513,11 @@ export default function AdminPage() {
                     {DAY_OPTIONS[destination.day_of_week].label} · {destination.time} · nearest station{" "}
                     {destination.station_name} ({destination.crs})
                   </div>
+                  {backfill?.status === "queued" && (
+                    <p className="backfill-progress-queued">
+                      Queued — waiting for another destination's backfill to finish…
+                    </p>
+                  )}
                   {backfill?.status === "running" && (
                     <div className="backfill-progress" role="progressbar" aria-label="Backfill progress"
                       aria-valuenow={backfill.done} aria-valuemin={0} aria-valuemax={backfill.total}>

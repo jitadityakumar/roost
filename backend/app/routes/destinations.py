@@ -1,85 +1,29 @@
-import threading
-import time
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.commute.stations import search_stations
-from app.destinations import backfill_status, compute, store
+from app.destinations import backfill_queue, backfill_status, store
 from app.listings import store as listings_store
 
 router = APIRouter(prefix="/api/destinations", tags=["destinations"])
 
-# Test-only visibility hook: conftest.py's isolated_db fixture joins every
-# thread in here before the next test repoints ROOST_DB_PATH, so a slow
-# backfill from one test can never run against a different test's (or an
-# unmigrated) SQLite file. Pruned of finished threads on every append (see
-# _track_background_thread) so this doesn't grow unboundedly across the
-# life of a real running process, which never joins it.
-_background_threads: list[threading.Thread] = []
-
-# destination_ids with a rerun already queued behind their current backfill
-# -- see _run_backfill_in_background's "already running" branch. Guarded by
-# the same lock backfill_status uses internally would be overkill here;
-# this set is only ever touched from route-handler threads (FastAPI's
-# threadpool), never from a backfill thread itself, so a plain lock is
-# enough.
-_pending_reruns: set[int] = set()
-_pending_reruns_lock = threading.Lock()
-
-
-def _track_background_thread(thread: threading.Thread) -> None:
-    _background_threads[:] = [t for t in _background_threads if t.is_alive()]
-    _background_threads.append(thread)
-
 
 def _run_backfill_in_background(destination_id: int) -> None:
-    # backfill_status.start() runs synchronously, here, before the request
-    # returns -- not inside the background thread -- so a client polling
-    # GET .../backfill-status right after create/edit responds is
-    # guaranteed to already see 'running', never a stale 'done' left over
-    # from this destination_id's previous run.
+    """Hands the backfill to backfill_queue's single global FIFO worker
+    rather than spawning a dedicated thread per destination -- several
+    destinations backfilling concurrently would each fire real HTTP calls
+    against train-journey-planner at once, and that service's concurrency
+    cap plus this app's own bounded 503 retry (destinations/client.py)
+    means sustained contention from parallel backfills could silently
+    drop a real result as "no route found". See backfill_queue's module
+    docstring for the full reasoning. total is computed here (route
+    handler thread) rather than inside the queue so a client polling
+    GET .../backfill-status right after this call returns is guaranteed
+    to already see 'queued' (or 'running', if the queue was empty),
+    never a stale 'done'/'failed' from this destination_id's previous
+    run."""
     total = len(listings_store.list_listings())
-    if backfill_status.start(destination_id, total=total):
-        # Every route in this file is a plain sync `def` (FastAPI runs those
-        # in its threadpool, with no event loop bound to that worker
-        # thread), so there's no asyncio loop here to hand a task to -- a
-        # plain daemon thread is the simplest fire-and-forget mechanism
-        # available without converting these routes to async just for this.
-        # compute_for_destination itself reports incremental progress via
-        # backfill_status as it goes.
-        thread = threading.Thread(target=compute.compute_for_destination, args=(destination_id,), daemon=True)
-        _track_background_thread(thread)
-        thread.start()
-        return
-
-    # A backfill for this destination_id is already running. Dropping this
-    # request outright would silently lose it -- e.g. two edits to the same
-    # destination arriving close together, where the second must still take
-    # effect once the first backfill finishes, not vanish. Queue exactly one
-    # rerun (further calls while one's already queued are no-ops, since
-    # compute_for_destination always re-reads the destination's current row
-    # when it eventually runs, so a rerun triggered by *any* of several
-    # rapid edits ends up reflecting whichever edit was last by the time it
-    # actually runs).
-    with _pending_reruns_lock:
-        if destination_id in _pending_reruns:
-            return
-        _pending_reruns.add(destination_id)
-
-    def _wait_then_rerun():
-        while True:
-            status = backfill_status.get(destination_id)
-            if status is None or status["status"] != "running":
-                break
-            time.sleep(0.2)
-        with _pending_reruns_lock:
-            _pending_reruns.discard(destination_id)
-        _run_backfill_in_background(destination_id)
-
-    waiter = threading.Thread(target=_wait_then_rerun, daemon=True)
-    _track_background_thread(waiter)
-    waiter.start()
+    backfill_queue.enqueue(destination_id, total)
 
 
 # Same HH:MM pattern as store._TIME_RE -- enforced here too so a malformed
