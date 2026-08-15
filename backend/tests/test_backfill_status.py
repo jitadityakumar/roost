@@ -9,13 +9,25 @@ def test_get_returns_none_for_untracked_destination():
     assert backfill_status.get(123) is None
 
 
-def test_start_then_get_reports_running_with_zero_done():
+def test_start_then_get_reports_queued_with_zero_done():
     backfill_status.start(1, total=5)
+    assert backfill_status.get(1) == {"status": "queued", "done": 0, "total": 5}
+
+
+def test_mark_running_transitions_from_queued():
+    backfill_status.start(1, total=5)
+    backfill_status.mark_running(1)
     assert backfill_status.get(1) == {"status": "running", "done": 0, "total": 5}
+
+
+def test_mark_running_is_a_no_op_for_an_untracked_destination():
+    backfill_status.mark_running(999)
+    assert backfill_status.get(999) is None
 
 
 def test_increment_advances_done_count():
     backfill_status.start(1, total=3)
+    backfill_status.mark_running(1)
     backfill_status.increment(1)
     backfill_status.increment(1)
     assert backfill_status.get(1)["done"] == 2
@@ -23,13 +35,21 @@ def test_increment_advances_done_count():
 
 def test_finish_sets_terminal_status():
     backfill_status.start(1, total=1)
+    backfill_status.mark_running(1)
     backfill_status.increment(1)
     backfill_status.finish(1, "done")
     assert backfill_status.get(1) == {"status": "done", "done": 1, "total": 1}
 
 
-def test_start_returns_false_and_does_not_reset_an_in_flight_run():
+def test_start_returns_false_and_does_not_reset_a_queued_run():
     assert backfill_status.start(1, total=10) is True
+    assert backfill_status.start(1, total=99) is False
+    assert backfill_status.get(1) == {"status": "queued", "done": 0, "total": 10}
+
+
+def test_start_returns_false_and_does_not_reset_a_running_run():
+    assert backfill_status.start(1, total=10) is True
+    backfill_status.mark_running(1)
     backfill_status.increment(1)
     assert backfill_status.start(1, total=99) is False
     assert backfill_status.get(1) == {"status": "running", "done": 1, "total": 10}
@@ -37,9 +57,10 @@ def test_start_returns_false_and_does_not_reset_an_in_flight_run():
 
 def test_start_after_a_previous_run_finished_starts_a_fresh_run():
     backfill_status.start(1, total=5)
+    backfill_status.mark_running(1)
     backfill_status.finish(1, "done")
     assert backfill_status.start(1, total=2) is True
-    assert backfill_status.get(1) == {"status": "running", "done": 0, "total": 2}
+    assert backfill_status.get(1) == {"status": "queued", "done": 0, "total": 2}
 
 
 def test_increment_and_finish_are_no_ops_for_an_untracked_destination():

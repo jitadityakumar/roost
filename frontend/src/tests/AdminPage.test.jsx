@@ -258,6 +258,33 @@ describe("AdminPage", () => {
     vi.useRealTimers();
   });
 
+  it("shows a queued message for a destination whose backfill is waiting behind another one", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.destinations.list.mockResolvedValue([
+      { id: 1, name: "Office", crs: "PAD", station_name: "Paddington", day_of_week: 0, time: "08:30", enabled: 1 },
+    ]);
+    api.destinations.backfillStatus
+      .mockResolvedValueOnce({ status: "queued", done: 0, total: 10 })
+      .mockResolvedValueOnce({ status: "running", done: 1, total: 10 });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderAdmin();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Queued — waiting for another destination's backfill to finish…")
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByText(/Backfilling journeys/)).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    await waitFor(() => expect(screen.getByText(/Backfilling journeys… 10% \(1\/10\)/)).toBeInTheDocument());
+
+    vi.useRealTimers();
+  });
+
   it("cancels the new-destination form without submitting", async () => {
     api.standards.list.mockResolvedValue([]);
     const user = userEvent.setup();

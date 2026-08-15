@@ -35,9 +35,10 @@ def existing_listing():
 
 
 def _wait_for_backfill(client, destination_id, timeout=2.0):
-    """The backfill now runs on a background thread (issue #36) instead of
-    inline in the request -- poll the status endpoint this feature adds
-    until it reports 'done', same as the frontend will."""
+    """The backfill now runs on backfill_queue's single global worker
+    thread (issue #36, serialized as a follow-up) instead of inline in the
+    request -- poll the status endpoint this feature adds until it reports
+    'done', same as the frontend will."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         status = client.get(f"/api/destinations/{destination_id}/backfill-status").json()
@@ -139,9 +140,14 @@ def test_create_destination_does_not_block_on_backfill(client, existing_listing,
     destination_id = resp.json()["id"]
 
     # The request already returned above -- the backfill is still blocked on
-    # `release`, so it must not be done yet.
+    # `release`, so it must not be done yet. Accept either 'queued' or
+    # 'running': backfill_queue's worker thread picks the job up
+    # asynchronously, so there's a small, non-deterministic window right
+    # after the response where it may not have transitioned to 'running'
+    # yet -- both states mean "not finished", which is what this test is
+    # actually asserting.
     status = client.get(f"/api/destinations/{destination_id}/backfill-status").json()
-    assert status["status"] == "running"
+    assert status["status"] in ("queued", "running")
 
     release.set()
     _wait_for_backfill(client, destination_id)
@@ -162,8 +168,10 @@ def test_compute_for_destination_marks_backfill_failed_on_exception(existing_lis
 
     monkeypatch.setattr(compute.journey_store, "replace_single", boom)
 
-    # Mirrors what the route does synchronously before spawning the thread.
+    # Mirrors what backfill_queue.enqueue()/the worker do before calling
+    # compute_for_destination (start() then mark_running()).
     backfill_status.start(d["id"], total=1)
+    backfill_status.mark_running(d["id"])
 
     with pytest.raises(RuntimeError):
         compute.compute_for_destination(d["id"])
@@ -194,10 +202,11 @@ def test_patch_while_a_backfill_is_already_running_is_queued_not_dropped(client,
     ).json()["id"]
 
     # The create's backfill is now blocked inside fetch_journeys. A PATCH
-    # arriving while it's still 'running' must still succeed and must not
-    # get dropped.
+    # arriving while it's still in flight ('queued' or 'running' -- see the
+    # comment in test_create_destination_does_not_block_on_backfill for why
+    # both are accepted) must still succeed and must not get dropped.
     status_before_patch = client.get(f"/api/destinations/{destination_id}/backfill-status").json()
-    assert status_before_patch["status"] == "running"
+    assert status_before_patch["status"] in ("queued", "running")
 
     resp = client.patch(f"/api/destinations/{destination_id}", json={"time": "09:00"})
     assert resp.status_code == 200
