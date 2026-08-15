@@ -583,6 +583,11 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   border-radius: 8px;
   padding: 1rem;
 }
+.modal .admin-add-rule.destination-form {
+  margin-top: 0;
+  padding: 0;
+  border: none;
+}
 .form-row { display: flex; gap: 0.5rem; }
 .form-row > * { flex: 1; min-width: 0; }
 .form-label { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 0.3rem; }
