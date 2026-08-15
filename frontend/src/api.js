@@ -52,6 +52,7 @@ export const api = {
     create: (body) => requestFrom(DESTINATIONS_BASE, "", { method: "POST", body: JSON.stringify(body) }),
     remove: (id) => requestFrom(DESTINATIONS_BASE, `/${id}`, { method: "DELETE" }),
     searchStations: (q) => requestFrom(DESTINATIONS_BASE, `/stations/search?q=${encodeURIComponent(q)}`),
+    backfillStatus: (id) => requestFrom(DESTINATIONS_BASE, `/${id}/backfill-status`),
   },
 
   listingDestinations: (id) => request(`/${id}/destinations`),

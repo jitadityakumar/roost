@@ -36,12 +36,16 @@ multi-change tier for avoiding redundant slow calls, matching train-
 journey-planner's own "don't call multi-change unconditionally" guidance
 in spirit.
 
-**Backfill on destination create/edit**: unlike the walking-distance Google
-Maps calls, train-journey-planner is local/free, so there's no cost reason
-to make the admin run a separate backfill step after adding or editing a
-destination. routes/destinations.py calls compute_for_destination()
-synchronously in the same request, looping every existing listing and
-recomputing just that one destination -- see that function's docstring.
+**Backfill on destination create/edit (GitHub issue #36)**: unlike the
+walking-distance Google Maps calls, train-journey-planner is local/free,
+so there's no cost reason to make the admin run a separate backfill step
+after adding or editing a destination. routes/destinations.py fires
+compute_for_destination() as a background task right after the response
+is sent, looping every existing listing and recomputing just that one
+destination -- see that function's docstring. Progress is tracked in
+app.destinations.backfill_status (in-memory, not persisted) so the admin
+page can poll and show a progress bar instead of blocking on the whole
+backfill.
 """
 from __future__ import annotations
 
@@ -50,7 +54,7 @@ import logging
 import time
 
 from app.commute.stations import resolve_crs_codes
-from app.destinations import journey_store, store
+from app.destinations import backfill_status, journey_store, store
 from app.destinations.client import TrainPlannerApiError, fetch_journeys, fetch_multi_change_journeys
 from app.listings import store as listings_store
 from app.listings.serialize import serialize_listing
@@ -206,31 +210,47 @@ def compute_for_listing(listing_id: int, nearest_stations_raw: list[dict]) -> No
 
 def compute_for_destination(destination_id: int) -> None:
     """Backfills a single destination's journeys across every existing
-    listing -- called synchronously from routes/destinations.py right after
-    a destination is created or its day/time/CRS/enabled state changes, so
-    existing listings pick it up immediately without a separate backfill
-    script or a manual per-listing refresh click. Safe to call often:
-    train-journey-planner is local/free, unlike the Google Maps walking-
-    distance calls that a bulk backfill has to guard against with
+    listing -- called as a background task from routes/destinations.py
+    right after a destination is created or its day/time/CRS/enabled state
+    changes, so existing listings pick it up without the admin request
+    blocking on the whole backfill (issue #36) or needing a separate
+    backfill script or a manual per-listing refresh click. Safe to call
+    often: train-journey-planner is local/free, unlike the Google Maps
+    walking-distance calls that a bulk backfill has to guard against with
     --skip-maps. A disabled destination's stored rows are cleared instead
     of recomputed, matching compute_for_listing's "disabled destinations
-    aren't stored" behavior."""
+    aren't stored" behavior.
+
+    Reports progress via backfill_status, keyed by destination_id --
+    routes/destinations.py has already called backfill_status.start()
+    synchronously (before this function ever starts running, on a
+    background thread) so that a client polling the status route
+    immediately after the create/edit request returns is guaranteed to see
+    'running', never a stale 'done' left over from a previous run of this
+    same destination_id."""
     destination = next((d for d in store.list_destinations() if d["id"] == destination_id), None)
     if destination is None:
+        backfill_status.finish(destination_id, "done")
         return
 
-    started = time.monotonic()
     listings = listings_store.list_listings()
-    for listing in listings:
-        listing_id = listing["id"]
-        if not destination["enabled"]:
-            journey_store.delete_for_destination(listing_id, destination_id)
-            continue
-        serialized = serialize_listing(listing)
-        origins = resolve_crs_codes(serialized.get("nearest_stations_raw") or [])
-        row = _best_across_origins(destination, origins) if origins else None
-        journey_store.replace_single(listing_id, destination_id, row)
+    started = time.monotonic()
+    try:
+        for listing in listings:
+            listing_id = listing["id"]
+            if not destination["enabled"]:
+                journey_store.delete_for_destination(listing_id, destination_id)
+            else:
+                serialized = serialize_listing(listing)
+                origins = resolve_crs_codes(serialized.get("nearest_stations_raw") or [])
+                row = _best_across_origins(destination, origins) if origins else None
+                journey_store.replace_single(listing_id, destination_id, row)
+            backfill_status.increment(destination_id)
+    except Exception:
+        backfill_status.finish(destination_id, "failed")
+        raise
 
+    backfill_status.finish(destination_id, "done")
     elapsed = time.monotonic() - started
     logger.info(
         "compute_for_destination(%s): backfilled %d listings in %.1fs",

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -23,6 +23,7 @@ vi.mock("../api.js", () => ({
       create: vi.fn(),
       remove: vi.fn(),
       searchStations: vi.fn(),
+      backfillStatus: vi.fn(),
     },
   },
 }));
@@ -39,6 +40,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.crimeBaselines.list.mockResolvedValue([]);
   api.destinations.list.mockResolvedValue([]);
+  api.destinations.backfillStatus.mockResolvedValue({ status: "idle", done: 0, total: 0 });
 });
 
 describe("AdminPage", () => {
@@ -232,6 +234,28 @@ describe("AdminPage", () => {
         time: "08:30",
       })
     );
+  });
+
+  it("shows a backfill progress bar for a destination whose backfill is running, and hides it once done", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.destinations.list.mockResolvedValue([
+      { id: 1, name: "Office", crs: "PAD", station_name: "Paddington", day_of_week: 0, time: "08:30", enabled: 1 },
+    ]);
+    api.destinations.backfillStatus
+      .mockResolvedValueOnce({ status: "running", done: 3, total: 10 })
+      .mockResolvedValueOnce({ status: "done", done: 10, total: 10 });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByText(/Backfilling journeys… 30% \(3\/10\)/)).toBeInTheDocument());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    await waitFor(() => expect(screen.queryByText(/Backfilling journeys/)).not.toBeInTheDocument());
+
+    vi.useRealTimers();
   });
 
   it("cancels the new-destination form without submitting", async () => {

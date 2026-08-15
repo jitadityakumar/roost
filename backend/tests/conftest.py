@@ -15,9 +15,27 @@ def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setenv("ROOST_DB_PATH", db_path)
 
     from app.db.migrate import run_migrations
+    from app.destinations import backfill_status
 
     run_migrations()
+    # backfill_status is deliberately process-wide, in-memory state (issue
+    # #36) -- reset it per test too, same as the DB, so a leftover 'running'
+    # entry from one test's destination_id can never be mistaken for a
+    # fresh run's state in a later test that happens to reuse the same id.
+    backfill_status._runs.clear()
     yield db_path
+
+    # A destination backfill (issue #36) now runs on a background thread
+    # that can outlive the test that started it. Join every thread the
+    # destinations route spawned before returning -- otherwise a slow
+    # backfill from this test can still be running once monkeypatch (which
+    # tears down after this fixture) reverts ROOST_DB_PATH, and that thread
+    # would then hit the next test's fresh, not-yet-migrated SQLite file.
+    from app.routes import destinations as destinations_routes
+
+    for t in destinations_routes._background_threads:
+        t.join(timeout=5)
+    destinations_routes._background_threads.clear()
 
 
 @pytest.fixture
