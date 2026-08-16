@@ -89,6 +89,125 @@ describe("FrequentDestinations", () => {
     expect(screen.queryByText(/South Western Railway/)).not.toBeInTheDocument();
   });
 
+  it("renders the home duration diff as a superscript next to the duration", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Office",
+        destination_type: "station",
+        day_of_week: 0,
+        day_label: "Monday",
+        time: "08:30",
+        station_name: "Paddington",
+        resolved: true,
+        duration_minutes: 42,
+        kind: "direct",
+        num_changes: 0,
+        operator: "South Western Railway",
+        origin_crs: "910GWOKING",
+        origin_name: "Woking",
+        arrival_name: "Paddington",
+        interchange_crs: null,
+        departure_time: "2026-08-17T08:40:00",
+        arrival_time: "2026-08-17T09:04:00",
+        home_duration_diff_minutes: 24,
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
+    expect(screen.getByText("(+24)")).toBeInTheDocument();
+  });
+
+  it("renders a negative home duration diff without a leading plus", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Office",
+        destination_type: "station",
+        day_of_week: 0,
+        day_label: "Monday",
+        time: "08:30",
+        station_name: "Paddington",
+        resolved: true,
+        duration_minutes: 42,
+        kind: "direct",
+        num_changes: 0,
+        operator: "South Western Railway",
+        origin_crs: "910GWOKING",
+        origin_name: "Woking",
+        arrival_name: "Paddington",
+        interchange_crs: null,
+        departure_time: "2026-08-17T08:40:00",
+        arrival_time: "2026-08-17T09:04:00",
+        home_duration_diff_minutes: -10,
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
+    expect(screen.getByText("(-10)")).toBeInTheDocument();
+  });
+
+  it("renders a zero home duration diff with a leading plus", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Office",
+        destination_type: "station",
+        day_of_week: 0,
+        day_label: "Monday",
+        time: "08:30",
+        station_name: "Paddington",
+        resolved: true,
+        duration_minutes: 42,
+        kind: "direct",
+        num_changes: 0,
+        operator: "South Western Railway",
+        origin_crs: "910GWOKING",
+        origin_name: "Woking",
+        arrival_name: "Paddington",
+        interchange_crs: null,
+        departure_time: "2026-08-17T08:40:00",
+        arrival_time: "2026-08-17T09:04:00",
+        home_duration_diff_minutes: 0,
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
+    expect(screen.getByText("(+0)")).toBeInTheDocument();
+  });
+
+  it("omits the home diff superscript when not provided", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Office",
+        destination_type: "station",
+        day_of_week: 0,
+        day_label: "Monday",
+        time: "08:30",
+        station_name: "Paddington",
+        resolved: true,
+        duration_minutes: 24,
+        kind: "direct",
+        num_changes: 0,
+        operator: "South Western Railway",
+        origin_crs: "910GWOKING",
+        origin_name: "Woking",
+        arrival_name: "Paddington",
+        interchange_crs: null,
+        departure_time: "2026-08-17T08:40:00",
+        arrival_time: "2026-08-17T09:04:00",
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText("24m")).toBeInTheDocument());
+    expect(document.querySelector(".destination-home-diff")).not.toBeInTheDocument();
+  });
+
   it("formats durations over an hour as 1h21m", async () => {
     api.listingDestinations.mockResolvedValue([
       {

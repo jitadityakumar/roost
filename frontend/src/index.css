@@ -681,6 +681,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .destination-station { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
 .destination-duration { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .destination-duration.good { color: var(--accent); }
+.destination-home-diff { font-weight: 400; color: var(--muted); font-size: 0.7em; margin-left: 0.15rem; }
 .destination-line2 { display: flex; justify-content: space-between; gap: 0.6rem; margin-top: 0.2rem; color: var(--muted); font-size: 0.85rem; }
 .destination-target { white-space: nowrap; }
 .destination-route { text-align: right; }

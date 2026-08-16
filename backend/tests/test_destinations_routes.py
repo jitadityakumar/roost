@@ -64,6 +64,46 @@ def test_delete_destination(client):
     assert client.get("/api/destinations").json() == []
 
 
+def _fake_journey(duration_minutes):
+    return {
+        "duration_minutes": duration_minutes,
+        "kind": "direct",
+        "num_changes": 0,
+        "operator": "South Western Railway",
+        "origin_crs": "910GWOKING",
+        "origin_name": "Woking Rail Station",
+        "arrival_name": "Paddington",
+        "interchange_crs": None,
+        "departure_time": "2026-08-17T08:40:00",
+        "arrival_time": "2026-08-17T09:04:00",
+    }
+
+
+def test_patch_destination_recomputes_home_journey(client, monkeypatch):
+    # Verifies the PR #49 review finding: editing day_of_week/time/
+    # tfl_identifier via PATCH *does* correctly recompute home_journeys
+    # (compute_for_destination, triggered by any non-empty PATCH, always
+    # calls compute_home_journey with the freshly-updated destination row) --
+    # the admin UI just never exposes editing those fields today, so this
+    # path is otherwise untested.
+    from app import config
+    from app.destinations import backfill_queue, compute, journey_store
+
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _fake_journey(20))
+    d = client.post("/api/destinations", json=_CREATE_BODY).json()
+    backfill_queue.wait_until_idle(timeout=5)
+    assert journey_store.get_home_journeys()[d["id"]]["duration_minutes"] == 20
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _fake_journey(35))
+    client.patch(f"/api/destinations/{d['id']}", json={"time": "09:00"})
+    backfill_queue.wait_until_idle(timeout=5)
+
+    assert journey_store.get_home_journeys()[d["id"]]["duration_minutes"] == 35
+
+
 def test_station_search(client, monkeypatch):
     from app.routes import destinations as destinations_routes
 

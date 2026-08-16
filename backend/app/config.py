@@ -19,3 +19,22 @@ MORTGAGE_API_BASE = os.environ.get("ROOST_MORTGAGE_API_BASE")
 # default; a missing key means walk distances/frequent-destination journeys
 # just aren't computed (caught and logged per-call, not fatal).
 TFL_API_KEY = os.environ.get("TFL_API_KEY")
+
+# User's home lat/lon, for the home-vs-listing journey duration comparison
+# (see app/destinations/compute.py) -- deliberately an env var, never
+# DB-stored, so a real home address never ends up in the public repo or a
+# shared DB dump. No in-repo default; either var missing or unparseable as
+# a float means the comparison just isn't computed/shown, same
+# caught-and-skipped precedent as TFL_API_KEY.
+def _parse_coord(name: str) -> float | None:
+    value = os.environ.get(name)
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+HOME_LAT = _parse_coord("ROOST_HOME_LAT")
+HOME_LON = _parse_coord("ROOST_HOME_LON")

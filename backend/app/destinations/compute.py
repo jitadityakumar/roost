@@ -25,6 +25,20 @@ existing listing and recomputing just that one destination -- see that
 function's docstring. Progress is tracked in app.destinations.backfill_status
 (in-memory, not persisted) so the admin page can poll and show a progress
 bar instead of blocking on the whole backfill.
+
+**Home-vs-listing comparison**: compute_for_destination also computes (via
+compute_home_journey) a single journey from the user's own home lat/lon
+(ROOST_HOME_LAT/ROOST_HOME_LON, app/config.py) to the destination, stored in
+home_journeys keyed by destination_id alone -- unlike destination_journeys,
+there's no per-listing loop here since home is one fixed origin. There's no
+separate "did the schedule change" invalidation path for this -- it doesn't
+need one, since it's recomputed via this same function on every call,
+including a PATCH edit to day_of_week/time/tfl_identifier (any non-empty
+PATCH already re-triggers compute_for_destination, see routes/
+destinations.py). In practice the admin UI never exposes editing those
+fields (delete + recreate only), so this only ever runs once per
+destination's lifetime today -- but that's a UI choice, not something this
+function depends on for correctness.
 """
 from __future__ import annotations
 
@@ -32,6 +46,7 @@ import datetime as dt
 import logging
 import time
 
+from app import config
 from app.commute.tfl_client import find_frequent_destination_journey
 from app.destinations import backfill_status, journey_store, store
 from app.listings import store as listings_store
@@ -80,6 +95,23 @@ def _journey_row(destination: dict, latitude: float | None, longitude: float | N
     # departure_time, arrival_time) already match journey_store's row shape
     # 1:1 -- see tfl_client.py::_extract_journey.
     return {"destination_id": destination["id"], **journey}
+
+
+def compute_home_journey(destination: dict) -> None:
+    """Computes and stores this destination's home_journeys row from
+    ROOST_HOME_LAT/ROOST_HOME_LON (app.config) -- the fixed origin for the
+    home-vs-listing duration comparison (routes/destination_journeys.py).
+    Clears any stored row instead if either env var is unset (no home
+    configured -- the expected state on a fresh/public deployment, see
+    config.py) or the destination is disabled, matching
+    compute_for_listing's "disabled destinations aren't stored" behavior.
+    Computed once per call, not once per listing -- home is a single fixed
+    origin shared across every listing, unlike destination_journeys."""
+    if not destination["enabled"] or config.HOME_LAT is None or config.HOME_LON is None:
+        journey_store.delete_home_journey(destination["id"])
+        return
+    row = _journey_row(destination, config.HOME_LAT, config.HOME_LON)
+    journey_store.set_home_journey(destination["id"], row)
 
 
 def compute_for_listing(listing_id: int, latitude: float | None, longitude: float | None) -> None:
@@ -137,6 +169,7 @@ def compute_for_destination(destination_id: int) -> None:
     listings = listings_store.list_listings()
     started = time.monotonic()
     try:
+        compute_home_journey(destination)
         for listing in listings:
             listing_id = listing["id"]
             if not destination["enabled"]:
