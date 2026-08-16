@@ -101,3 +101,39 @@ def replace_single(listing_id: int, destination_id: int, row: dict | None) -> No
 
 def delete_for_destination(listing_id: int, destination_id: int) -> None:
     replace_single(listing_id, destination_id, None)
+
+
+def set_home_journey(destination_id: int, journey: dict | None) -> None:
+    """journey: {"duration_minutes", "kind", "num_changes"} (extra keys, e.g.
+    from a full _journey_row dict, are ignored) -- or None to clear. Same
+    delete-then-reinsert precedent as replace_single, just keyed by
+    destination_id alone since home has one row per destination, not per
+    listing."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM home_journeys WHERE destination_id = ?", (destination_id,))
+        if journey is not None:
+            conn.execute(
+                "INSERT INTO home_journeys (destination_id, duration_minutes, kind, num_changes, computed_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (destination_id, journey["duration_minutes"], journey["kind"], journey["num_changes"], now),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_home_journeys() -> dict[int, dict]:
+    """Returns {destination_id: row_dict} for every destination with a
+    stored home journey."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM home_journeys").fetchall()
+        return {r["destination_id"]: dict(r) for r in rows}
+    finally:
+        conn.close()
+
+
+def delete_home_journey(destination_id: int) -> None:
+    set_home_journey(destination_id, None)

@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/listings", tags=["destinations"])
 _DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _serialize(destination: dict, journeys: dict) -> dict:
+def _serialize(destination: dict, journeys: dict, home_journeys: dict) -> dict:
     journey = journeys.get(destination["id"])
     out = {
         "destination_id": destination["id"],
@@ -37,6 +37,16 @@ def _serialize(destination: dict, journeys: dict) -> dict:
                 "computed_at": journey["computed_at"],
             }
         )
+        # Live diff, not stored -- computed fresh from each side's own
+        # duration_minutes every request, so it's never stale relative to
+        # either. Omitted entirely (not even a null key) if either side has
+        # no result -- no home configured (config.HOME_LAT/LON unset, see
+        # compute.py), or this destination's home journey/this listing's
+        # journey wasn't found. Positive means this listing's journey is
+        # slower than the trip from home.
+        home_journey = home_journeys.get(destination["id"])
+        if home_journey is not None:
+            out["home_duration_diff_minutes"] = journey["duration_minutes"] - home_journey["duration_minutes"]
     return out
 
 
@@ -51,7 +61,8 @@ def _listing_or_404(listing_id: int) -> dict:
 def get_destinations(listing_id: int):
     _listing_or_404(listing_id)
     journeys = journey_store.get_journeys(listing_id)
-    return [_serialize(d, journeys) for d in store.list_destinations() if d["enabled"]]
+    home_journeys = journey_store.get_home_journeys()
+    return [_serialize(d, journeys, home_journeys) for d in store.list_destinations() if d["enabled"]]
 
 
 @router.post("/{listing_id}/destinations/refresh", status_code=202)
@@ -60,4 +71,5 @@ def refresh_destinations(listing_id: int):
     serialized = serialize_listing(listing)
     compute.compute_for_listing(listing_id, serialized.get("latitude"), serialized.get("longitude"))
     journeys = journey_store.get_journeys(listing_id)
-    return [_serialize(d, journeys) for d in store.list_destinations() if d["enabled"]]
+    home_journeys = journey_store.get_home_journeys()
+    return [_serialize(d, journeys, home_journeys) for d in store.list_destinations() if d["enabled"]]

@@ -46,7 +46,15 @@ function DestinationRow({ destination }) {
             · {destination.day_label.slice(0, 3)} {destination.time}
           </span>
         </span>
-        <span className="destination-duration good">{formatDuration(destination.duration_minutes)}</span>
+        <span className="destination-duration good">
+          {formatDuration(destination.duration_minutes)}
+          {destination.home_duration_diff_minutes !== undefined && (
+            <sup className="destination-home-diff">
+              ({destination.home_duration_diff_minutes >= 0 ? "+" : ""}
+              {destination.home_duration_diff_minutes})
+            </sup>
+          )}
+        </span>
       </div>
       <div className="destination-line2">
         <span className="destination-station">

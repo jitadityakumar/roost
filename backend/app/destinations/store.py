@@ -109,6 +109,7 @@ def delete_destination(destination_id: int) -> None:
     conn = get_connection()
     try:
         conn.execute("DELETE FROM destination_journeys WHERE destination_id = ?", (destination_id,))
+        conn.execute("DELETE FROM home_journeys WHERE destination_id = ?", (destination_id,))
         conn.execute("DELETE FROM frequent_destinations WHERE id = ?", (destination_id,))
         conn.commit()
     finally:

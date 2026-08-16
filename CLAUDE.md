@@ -39,10 +39,13 @@ docker run -p 8000:8000 -v $(pwd)/data:/data \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 `.env` (gitignored, not tracked in this repo) holds the host-specific
-`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, and `TFL_API_KEY`
-vars -- deliberately passed via `--env-file` rather than inline
-`-e`/python-dotenv, since inline flags leave the key visible in shell
-history / `ps aux`.
+`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `TFL_API_KEY`, and
+optional `ROOST_HOME_LAT`/`ROOST_HOME_LON` (home-vs-listing journey
+duration comparison, app/destinations/compute.py -- deliberately env-only,
+never DB-stored, so a real home address never lands in the public repo or
+a DB dump; the comparison is just skipped if unset) vars -- deliberately
+passed via `--env-file` rather than inline `-e`/python-dotenv, since inline
+flags leave the key visible in shell history / `ps aux`.
 
 There is no automated test suite yet — verification so far has been manual
 end-to-end runs against real Rightmove listings and a running Docker

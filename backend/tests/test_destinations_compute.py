@@ -2,6 +2,7 @@ import datetime as dt
 
 import pytest
 
+from app import config
 from app.destinations import compute, journey_store, store
 from app.listings import store as listings_store
 
@@ -169,3 +170,73 @@ def test_compute_for_destination_disabled_clears_rows(monkeypatch):
     compute.compute_for_destination(d["id"])
 
     assert journey_store.get_journeys(1) == {}
+
+
+# --- compute_home_journey -----------------------------------------------
+
+def test_compute_home_journey_stores_when_home_configured(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _journey(42))
+
+    compute.compute_home_journey(d)
+
+    home = journey_store.get_home_journeys()[d["id"]]
+    assert home["duration_minutes"] == 42
+    assert home["kind"] == "direct"
+    assert home["num_changes"] == 0
+
+
+def test_compute_home_journey_uses_home_coords_as_origin(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    seen = {}
+
+    def fake_journey(lat, lon, *a, **k):
+        seen["lat"], seen["lon"] = lat, lon
+        return _journey(42)
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", fake_journey)
+    compute.compute_home_journey(d)
+
+    assert seen == {"lat": 51.465, "lon": -0.2407}
+
+
+def test_compute_home_journey_clears_when_home_not_configured(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(config, "HOME_LAT", None)
+    monkeypatch.setattr(config, "HOME_LON", None)
+    monkeypatch.setattr(
+        compute, "find_frequent_destination_journey", lambda *a, **k: pytest.fail("should not be called")
+    )
+
+    compute.compute_home_journey(d)
+
+    assert journey_store.get_home_journeys() == {}
+
+
+def test_compute_home_journey_clears_when_destination_disabled(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _journey(42))
+    compute.compute_home_journey(d)
+    assert journey_store.get_home_journeys() != {}
+
+    disabled = dict(d, enabled=0)
+    compute.compute_home_journey(disabled)
+
+    assert journey_store.get_home_journeys() == {}
+
+
+def test_compute_for_destination_also_computes_home_journey(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _journey(42))
+
+    compute.compute_for_destination(d["id"])
+
+    assert journey_store.get_home_journeys()[d["id"]]["duration_minutes"] == 42

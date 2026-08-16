@@ -1,6 +1,6 @@
 import pytest
 
-from app.destinations import store
+from app.destinations import journey_store, store
 
 
 def test_create_and_list_station_destination():
@@ -80,3 +80,12 @@ def test_delete_destination():
     d = store.create_destination("Office", "station", "910GPADTON", "Paddington", 0, "08:30")
     store.delete_destination(d["id"])
     assert store.list_destinations() == []
+
+
+def test_delete_destination_clears_home_journey():
+    d = store.create_destination("Office", "station", "910GPADTON", "Paddington", 0, "08:30")
+    journey_store.set_home_journey(d["id"], {"duration_minutes": 42, "kind": "direct", "num_changes": 0})
+
+    store.delete_destination(d["id"])
+
+    assert journey_store.get_home_journeys() == {}
