@@ -351,6 +351,136 @@ def test_walk_refresh_returns_fresh_walk_data_in_response(client, monkeypatch):
     assert nearest[0]["walk_duration_seconds"] == 360
 
 
+def test_get_listing_computes_min_walk_minutes_from_stored_walk_durations(client):
+    import json
+
+    from app.commute import walk_store
+    from app.standards import store as standards_store
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(
+        1,
+        {
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "nearest_stations_raw": json.dumps(
+                [
+                    {"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]},
+                    {"name": "Vauxhall Station", "distance": 0.6, "types": ["NATIONAL_TRAIN"]},
+                ]
+            ),
+        },
+    )
+    walk_store.replace_walk_distances(
+        1,
+        [
+            {
+                "station_index": 0,
+                "rightmove_name": "Clapham Junction Station",
+                "mode": "national-rail",
+                "stop_point_id": "910GCLPHMJC",
+                "distance_meters": 500,
+                "duration_seconds": 900,
+            },
+            {
+                "station_index": 1,
+                "rightmove_name": "Vauxhall Station",
+                "mode": "national-rail",
+                "stop_point_id": "910GVAUXHLM",
+                "distance_meters": 700,
+                "duration_seconds": 660,
+            },
+        ],
+    )
+    # 660s -> 11 minutes is the minimum of the two stored durations -- confirms
+    # the computed field takes the min across all stations, not just the first.
+    standards_store.create_rule("min_walk_minutes", "gt", "10")
+
+    resp = client.get("/api/listings/1")
+    assert resp.status_code == 200
+    violations = resp.json()["standards_violations"]
+    assert any(v["field"] == "min_walk_minutes" for v in violations)
+    matched = next(v for v in violations if v["field"] == "min_walk_minutes")
+    assert "11" in matched["message"]
+
+
+def test_get_listing_min_walk_minutes_ignores_stale_row_after_reorder(client):
+    # station_walk_distances is index-keyed, not CRS-keyed -- if Rightmove
+    # reorders nearest_stations_raw between the scrape that computed a walk
+    # row and now, lookup_walk() discards any row whose stored rightmove_name
+    # no longer matches the name currently at that index. min_walk_minutes
+    # must read the already-guarded values _attach_walk_data attaches, not
+    # the raw station_walk_distances table directly -- otherwise a stale row
+    # from a station no longer among the listing's current nearest stations
+    # could silently feed the computed min.
+    import json
+
+    from app.commute import walk_store
+    from app.standards import store as standards_store
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(
+        1,
+        {
+            "latitude": 51.5,
+            "longitude": -0.1,
+            # Reordered vs. the scrape that computed the walk rows below --
+            # station_index 0 is now Vauxhall, not Clapham Junction.
+            "nearest_stations_raw": json.dumps(
+                [
+                    {"name": "Vauxhall Station", "distance": 0.6, "types": ["NATIONAL_TRAIN"]},
+                    {"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]},
+                ]
+            ),
+        },
+    )
+    walk_store.replace_walk_distances(
+        1,
+        [
+            # Stored against the old ordering: index 0 -> Clapham Junction
+            # (a fast 3 min walk), index 1 -> Vauxhall. Both are now stale --
+            # neither rightmove_name matches the name at that index anymore.
+            {
+                "station_index": 0,
+                "rightmove_name": "Clapham Junction Station",
+                "mode": "national-rail",
+                "stop_point_id": "910GCLPHMJC",
+                "distance_meters": 200,
+                "duration_seconds": 180,
+            },
+            {
+                "station_index": 1,
+                "rightmove_name": "Vauxhall Station",
+                "mode": "national-rail",
+                "stop_point_id": "910GVAUXHLM",
+                "distance_meters": 700,
+                "duration_seconds": 660,
+            },
+        ],
+    )
+    standards_store.create_rule("min_walk_minutes", "gt", "10")
+
+    resp = client.get("/api/listings/1")
+    assert resp.status_code == 200
+    # Every stored row is stale (name mismatch at its index), so no walk data
+    # should be usable at all -- must not silently pick up the stale 3 min
+    # Clapham Junction row and wrongly report no violation.
+    violations = resp.json()["standards_violations"]
+    assert not any(v["field"] == "min_walk_minutes" for v in violations)
+
+
+def test_get_listing_min_walk_minutes_null_when_no_walk_data(client):
+    from app.standards import store as standards_store
+
+    store.create_stub_listing(1, VALID_URL)
+    standards_store.create_rule("min_walk_minutes", "gt", "10")
+
+    resp = client.get("/api/listings/1")
+    assert resp.status_code == 200
+    violations = resp.json()["standards_violations"]
+    assert not any(v["field"] == "min_walk_minutes" for v in violations)
+
+
 def test_walk_refresh_handles_listing_with_no_stations_or_latlon(client):
     # No latitude/longitude/nearest_stations_raw at all -- must not 500,
     # same "just no data" degrade-gracefully path as the scrape-time call.

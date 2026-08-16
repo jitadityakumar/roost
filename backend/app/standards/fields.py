@@ -10,6 +10,12 @@ NUMERIC_FIELDS = {
     "service_charge_pa": "Service charge (per yr)",
     "service_charge_pm": "Service charge (per mo)",
     "floor_area_sqft": "Floor area (sq ft)",
+    # Computed, not a raw `listings` column -- injected onto the listing
+    # dict at evaluate_listing's call site (routes/listings.py::get_listing)
+    # rather than stored in the DB. Value is in minutes, not seconds --
+    # there's no unit-conversion layer elsewhere in this module, so this
+    # field's stored/compared value and its label must both stay minutes.
+    "min_walk_minutes": "Walking time to nearest station (min)",
 }
 
 BOOLEAN_FIELDS = {

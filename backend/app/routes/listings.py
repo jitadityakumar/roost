@@ -31,7 +31,11 @@ def _attach_walk_data(listing_id: int, out: dict) -> None:
     Looks up by the entry's position in `nearest_stations_raw` (station_walk_
     distances is index-keyed, not CRS-keyed -- tube/tram/DLR/overground
     stations have no CRS at all), via lookup_walk()'s rightmove_name-match
-    guard against a stale row surviving a Rightmove reorder between scrapes."""
+    guard against a stale row surviving a Rightmove reorder between scrapes.
+    get_listing's min_walk_minutes standards field reads the already-guarded
+    walk_duration_seconds values this loop attaches, rather than querying
+    station_walk_distances again directly -- reading the raw table would
+    bypass this same stale-row guard."""
     nearest = out.get("nearest_stations_raw")
     if not isinstance(nearest, list) or not nearest:
         return
@@ -115,6 +119,14 @@ def get_listing(listing_id: int):
     if listing is None:
         raise HTTPException(status_code=404, detail="listing not found")
     out = _serialize_with_pipeline_status(listing)
+    # Reads the already-guarded walk_duration_seconds values _attach_walk_data
+    # attached above (via lookup_walk's stale-row check), not a fresh
+    # get_walk_distances() call -- reading the raw table directly here would
+    # bypass that guard and risk a min computed from a station no longer
+    # among the listing's current nearest stations after a Rightmove reorder.
+    nearest = out.get("nearest_stations_raw") or []
+    durations = [e["walk_duration_seconds"] for e in nearest if e.get("walk_duration_seconds") is not None]
+    listing["min_walk_minutes"] = round(min(durations) / 60) if durations else None
     out["standards_violations"] = evaluate_listing(listing, standards_store.list_rules())
     return out
 
