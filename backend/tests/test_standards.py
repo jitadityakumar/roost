@@ -93,6 +93,23 @@ def test_evaluate_numeric_lt_does_not_match():
     assert evaluate_listing(listing, rules) == []
 
 
+def test_evaluate_min_walk_minutes_matches():
+    # min_walk_minutes is a computed field (no listings column) -- evaluate_listing
+    # doesn't care where a dict key came from, so injecting it directly here
+    # exercises the same path as get_listing's computed-field injection.
+    listing = {"min_walk_minutes": 25}
+    rules = [{"id": 1, "field": "min_walk_minutes", "operator": "gt", "value": "20", "enabled": 1}]
+    violations = evaluate_listing(listing, rules)
+    assert len(violations) == 1
+    assert "25" in violations[0]["message"]
+
+
+def test_evaluate_min_walk_minutes_null_never_matches():
+    listing = {"min_walk_minutes": None}
+    rules = [{"id": 1, "field": "min_walk_minutes", "operator": "gt", "value": "20", "enabled": 1}]
+    assert evaluate_listing(listing, rules) == []
+
+
 def test_evaluate_boolean_eq_true_matches():
     listing = {"cash_only": 1}
     rules = [{"id": 1, "field": "cash_only", "operator": "eq", "value": "true", "enabled": 1}]

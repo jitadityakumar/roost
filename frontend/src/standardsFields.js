@@ -9,6 +9,9 @@ export const NUMERIC_FIELDS = {
   service_charge_pa: "Service charge (per yr)",
   service_charge_pm: "Service charge (per mo)",
   floor_area_sqft: "Floor area (sq ft)",
+  // Computed, not a raw listing column -- see backend/app/standards/fields.py.
+  // Value is in minutes, not seconds.
+  min_walk_minutes: "Min walk to nearest station (min)",
 };
 
 export const BOOLEAN_FIELDS = {
