@@ -471,6 +471,12 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   font-weight: 700;
   line-height: 1;
 }
+.station-badge-logo {
+  width: 1.7rem;
+  height: 1.4rem;
+  border-radius: 0;
+  object-fit: contain;
+}
 .station-name { flex: 1; }
 .station-distance-wrap {
   display: flex;

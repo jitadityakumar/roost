@@ -20,6 +20,12 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+# Trademark-protected transit network logos (TfL roundel, National Rail
+# double-arrow, etc.) — present locally for the real-logo station badges,
+# not committed to this public repo. NearestStations.jsx falls back to
+# colored letter badges automatically when these files are absent.
+frontend/src/assets/network-logos/
+
 # e2e (Playwright)
 e2e/node_modules/
 e2e/test-results/
