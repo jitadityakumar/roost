@@ -75,19 +75,11 @@ def _journey_row(destination: dict, latitude: float | None, longitude: float | N
     if journey is None:
         return None
 
-    return {
-        "destination_id": destination["id"],
-        "duration_minutes": journey["duration_minutes"],
-        "kind": journey["kind"],
-        "num_changes": journey["num_changes"],
-        "operator": journey["operator"],
-        "origin_crs": journey["origin_crs"],
-        "origin_name": journey["origin_name"],
-        "arrival_name": journey["arrival_name"],
-        "interchange_crs": journey["interchange_crs"],
-        "departure_time": journey["departure_time"],
-        "arrival_time": journey["arrival_time"],
-    }
+    # journey's keys (duration_minutes, kind, num_changes, operator,
+    # origin_crs, origin_name, arrival_name, interchange_crs,
+    # departure_time, arrival_time) already match journey_store's row shape
+    # 1:1 -- see tfl_client.py::_extract_journey.
+    return {"destination_id": destination["id"], **journey}
 
 
 def compute_for_listing(listing_id: int, latitude: float | None, longitude: float | None) -> None:
@@ -120,10 +112,11 @@ def compute_for_destination(destination_id: int) -> None:
     right after a destination is created or its day/time/tfl_identifier/
     enabled state changes, so existing listings pick it up without the
     admin request blocking on the whole backfill (issue #36) or needing a
-    separate backfill script for a create/edit. (A separate backfill script
-    still exists for issue #47's migration -- re-triggering every existing
-    destination at once via a no-op PATCH, see scripts/
-    tfl-destinations-backfill.sh.) Safe to call often: TfL's API is free,
+    separate backfill script for a create/edit. (Re-triggering every
+    existing destination at once -- e.g. after a migration -- can reuse this
+    same path via a no-op PATCH per destination; no dedicated backfill
+    script exists for issue #47's migration since both destination tables
+    were empty when it landed.) Safe to call often: TfL's API is free,
     unlike the Google Maps walking-distance calls that a bulk backfill has
     to guard against with --skip-maps. A disabled destination's stored rows
     are cleared instead of recomputed, matching compute_for_listing's

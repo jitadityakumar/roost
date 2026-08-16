@@ -344,25 +344,32 @@ def _leg_operator(leg: dict) -> str | None:
     return first.get("name") if isinstance(first, dict) else None
 
 
+def _is_walking(leg: dict) -> bool:
+    return (leg.get("mode") or {}).get("id") == "walking"
+
+
 def _counted_legs(legs: list[dict]) -> list[dict]:
     """Every leg that counts toward kind/num_changes/interchange_crs --
-    every non-walking leg, PLUS any walking leg that isn't the very first
-    (access from the raw lat/lon origin) or very last (egress to the
-    postcode/StopPoint destination) leg in the list. A walking leg in the
+    every non-walking leg, PLUS any walking leg that isn't part of the
+    leading run (access from the raw lat/lon origin -- TfL can return more
+    than one consecutive walking leg here, e.g. a transfer between two
+    nearby stops before the first real transit leg) or the trailing run
+    (egress to the postcode/StopPoint destination). A walking leg in the
     middle is a real cross-station interchange (e.g. Bank -> Monument,
     confirmed live during the issue #47 UX review) and must count as a
     change like any other mode transition -- see issue #47's walking-
     interchange addendum. Blindly excluding every walking leg would
     silently understate num_changes/interchange_crs for journeys like
-    that."""
-    last_index = len(legs) - 1
-    counted = []
-    for i, leg in enumerate(legs):
-        is_walking = (leg.get("mode") or {}).get("id") == "walking"
-        if is_walking and i in (0, last_index):
-            continue
-        counted.append(leg)
-    return counted
+    that; excluding only index 0/-1 would under-exclude a journey with a
+    multi-leg walking access/egress run."""
+    n = len(legs)
+    start = 0
+    while start < n and _is_walking(legs[start]):
+        start += 1
+    end = n
+    while end > start and _is_walking(legs[end - 1]):
+        end -= 1
+    return legs[start:end]
 
 
 def _extract_journey(journey: dict) -> dict | None:
@@ -394,8 +401,8 @@ def _extract_journey(journey: dict) -> dict | None:
         operator = _leg_operator(first)
     else:
         # No non-walking leg at all -- the destination is within walking
-        # distance of the raw origin. Falls back to the (single) walking
-        # leg's own arrival point, so origin_crs/origin_name (NOT NULL in
+        # distance of the raw origin. Falls back to the final walking leg's
+        # own arrival point, so origin_crs/origin_name (NOT NULL in
         # destination_journeys) always have a real value -- see issue #47's
         # schema-gap addendum.
         only_leg = legs[-1]
@@ -480,7 +487,11 @@ def find_frequent_destination_journey(
             if departure_dt is not None and departure_dt > window_end:
                 continue
             extracted = _extract_journey(journey)
-            if extracted is not None and (best is None or extracted["duration_minutes"] < best["duration_minutes"]):
+            if extracted is not None and (
+                best is None
+                or (extracted["duration_minutes"], extracted["num_changes"])
+                < (best["duration_minutes"], best["num_changes"])
+            ):
                 best = extracted
             if departure_dt is not None and (max_departure is None or departure_dt > max_departure):
                 max_departure = departure_dt

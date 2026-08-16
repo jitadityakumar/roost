@@ -102,6 +102,38 @@ def test_journey_with_no_non_walking_leg_falls_back_to_walking_legs_arrival_poin
     assert extracted["num_changes"] == 0
 
 
+def test_leading_run_of_multiple_walking_legs_is_all_excluded():
+    # Two consecutive walking legs before the first transit leg (e.g. a
+    # short transfer between two nearby stops) must both be excluded from
+    # the change count, not just the very first leg.
+    legs = [
+        _leg("walking", "origin", None, "Stop A", "910GA", duration=3),
+        _leg("walking", "Stop A", "910GA", "Stop B", "910GB", duration=4),
+        _leg("national-rail", "Stop B", "910GB", "Destination", "910GC", duration=20, operator="Test Rail"),
+    ]
+
+    extracted = tfl_client._extract_journey(_journey(20, legs))
+
+    assert extracted["kind"] == "direct"
+    assert extracted["num_changes"] == 0
+    assert extracted["origin_crs"] == "910GB"
+    assert extracted["origin_name"] == "Stop B"
+
+
+def test_trailing_run_of_multiple_walking_legs_is_all_excluded():
+    legs = [
+        _leg("national-rail", "Origin", "910GA", "Stop B", "910GB", duration=20, operator="Test Rail"),
+        _leg("walking", "Stop B", "910GB", "Stop C", "910GC", duration=4),
+        _leg("walking", "Stop C", "910GC", "Destination", "910GD", duration=3),
+    ]
+
+    extracted = tfl_client._extract_journey(_journey(20, legs))
+
+    assert extracted["kind"] == "direct"
+    assert extracted["num_changes"] == 0
+    assert extracted["arrival_name"] == "Stop B"
+
+
 def test_duration_minutes_is_read_directly_never_diffed_from_timestamps():
     # startDateTime/arrivalDateTime deliberately don't match `duration` --
     # simulates the DST-ambiguous case the issue #47 spike found live.
