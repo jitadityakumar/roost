@@ -95,7 +95,19 @@ def test_delete_listing_cascades_station_walk_distances_and_destination_journeys
     from app.destinations import journey_store as destination_journey_store
     from app.destinations import store as destinations_store
 
-    walk_store.replace_walk_distances(listing_id, [{"crs": "WOK", "distance_meters": 400, "duration_seconds": 300}])
+    walk_store.replace_walk_distances(
+        listing_id,
+        [
+            {
+                "station_index": 0,
+                "rightmove_name": "Woking Station",
+                "mode": "national-rail",
+                "stop_point_id": "910GWOKING",
+                "distance_meters": 400,
+                "duration_seconds": 300,
+            }
+        ],
+    )
     destination = destinations_store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
     destination_journey_store.replace_single(
         listing_id,

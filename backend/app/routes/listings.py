@@ -4,9 +4,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import MEDIA_DIR
-from app.commute.stations import crs_for_name
-from app.commute.walk_store import get_walk_distances
+from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.jobs import llm_enqueue, queue
+from app.jobs.handlers import compute_station_walk_distances
 from app.jobs.pipeline_status import derive_pipeline_status
 from app.listings import store, url_utils
 from app.listings.serialize import serialize_listing
@@ -18,21 +18,26 @@ router = APIRouter(prefix="/api/listings", tags=["listings"])
 
 def _attach_walk_data(listing_id: int, out: dict) -> None:
     """Attach stored walk_distance_meters/walk_duration_seconds onto each
-    nearest_stations_raw entry (unfiltered top-3, straight-line distance) so
-    NearestStations can show real walk figures alongside it for whichever
-    entries we happen to have computed walk data for -- see context.md's
-    "Station walking distance" section. Runs on every single-listing
-    response (`_serialize_with_pipeline_status`, used by GET/POST/PATCH on
-    one listing), never on the list endpoint (`_serialize_many_with_
-    pipeline_status`) -- same "keep it off the hot path" precedent as the
-    standards-rules evaluation above."""
+    nearest_stations_raw entry (unfiltered top-3, straight-line distance, any
+    mode -- issue #40 PR2 dropped the old national-rail/1mi computation
+    scope) so NearestStations can show real walk figures alongside it for
+    whichever entries we happen to have computed walk data for -- see
+    context.md's "Station walking distance" section. Runs on every
+    single-listing response (`_serialize_with_pipeline_status`, used by
+    GET/POST/PATCH on one listing), never on the list endpoint
+    (`_serialize_many_with_pipeline_status`) -- same "keep it off the hot
+    path" precedent as the standards-rules evaluation above.
+
+    Looks up by the entry's position in `nearest_stations_raw` (station_walk_
+    distances is index-keyed, not CRS-keyed -- tube/tram/DLR/overground
+    stations have no CRS at all), via lookup_walk()'s rightmove_name-match
+    guard against a stale row surviving a Rightmove reorder between scrapes."""
     nearest = out.get("nearest_stations_raw")
     if not isinstance(nearest, list) or not nearest:
         return
     walk_distances = get_walk_distances(listing_id)
-    for entry in nearest:
-        crs = crs_for_name(entry.get("name", "")) if "NATIONAL_TRAIN" in (entry.get("types") or []) else None
-        walk = walk_distances.get(crs) if crs else None
+    for index, entry in enumerate(nearest):
+        walk = lookup_walk(walk_distances, index, entry.get("name", ""))
         entry["walk_distance_meters"] = walk["distance_meters"] if walk else None
         entry["walk_duration_seconds"] = walk["duration_seconds"] if walk else None
 
@@ -137,6 +142,46 @@ def refresh_listing(listing_id: int, skip_llm: bool = False):
     if not queue.has_pending_job(listing_id, "rightmove_extract"):
         store.set_extraction_status(listing_id, "queued")
         queue.enqueue_job(listing_id, "rightmove_extract", "http", skip_llm_chain=skip_llm)
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
+
+
+@router.post("/{listing_id}/walk-refresh")
+def refresh_walk_distances(listing_id: int):
+    """Recomputes station_walk_distances for this listing directly from
+    already-stored latitude/longitude/nearest_stations_raw -- no Rightmove
+    re-scrape, unlike /refresh. Same "recompute from what's already stored,
+    the underlying source data hasn't changed" precedent as /llm-refresh for
+    the llm lane; meant for backfilling after a walk-distance-computation
+    change (see scripts/tfl-walk-backfill.sh, issue #40 PR2's schema/mode-
+    mapping rewrite) without re-fetching Rightmove data that hasn't changed.
+
+    Synchronous, not queued through the job table -- unlike /refresh and
+    /llm-refresh, this is just a couple of TfL calls per station (no HTML
+    fetch/parse, no claude -p call), fast enough that the job-queue's async
+    tracking would be unnecessary overhead for a single-user tool. TfL's own
+    rate limit is respected regardless -- tfl_client.py's throttle is
+    module-level, not tied to how this function gets called.
+
+    Skips computing (rather than raising) while a rightmove_extract job is
+    pending for this listing -- same has_pending_job guard /refresh uses,
+    for the same reason: a genuinely in-flight scrape's own
+    compute_station_walk_distances call is about to write fresh rows keyed
+    against the *new* nearest_stations_raw it just fetched. Racing ahead
+    here against the *old* (pre-scrape) nearest_stations_raw and writing
+    second would silently clobber the job's correct rows with stale ones --
+    a real risk for scripts/tfl-walk-backfill.sh, which loops every
+    listing and could overlap a concurrent scrape/bulk backfill-rightmove.sh
+    run on the same listing."""
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise HTTPException(status_code=404, detail="listing not found")
+
+    if not queue.has_pending_job(listing_id, "rightmove_extract"):
+        serialized = serialize_listing(listing)
+        nearest_stations_raw = serialized.get("nearest_stations_raw") or []
+        compute_station_walk_distances(
+            listing_id, serialized.get("latitude"), serialized.get("longitude"), nearest_stations_raw
+        )
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 

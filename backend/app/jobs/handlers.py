@@ -11,10 +11,10 @@ Rightmove functions below are imported and mocked.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from app.commute import walk_store
-from app.commute.stations import resolve_crs_codes
 from app.commute.tfl_client import TflApiError, compute_walk_distance, resolve_stop_point
 from app.config import MEDIA_DIR
 from app.destinations.compute import compute_for_listing
@@ -32,6 +32,47 @@ from app.jobs.rightmove_extract import (
     summarize_broadband,
 )
 from app.listings import normalize, store
+
+logger = logging.getLogger(__name__)
+
+# Rightmove's nearest_stations_raw `types` -> TfL's /StopPoint/Search `modes`
+# query param. Pinned against the actual distinct `types` values observed
+# across Roost's real listings (issue #40 PR2) -- NOT the plan's original
+# 5-entry guess, which had DLR as "LIGHT_RAILWAY" (right) but "TRAM" as
+# "TRAMLINK" (wrong; Rightmove sends "TRAM"). ELIZABETH_LINE has never been
+# observed live but the frontend (NearestStations.jsx) already has a badge
+# for it, so it's mapped defensively rather than left to silently no-op.
+_TFL_MODE_BY_TYPE = {
+    "NATIONAL_TRAIN": "national-rail",
+    "LONDON_UNDERGROUND": "tube",
+    "LONDON_OVERGROUND": "overground",
+    "LIGHT_RAILWAY": "dlr",
+    "TRAM": "tram",
+    "ELIZABETH_LINE": "elizabeth-line",
+}
+
+
+def _tfl_mode_for_entry(entry: dict) -> str | None:
+    for t in entry.get("types") or []:
+        mode = _TFL_MODE_BY_TYPE.get(t)
+        if mode:
+            return mode
+    return None
+
+
+def _distance_miles_for_entry(entry: dict) -> float | None:
+    """Rightmove's `distance` defaults to miles (NearestStations.jsx
+    defaults `unit` the same way) but isn't guaranteed to be -- gap-scoring
+    resolve_stop_point against a non-mile value would silently mis-rank
+    candidates, so fall back to None (plain closest-lat/lon) if `unit` is
+    ever anything else."""
+    distance = entry.get("distance")
+    if distance is None:
+        return None
+    unit = (entry.get("unit") or "mi").lower()
+    if unit not in ("mi", "miles"):
+        return None
+    return distance
 
 
 def handle_rightmove_extract(job: dict) -> None:
@@ -144,7 +185,7 @@ def handle_rightmove_extract(job: dict) -> None:
     # is free, unlike the Google Routes API this used to call, so there's no
     # cost pressure to make this opt-out-able (skip_maps/--skip-maps removed
     # entirely, see issue #40).
-    _compute_station_walk_distances(
+    compute_station_walk_distances(
         listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
     )
 
@@ -158,32 +199,63 @@ def handle_rightmove_extract(job: dict) -> None:
         queue.enqueue_job(listing_id, "text_extract", "llm", depends_on_job_id=job["id"])
 
 
-def _compute_station_walk_distances(
+def compute_station_walk_distances(
     listing_id: int, latitude: float | None, longitude: float | None, nearest_stations_raw: list[dict]
 ) -> None:
     """Real walking distance/duration (TfL Journey Planner) to every station
-    resolve_crs_codes() would surface for this listing, computed once here
-    at scrape time and stored -- never a live call on page load. A missing
-    listing lat/lon (Rightmove's location block can be absent), an
-    unresolvable station name, or a per-station TfL failure just means that
-    station keeps no stored value; the frontend falls back to Rightmove's
-    raw distance for it. This must never raise -- the rightmove_extract job
-    has already succeeded by the time this runs. National-rail only and
-    resolve_crs_codes()'s 1mi radius, same scope as before this swap --
-    issue #40's mode/radius expansion is a separate follow-up PR."""
+    Rightmove's nearest_stations_raw returns for this listing -- every mode,
+    no radius cap, computed once here at scrape time and stored, never a
+    live call on page load (issue #40 PR2; PR1 was national-rail/1mi only,
+    via resolve_crs_codes -- this now iterates nearest_stations_raw
+    directly). A missing listing lat/lon (Rightmove's location block can be
+    absent), an unmapped Rightmove `types` value, an unresolvable station
+    name, or a per-station TfL failure just means that station keeps no
+    stored value; the frontend falls back to Rightmove's raw distance for
+    it. This must never raise -- the rightmove_extract job has already
+    succeeded by the time this runs.
+
+    Rows are stored (with rightmove_name/mode/stop_point_id, even when
+    resolution/computation failed and distance_meters/duration_seconds stay
+    None) keyed by the entry's position in nearest_stations_raw -- see
+    walk_store.py's module docstring for why index-keying needs
+    rightmove_name carried alongside it.
+
+    Public (no leading underscore) because routes/listings.py's
+    POST /{listing_id}/walk-refresh also calls this directly, against
+    already-stored latitude/longitude/nearest_stations_raw, to recompute
+    walk distances without a Rightmove re-scrape -- e.g. backfilling after
+    a walk-distance-computation change (this PR) where the underlying
+    Rightmove data hasn't changed, only how it's read."""
     if latitude is None or longitude is None:
         return
 
     rows = []
-    for station in resolve_crs_codes(nearest_stations_raw):
-        stop_point_id = resolve_stop_point(station["name"], "national-rail", latitude, longitude, station["distance"])
-        if stop_point_id is None:
+    for index, entry in enumerate(nearest_stations_raw):
+        name = entry.get("name")
+        if not name:
             continue
-        try:
-            result = compute_walk_distance(latitude, longitude, stop_point_id)
-        except TflApiError:
+        mode = _tfl_mode_for_entry(entry)
+        if mode is None:
+            logger.info("no TfL mode mapping for station %r, types=%r -- skipping", name, entry.get("types"))
             continue
-        rows.append({"crs": station["crs"], **result})
+
+        stop_point_id = resolve_stop_point(name, mode, latitude, longitude, _distance_miles_for_entry(entry))
+        row = {
+            "station_index": index,
+            "rightmove_name": name,
+            "mode": mode,
+            "stop_point_id": stop_point_id,
+            "distance_meters": None,
+            "duration_seconds": None,
+        }
+        if stop_point_id is not None:
+            try:
+                result = compute_walk_distance(latitude, longitude, stop_point_id)
+                row["distance_meters"] = result["distance_meters"]
+                row["duration_seconds"] = result["duration_seconds"]
+            except TflApiError:
+                pass
+        rows.append(row)
 
     walk_store.replace_walk_distances(listing_id, rows)
 
