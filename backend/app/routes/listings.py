@@ -115,18 +115,13 @@ def get_listing(listing_id: int):
 
 
 @router.post("/{listing_id}/refresh", status_code=202)
-def refresh_listing(listing_id: int, skip_llm: bool = False, skip_maps: bool = False):
+def refresh_listing(listing_id: int, skip_llm: bool = False):
     """skip_llm=true re-scrapes and re-downloads media as normal but stops
     the auto-chain from enqueueing text_extract/floor_area_vision/epc_vision
     (see handlers.py's skip_llm_chain check) -- used by
     scripts/backfill-rightmove.sh --skip-llm for a bulk re-scrape (e.g. after
     a rightmove_extract.py field-mapping change) without triggering real,
-    billed claude -p calls for every listing.
-
-    skip_maps=true re-scrapes as normal but skips the Google Maps
-    walking-distance recompute (see handlers.py's skip_maps check) -- used by
-    scripts/backfill-rightmove.sh --skip-maps for a bulk re-scrape without
-    triggering real, billed Google Routes API calls for every listing."""
+    billed claude -p calls for every listing."""
     listing = store.get_listing(listing_id)
     if listing is None:
         raise HTTPException(status_code=404, detail="listing not found")
@@ -135,13 +130,13 @@ def refresh_listing(listing_id: int, skip_llm: bool = False, skip_maps: bool = F
     # media_download job) instead of just riding the one already in flight.
     # Known edge case: if a rightmove_extract job is already pending from an
     # earlier call, this guard skips enqueueing entirely -- a later call with
-    # a different skip_llm/skip_maps value silently rides the earlier job's
-    # value instead of erroring. Not worth complicating this guard for a
+    # a different skip_llm value silently rides the earlier job's value
+    # instead of erroring. Not worth complicating this guard for a
     # single-user tool where refresh calls aren't fired concurrently in
     # practice (backfill-rightmove.sh issues them sequentially).
     if not queue.has_pending_job(listing_id, "rightmove_extract"):
         store.set_extraction_status(listing_id, "queued")
-        queue.enqueue_job(listing_id, "rightmove_extract", "http", skip_llm_chain=skip_llm, skip_maps=skip_maps)
+        queue.enqueue_job(listing_id, "rightmove_extract", "http", skip_llm_chain=skip_llm)
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 

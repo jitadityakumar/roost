@@ -1,7 +1,7 @@
 """Per-listing frequent-destination journey computation -- see GitHub issue
 #28. Computed once, at scrape time (app/jobs/handlers.py) or on manual
 recompute (routes/listings.py), never a live call on page load, same
-precedent as app/commute/walking.py's station walk distances.
+precedent as app/commute/tfl_client.py's station walk distances.
 
 For every enabled frequent destination, queries train-journey-planner's
 /api/journeys from every station within the listing's existing
@@ -191,7 +191,7 @@ def compute_for_listing(listing_id: int, nearest_stations_raw: list[dict]) -> No
     where a partial result (some destinations resolved, some not) is still
     useful. A missing ROOST_TRAIN_PLANNER_BASE or an unreachable service
     means every destination simply gets no stored row, same degrade-
-    gracefully behavior as a missing GOOGLE_MAPS_API_KEY."""
+    gracefully behavior as a missing TFL_API_KEY."""
     origins = resolve_crs_codes(nearest_stations_raw)
     if not origins:
         journey_store.replace_journeys(listing_id, [])

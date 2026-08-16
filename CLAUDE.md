@@ -39,7 +39,7 @@ docker run -p 8000:8000 -v $(pwd)/data:/data \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 `.env` (gitignored, not tracked in this repo) holds the host-specific
-`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `GOOGLE_MAPS_API_KEY`,
+`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `TFL_API_KEY`,
 and `ROOST_TRAIN_PLANNER_BASE` vars -- deliberately passed via `--env-file`
 rather than inline `-e`/python-dotenv, since inline flags leave the key
 visible in shell history / `ps aux`.
@@ -180,19 +180,29 @@ nothing that would populate it.
 
 **Station walking distance/duration is the opposite: computed once and
 persisted, unlike the live commute-termini call above.** `app/commute/
-walking.py` calls Google's Routes API v2 (`travelMode: WALK`, reusing
-`GOOGLE_MAPS_API_KEY` from `rail-disruption-monitor`) once per station
-`resolve_crs_codes()` resolves, from the listing's `latitude`/`longitude`
-(migration `0009`) to each station's lat/long in `stations.csv`. This runs
-inline in `handle_rightmove_extract` (`app/jobs/handlers.py`) — every
-scrape, `/refresh`, and backfill run covers it automatically, no separate
-job type or opt-out. Results are stored in `station_walk_distances`
-(migration `0011`, `app/commute/walk_store.py`), rows deleted and
-reinserted wholesale per listing on each recompute. A per-station Maps
-failure (including an unset `GOOGLE_MAPS_API_KEY`) is caught and logged in
-`_compute_station_walk_distances`, not raised — the rightmove_extract job
-still succeeds, and `GET /api/listings/{id}/commute` falls back to
-Rightmove's raw straight-line `distance` for that station.
+tfl_client.py` calls TfL's free Unified API (`api.tfl.gov.uk`) once per
+station `resolve_crs_codes()` resolves: `resolve_stop_point` maps a
+Rightmove station name to a TfL StopPoint id (free-text search,
+disambiguated against Rightmove's own stated straight-line distance --
+plain closest-lat/lon mis-resolved real stations in testing, see issue #40's
+plan comment for the validated fix), then `compute_walk_distance` calls
+TfL's Journey Planner from the listing's `latitude`/`longitude` (migration
+`0009`) to that StopPoint id. Replaced the billed Google Routes API
+(`walking.py`, deleted) in issue #40 -- TfL is free, so there's no opt-out
+flag (the old `skip_maps`/`--skip-maps` was removed entirely, migration
+`0017`). This runs inline in `handle_rightmove_extract`
+(`app/jobs/handlers.py`) — every scrape, `/refresh`, and backfill run
+covers it automatically, no separate job type. Results are stored in
+`station_walk_distances` (migration `0011`, `app/commute/walk_store.py`),
+rows deleted and reinserted wholesale per listing on each recompute. A
+per-station TfL failure (including an unset `TFL_API_KEY`, or a name TfL
+can't resolve) is caught and logged in `_compute_station_walk_distances`,
+not raised — the rightmove_extract job still succeeds, and
+`GET /api/listings/{id}/commute` falls back to Rightmove's raw
+straight-line `distance` for that station. Still national-rail-only and
+`resolve_crs_codes()`'s 1mi radius in this PR -- issue #40's mode/radius
+expansion (tube/tram/DLR/overground, no radius cap) is a separate
+follow-up.
 
 **Frequent-destination journeys, computed once and persisted (issue #28) --
 same "compute at scrape time, never live" precedent as station walking
@@ -209,9 +219,9 @@ reasoning as `ROOST_COMMUTE_API_BASE`) from every station
 `resolve_crs_codes()` surfaces for the listing to the destination's CRS, for
 the next upcoming occurrence of its day/time, and keeps the fastest
 (fewest-changes tiebreak) result across all candidate origins. This runs
-inline in `handle_rightmove_extract`, unconditionally (**not** gated by
-`skip_maps` -- that flag exists to dodge Google's *billed* Routes API,
-whereas train-journey-planner is local/free), and again on manual
+inline in `handle_rightmove_extract`, unconditionally -- train-journey-planner
+is local/free, same as TfL's walking-distance API above, so neither has an
+opt-out flag -- and again on manual
 `POST /api/listings/{id}/destinations/refresh`. Results are stored in
 `destination_journeys` (migration `0014`, `app/destinations/journey_store.py`),
 rows deleted and reinserted wholesale per listing on each recompute. A
