@@ -360,6 +360,26 @@ def test_walk_refresh_handles_listing_with_no_stations_or_latlon(client):
     assert resp.status_code == 200
 
 
+def test_walk_refresh_skips_recompute_while_rightmove_extract_pending(client, monkeypatch):
+    # Guards against racing an in-flight scrape: that job's own
+    # compute_station_walk_distances call is about to write fresh rows
+    # keyed against the *new* nearest_stations_raw it's fetching -- this
+    # route must not race ahead and overwrite them with stale ones, same
+    # has_pending_job guard /refresh uses.
+    from app.routes import listings as listings_route
+
+    store.create_stub_listing(1, VALID_URL)
+    queue.enqueue_job(1, "rightmove_extract", "http")
+
+    def boom(*a):
+        raise AssertionError("compute_station_walk_distances should not run while a scrape is pending")
+
+    monkeypatch.setattr(listings_route, "compute_station_walk_distances", boom)
+
+    resp = client.post("/api/listings/1/walk-refresh")
+    assert resp.status_code == 200
+
+
 def test_llm_refresh_404_for_unknown_id(client):
     assert client.post("/api/listings/999/llm-refresh").status_code == 404
 

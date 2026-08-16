@@ -160,16 +160,28 @@ def refresh_walk_distances(listing_id: int):
     fetch/parse, no claude -p call), fast enough that the job-queue's async
     tracking would be unnecessary overhead for a single-user tool. TfL's own
     rate limit is respected regardless -- tfl_client.py's throttle is
-    module-level, not tied to how this function gets called."""
+    module-level, not tied to how this function gets called.
+
+    Skips computing (rather than raising) while a rightmove_extract job is
+    pending for this listing -- same has_pending_job guard /refresh uses,
+    for the same reason: a genuinely in-flight scrape's own
+    compute_station_walk_distances call is about to write fresh rows keyed
+    against the *new* nearest_stations_raw it just fetched. Racing ahead
+    here against the *old* (pre-scrape) nearest_stations_raw and writing
+    second would silently clobber the job's correct rows with stale ones --
+    a real risk for scripts/tfl-walk-backfill.sh, which loops every
+    listing and could overlap a concurrent scrape/bulk backfill-rightmove.sh
+    run on the same listing."""
     listing = store.get_listing(listing_id)
     if listing is None:
         raise HTTPException(status_code=404, detail="listing not found")
 
-    serialized = serialize_listing(listing)
-    nearest_stations_raw = serialized.get("nearest_stations_raw") or []
-    compute_station_walk_distances(
-        listing_id, serialized.get("latitude"), serialized.get("longitude"), nearest_stations_raw
-    )
+    if not queue.has_pending_job(listing_id, "rightmove_extract"):
+        serialized = serialize_listing(listing)
+        nearest_stations_raw = serialized.get("nearest_stations_raw") or []
+        compute_station_walk_distances(
+            listing_id, serialized.get("latitude"), serialized.get("longitude"), nearest_stations_raw
+        )
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 
