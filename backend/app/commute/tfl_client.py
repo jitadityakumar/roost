@@ -113,6 +113,7 @@ def resolve_stop_point(
     listing_lat: float,
     listing_lon: float,
     rightmove_distance_miles: float | None,
+    search_modes: str | None = None,
 ) -> str | None:
     """Resolve a Rightmove station name to a TfL StopPoint id, or None if it
     can't be resolved (never raises -- a station TfL can't resolve
@@ -126,12 +127,25 @@ def resolve_stop_point(
     rightmove_distance_miles is None (Rightmove sometimes omits `distance`)
     or isn't in miles (Rightmove's `unit` field defaults to miles but isn't
     guaranteed to be; gap-scoring against a non-mile value would silently
-    mis-rank candidates)."""
+    mis-rank candidates).
+
+    `search_modes` (comma-joined, e.g. "national-rail,elizabeth-line")
+    widens the `/StopPoint/Search` query beyond the single canonical `mode`
+    -- TfL's own StopPoint data classifies some Rightmove-NATIONAL_TRAIN
+    stations (e.g. Chadwell Heath, Goodmayes) as elizabeth-line-only, not
+    national-rail, so a strict single-mode search misses them entirely.
+    Defaults to `mode` when omitted. Deliberately NOT implemented as "search
+    all modes, drop bus stops" -- validated against Roost's real listing
+    data (issue #40 follow-up) and that broader search picked a wrong
+    station (Putney Pier, modes=["bus","river-bus"], over the real Putney
+    Rail Station) because river-bus/coach/etc aren't bus and can still
+    outscore the correct station on the gap heuristic. An explicit allowlist
+    per Rightmove type is the only safe way to widen this."""
     query = _strip_suffix(name.strip())
     if not query:
         return None
     try:
-        data = _get(f"https://api.tfl.gov.uk/StopPoint/Search/{quote(query)}?modes={mode}")
+        data = _get(f"https://api.tfl.gov.uk/StopPoint/Search/{quote(query)}?modes={search_modes or mode}")
     except TflApiError as e:
         logger.info("TfL StopPoint/Search failed for %r: %s", name, e)
         return None

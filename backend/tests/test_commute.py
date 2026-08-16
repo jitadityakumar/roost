@@ -414,6 +414,34 @@ def test_resolve_stop_point_scores_by_gap_to_rightmove_distance(monkeypatch):
     assert result == "910GSTREATM"
 
 
+def test_resolve_stop_point_search_modes_widens_the_search_query(monkeypatch):
+    # NATIONAL_TRAIN's search_modes override -- see handlers._TFL_SEARCH_MODES_BY_TYPE
+    # -- must reach the actual /StopPoint/Search request, not just the
+    # candidate-mode filter, since TfL classifies some Rightmove-tagged
+    # national-rail stations (e.g. Chadwell Heath, Goodmayes) as
+    # elizabeth-line-only in its own StopPoint data.
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    seen_urls = []
+
+    def fake_urlopen(req, timeout):
+        seen_urls.append(req.full_url)
+        return _FakeResponse({"matches": [{"id": "910GCHDWLHT", "lat": 51.568, "lon": 0.129}]})
+
+    monkeypatch.setattr(tfl_client, "urlopen", fake_urlopen)
+    result = tfl_client.resolve_stop_point(
+        "Chadwell Heath Station",
+        "national-rail",
+        51.5796,
+        0.1329,
+        0.84,
+        search_modes="national-rail,elizabeth-line",
+    )
+    assert result == "910GCHDWLHT"
+    assert "modes=national-rail,elizabeth-line" in seen_urls[0]
+
+
 def test_resolve_stop_point_falls_back_to_closest_when_no_rightmove_distance(monkeypatch):
     from app.commute import tfl_client
 

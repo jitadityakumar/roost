@@ -51,12 +51,31 @@ _TFL_MODE_BY_TYPE = {
     "ELIZABETH_LINE": "elizabeth-line",
 }
 
+# Widens the /StopPoint/Search modes query beyond the single canonical mode
+# above, for Rightmove types where that's been observed to miss real
+# stations -- see resolve_stop_point's docstring for why this is an explicit
+# per-type allowlist rather than "search everything, drop bus stops" (that
+# approach mis-resolved Putney Station to Putney Pier in validation).
+# NATIONAL_TRAIN: TfL's own StopPoint data classifies some Rightmove-tagged
+# national-rail stations (e.g. Chadwell Heath, Goodmayes) as elizabeth-line
+# only.
+_TFL_SEARCH_MODES_BY_TYPE = {
+    "NATIONAL_TRAIN": "national-rail,elizabeth-line",
+}
+
 
 def _tfl_mode_for_entry(entry: dict) -> str | None:
     for t in entry.get("types") or []:
         mode = _TFL_MODE_BY_TYPE.get(t)
         if mode:
             return mode
+    return None
+
+
+def _tfl_search_modes_for_entry(entry: dict) -> str | None:
+    for t in entry.get("types") or []:
+        if t in _TFL_MODE_BY_TYPE:
+            return _TFL_SEARCH_MODES_BY_TYPE.get(t)
     return None
 
 
@@ -239,7 +258,14 @@ def compute_station_walk_distances(
             logger.info("no TfL mode mapping for station %r, types=%r -- skipping", name, entry.get("types"))
             continue
 
-        stop_point_id = resolve_stop_point(name, mode, latitude, longitude, _distance_miles_for_entry(entry))
+        stop_point_id = resolve_stop_point(
+            name,
+            mode,
+            latitude,
+            longitude,
+            _distance_miles_for_entry(entry),
+            search_modes=_tfl_search_modes_for_entry(entry),
+        )
         row = {
             "station_index": index,
             "rightmove_name": name,
