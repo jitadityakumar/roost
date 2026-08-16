@@ -512,9 +512,9 @@ def find_frequent_destination_journey(
         # way to know in advance which child is "correct" for a given
         # listing/time -- e.g. Kings Cross via tube vs. via national rail
         # can genuinely be the better route depending on where the listing
-        # is. So every matching child is queried and the overall fastest
-        # (fewest-changes on a tie) result wins, same comparison already
-        # used across scan pages below. TfL's API is free and this only
+        # is. So every matching child is queried and the overall fewest-
+        # changes result wins (fastest on a tie, issue #51), same comparison
+        # already used across scan pages below. TfL's API is free and this only
         # runs for HUB-type destinations, so the extra calls (one full scan
         # per child, typically 1-3 children) are an acceptable cost.
         children = _hub_children(to_identifier, _DESTINATION_SEARCH_MODES)
@@ -525,8 +525,8 @@ def find_frequent_destination_journey(
             candidate = _scan_journeys(origin_lat, origin_lon, child["id"], target_date, target_time)
             if candidate is not None and (
                 best is None
-                or (candidate["duration_minutes"], candidate["num_changes"])
-                < (best["duration_minutes"], best["num_changes"])
+                or (candidate["num_changes"], candidate["duration_minutes"])
+                < (best["num_changes"], best["duration_minutes"])
             ):
                 best = candidate
         return best
@@ -543,8 +543,12 @@ def _scan_journeys(
 ) -> dict | None:
     """The actual windowed scan against one concrete `to_identifier` (never
     a HUB id -- find_frequent_destination_journey resolves those first).
-    Picks the fastest (fewest-changes on a tie) journey found across
-    however many pages it takes to cover the window."""
+    Picks the journey with the fewest changes found across however many
+    pages it takes to cover the window (fastest on a tie, issue #51) --
+    requesting journeyPreference=LeastInterchange from TfL only shapes what
+    each individual response contains, it doesn't guarantee every candidate
+    across pages/hub children is interchange-optimal, so this local
+    comparison is what actually enforces the fewest-changes preference."""
     window_end = dt.datetime.combine(target_date, target_time) + dt.timedelta(
         minutes=_FREQUENT_DESTINATION_WINDOW_MINUTES
     )
@@ -557,7 +561,14 @@ def _scan_journeys(
             "date": query_date.strftime("%Y%m%d"),
             "time": query_time.strftime("%H%M"),
             "timeIs": "Departing",
-            "journeyPreference": "LeastTime",
+            # Issue #51: a bus leg as part of a regular commute isn't
+            # realistic/comfortable for the user, even when it's technically
+            # fastest -- LeastInterchange plus excluding bus from the mode
+            # allowlist trades a couple of minutes for fewer changes and no
+            # bus leg (confirmed live via manual A/B, see issue #51). Same
+            # non-bus allowlist already used for station search.
+            "journeyPreference": "LeastInterchange",
+            "mode": _DESTINATION_SEARCH_MODES,
         }
         url = f"https://api.tfl.gov.uk/Journey/JourneyResults/{quote(origin)}/to/{quote(to_identifier)}?{urlencode(params)}"
         try:
@@ -579,8 +590,8 @@ def _scan_journeys(
             extracted = _extract_journey(journey)
             if extracted is not None and (
                 best is None
-                or (extracted["duration_minutes"], extracted["num_changes"])
-                < (best["duration_minutes"], best["num_changes"])
+                or (extracted["num_changes"], extracted["duration_minutes"])
+                < (best["num_changes"], best["duration_minutes"])
             ):
                 best = extracted
             if departure_dt is not None and (max_departure is None or departure_dt > max_departure):

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.commute.tfl_client import search_stop_points
-from app.destinations import backfill_queue, backfill_status, store
+from app.destinations import backfill_queue, backfill_status, compute, journey_store, store
 from app.listings import store as listings_store
 
 router = APIRouter(prefix="/api/destinations", tags=["destinations"])
@@ -109,6 +109,32 @@ def get_backfill_status(destination_id: int):
     if status is None:
         return {"status": "idle", "done": 0, "total": 0}
     return status
+
+
+@router.post("/{destination_id}/home-refresh")
+def refresh_home_journey(destination_id: int):
+    """Recomputes just this destination's home_journeys row (issue #51's
+    backfill script) without the full per-listing loop compute_for_destination
+    runs -- unlike a listing's /destinations/refresh, there's only ever one
+    home journey per destination, so this is synchronous rather than routed
+    through backfill_queue. Same "recompute from what's already stored"
+    precedent as the per-listing routes.
+
+    A concurrent PATCH-triggered full backfill for the same destination_id
+    (routed through backfill_queue) could race this route's own
+    compute_home_journey call -- both just delete+insert the one
+    home_journeys row for this destination_id, so the last write wins with
+    no corruption either way. Not guarded against; low-impact for a
+    single-user local tool, and the backfill script (this route's only
+    caller today) never runs both paths for the same destination at once."""
+    destination = next((d for d in store.list_destinations() if d["id"] == destination_id), None)
+    if destination is None:
+        raise HTTPException(status_code=404, detail="destination not found")
+    compute.compute_home_journey(destination)
+    row = journey_store.get_home_journeys().get(destination_id)
+    if row is None:
+        return {"resolved": False}
+    return {"resolved": True, **row}
 
 
 @router.get("/stations/search")
