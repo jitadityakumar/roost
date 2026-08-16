@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.commute.client import CommuteApiError, fetch_station_termini
 from app.commute.stations import latlong_for_crs, resolve_crs_codes
-from app.commute.walk_store import get_walk_distances
+from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.listings import store
 from app.listings.serialize import serialize_listing
 
@@ -46,11 +46,13 @@ def get_commute(listing_id: int):
 
     stations = []
     for station in resolve_crs_codes(nearest_stations_raw):
-        walk = walk_distances.get(station["crs"])
+        index = station["index"]
+        raw_name = nearest_stations_raw[index].get("name", "")
+        walk = lookup_walk(walk_distances, index, raw_name)
         if not _worth_showing_commute(station, walk):
             continue
 
-        result = dict(station)
+        result = {k: v for k, v in station.items() if k != "index"}
         try:
             result["termini"] = fetch_station_termini(station["crs"])
             result["error"] = None

@@ -6,6 +6,17 @@ from app.commute.stations import resolve_crs_codes, search_stations
 from app.listings import store
 
 
+def _walk_row(station_index, rightmove_name, distance_meters, duration_seconds, mode="national-rail", stop_point_id="910GTEST"):
+    return {
+        "station_index": station_index,
+        "rightmove_name": rightmove_name,
+        "mode": mode,
+        "stop_point_id": stop_point_id,
+        "distance_meters": distance_meters,
+        "duration_seconds": duration_seconds,
+    }
+
+
 # --- client ----------------------------------------------------------------
 
 def test_fetch_station_termini_raises_clearly_when_api_base_unset(monkeypatch):
@@ -21,13 +32,13 @@ def test_fetch_station_termini_raises_clearly_when_api_base_unset(monkeypatch):
 def test_resolve_strips_station_suffix_and_looks_up_crs():
     stations = [{"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]}]
     resolved = resolve_crs_codes(stations)
-    assert resolved == [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}]
+    assert resolved == [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4, "index": 0}]
 
 
 def test_resolve_keeps_parenthetical_suffix():
     stations = [{"name": "Earlswood (Surrey) Station", "distance": 0.3, "types": ["NATIONAL_TRAIN"]}]
     resolved = resolve_crs_codes(stations)
-    assert resolved == [{"name": "Earlswood (Surrey)", "crs": "ELD", "distance": 0.3}]
+    assert resolved == [{"name": "Earlswood (Surrey)", "crs": "ELD", "distance": 0.3, "index": 0}]
 
 
 def test_resolve_excludes_non_national_rail_entries():
@@ -38,6 +49,18 @@ def test_resolve_excludes_non_national_rail_entries():
 def test_resolve_drops_unmatched_names_without_erroring():
     stations = [{"name": "Not A Real Station", "distance": 0.1, "types": ["NATIONAL_TRAIN"]}]
     assert resolve_crs_codes(stations) == []
+
+
+def test_resolve_index_reflects_position_in_original_list_not_filtered_list():
+    # A non-national-rail entry at index 0 must not shift the surviving
+    # national-rail entry's "index" down to 0 -- station_walk_distances is
+    # keyed by position in the *original* nearest_stations_raw list.
+    stations = [
+        {"name": "Becontree Station", "distance": 0.2, "types": ["LONDON_UNDERGROUND"]},
+        {"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]},
+    ]
+    resolved = resolve_crs_codes(stations)
+    assert [r["index"] for r in resolved] == [1]
 
 
 def test_resolve_dedupes_by_crs():
@@ -179,7 +202,7 @@ def test_get_commute_includes_walk_distance_and_maps_url_when_stored(client, lis
     from app.commute.walk_store import replace_walk_distances
 
     store.apply_extracted_fields(listing_id, {"latitude": 51.4695, "longitude": -0.1706})
-    replace_walk_distances(listing_id, [{"crs": "CLJ", "distance_meters": 500, "duration_seconds": 360}])
+    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 500, 360)])
 
     resp = client.get(f"/api/listings/{listing_id}/commute")
     station = resp.json()["stations"][0]
@@ -198,7 +221,7 @@ def test_get_commute_no_maps_url_when_listing_has_no_latlon(client, listing_id):
 def test_get_commute_excludes_station_with_walk_over_30_minutes(client, listing_id):
     from app.commute.walk_store import replace_walk_distances
 
-    replace_walk_distances(listing_id, [{"crs": "CLJ", "distance_meters": 2500, "duration_seconds": 1801}])
+    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 2500, 1801)])
     resp = client.get(f"/api/listings/{listing_id}/commute")
     assert resp.json()["stations"] == []
 
@@ -208,7 +231,7 @@ def test_get_commute_includes_station_with_walk_at_exactly_30_minutes(client, li
     from app.routes import commute as commute_route
 
     monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
-    replace_walk_distances(listing_id, [{"crs": "CLJ", "distance_meters": 2400, "duration_seconds": 1800}])
+    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 2400, 1800)])
     resp = client.get(f"/api/listings/{listing_id}/commute")
     assert [s["crs"] for s in resp.json()["stations"]] == ["CLJ"]
 
@@ -437,11 +460,41 @@ def test_resolve_stop_point_falls_back_to_closest_hub_child_on_ambiguous_mode_ma
 def test_replace_walk_distances_deletes_and_reinserts(client, listing_id):
     from app.commute.walk_store import get_walk_distances, replace_walk_distances
 
-    replace_walk_distances(listing_id, [{"crs": "CLJ", "distance_meters": 500, "duration_seconds": 360}])
-    assert get_walk_distances(listing_id) == {"CLJ": {"distance_meters": 500, "duration_seconds": 360}}
+    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 500, 360)])
+    assert get_walk_distances(listing_id) == {
+        0: {
+            "rightmove_name": "Clapham Junction Station",
+            "mode": "national-rail",
+            "stop_point_id": "910GTEST",
+            "distance_meters": 500,
+            "duration_seconds": 360,
+        }
+    }
 
-    replace_walk_distances(listing_id, [{"crs": "WAT", "distance_meters": 800, "duration_seconds": 600}])
-    assert get_walk_distances(listing_id) == {"WAT": {"distance_meters": 800, "duration_seconds": 600}}
+    replace_walk_distances(listing_id, [_walk_row(0, "Waterloo Station", 800, 600, stop_point_id="910GWATRLMN")])
+    assert get_walk_distances(listing_id) == {
+        0: {
+            "rightmove_name": "Waterloo Station",
+            "mode": "national-rail",
+            "stop_point_id": "910GWATRLMN",
+            "distance_meters": 800,
+            "duration_seconds": 600,
+        }
+    }
+
+
+def test_lookup_walk_returns_none_when_rightmove_name_no_longer_matches(client, listing_id):
+    # Guards against Rightmove reordering nearest_stations_raw between the
+    # scrape that computed this row and now -- index-keying alone would
+    # otherwise silently attach a stale row to the wrong station.
+    from app.commute.walk_store import get_walk_distances, lookup_walk, replace_walk_distances
+
+    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 500, 360)])
+    walk_distances = get_walk_distances(listing_id)
+
+    assert lookup_walk(walk_distances, 0, "Clapham Junction Station") is not None
+    assert lookup_walk(walk_distances, 0, "Some Other Station") is None
+    assert lookup_walk(walk_distances, 1, "Clapham Junction Station") is None
 
 
 # --- station lat/long lookup ------------------------------------------
@@ -457,24 +510,6 @@ def test_latlong_for_crs_returns_none_for_unknown_crs():
     from app.commute.stations import latlong_for_crs
 
     assert latlong_for_crs("ZZZ") is None
-
-
-def test_crs_for_name_strips_suffix_and_resolves():
-    from app.commute.stations import crs_for_name
-
-    assert crs_for_name("Clapham Junction Station") == "CLJ"
-
-
-def test_crs_for_name_returns_none_for_unresolvable_name():
-    from app.commute.stations import crs_for_name
-
-    assert crs_for_name("Not A Real Station") is None
-
-
-def test_crs_for_name_normalizes_period():
-    from app.commute.stations import crs_for_name
-
-    assert crs_for_name("St. Helier Station") == "SIH"
 
 
 # --- nearest_stations_raw walk-data attachment (GET /api/listings/{id}) ----
@@ -494,7 +529,7 @@ def test_get_listing_attaches_walk_data_to_nearest_stations(client):
             )
         },
     )
-    replace_walk_distances(1, [{"crs": "CLJ", "distance_meters": 500, "duration_seconds": 360}])
+    replace_walk_distances(1, [_walk_row(0, "Clapham Junction Station", 500, 360)])
 
     resp = client.get("/api/listings/1")
     nearest = resp.json()["nearest_stations_raw"]
@@ -502,6 +537,29 @@ def test_get_listing_attaches_walk_data_to_nearest_stations(client):
     assert nearest[0]["walk_duration_seconds"] == 360
     assert nearest[1]["walk_distance_meters"] is None
     assert nearest[1]["walk_duration_seconds"] is None
+
+
+def test_get_listing_ignores_stale_walk_row_after_station_reorder(client):
+    # If nearest_stations_raw was reordered since this row was computed,
+    # the stored rightmove_name at index 0 won't match the current entry --
+    # must not silently attach it to the wrong station.
+    from app.commute.walk_store import replace_walk_distances
+
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    store.apply_extracted_fields(
+        1,
+        {
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Becontree Station", "distance": 0.2, "types": ["LONDON_UNDERGROUND"]}]
+            )
+        },
+    )
+    replace_walk_distances(1, [_walk_row(0, "Clapham Junction Station", 500, 360)])
+
+    resp = client.get("/api/listings/1")
+    nearest = resp.json()["nearest_stations_raw"]
+    assert nearest[0]["walk_distance_meters"] is None
+    assert nearest[0]["walk_duration_seconds"] is None
 
 
 def test_get_listing_nearest_stations_walk_data_none_when_nothing_stored(client):

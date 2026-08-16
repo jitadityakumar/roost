@@ -116,8 +116,7 @@ def resolve_stop_point(
 ) -> str | None:
     """Resolve a Rightmove station name to a TfL StopPoint id, or None if it
     can't be resolved (never raises -- a station TfL can't resolve
-    shouldn't fail the whole scrape job, same as stations.crs_for_name
-    returning None today).
+    shouldn't fail the whole scrape job).
 
     Scores each `/StopPoint/Search` candidate by
     abs(haversine(listing, candidate) - rightmove_distance_miles) and picks

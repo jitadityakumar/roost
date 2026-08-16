@@ -4,8 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import MEDIA_DIR
-from app.commute.stations import crs_for_name
-from app.commute.walk_store import get_walk_distances
+from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.jobs import llm_enqueue, queue
 from app.jobs.pipeline_status import derive_pipeline_status
 from app.listings import store, url_utils
@@ -18,21 +17,26 @@ router = APIRouter(prefix="/api/listings", tags=["listings"])
 
 def _attach_walk_data(listing_id: int, out: dict) -> None:
     """Attach stored walk_distance_meters/walk_duration_seconds onto each
-    nearest_stations_raw entry (unfiltered top-3, straight-line distance) so
-    NearestStations can show real walk figures alongside it for whichever
-    entries we happen to have computed walk data for -- see context.md's
-    "Station walking distance" section. Runs on every single-listing
-    response (`_serialize_with_pipeline_status`, used by GET/POST/PATCH on
-    one listing), never on the list endpoint (`_serialize_many_with_
-    pipeline_status`) -- same "keep it off the hot path" precedent as the
-    standards-rules evaluation above."""
+    nearest_stations_raw entry (unfiltered top-3, straight-line distance, any
+    mode -- issue #40 PR2 dropped the old national-rail/1mi computation
+    scope) so NearestStations can show real walk figures alongside it for
+    whichever entries we happen to have computed walk data for -- see
+    context.md's "Station walking distance" section. Runs on every
+    single-listing response (`_serialize_with_pipeline_status`, used by
+    GET/POST/PATCH on one listing), never on the list endpoint
+    (`_serialize_many_with_pipeline_status`) -- same "keep it off the hot
+    path" precedent as the standards-rules evaluation above.
+
+    Looks up by the entry's position in `nearest_stations_raw` (station_walk_
+    distances is index-keyed, not CRS-keyed -- tube/tram/DLR/overground
+    stations have no CRS at all), via lookup_walk()'s rightmove_name-match
+    guard against a stale row surviving a Rightmove reorder between scrapes."""
     nearest = out.get("nearest_stations_raw")
     if not isinstance(nearest, list) or not nearest:
         return
     walk_distances = get_walk_distances(listing_id)
-    for entry in nearest:
-        crs = crs_for_name(entry.get("name", "")) if "NATIONAL_TRAIN" in (entry.get("types") or []) else None
-        walk = walk_distances.get(crs) if crs else None
+    for index, entry in enumerate(nearest):
+        walk = lookup_walk(walk_distances, index, entry.get("name", ""))
         entry["walk_distance_meters"] = walk["distance_meters"] if walk else None
         entry["walk_duration_seconds"] = walk["duration_seconds"] if walk else None
 

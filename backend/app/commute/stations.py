@@ -100,15 +100,6 @@ def search_stations(query: str, limit: int = 8) -> list[dict]:
     return [s for _, s in ranked[:limit]]
 
 
-def crs_for_name(name: str) -> str | None:
-    """Resolve a single Rightmove station name to a CRS code, same
-    suffix-stripping + punctuation-normalizing lookup resolve_crs_codes uses
-    per-entry. Used to attach stored walk data to nearest_stations_raw
-    entries that resolve_crs_codes itself may not surface (e.g. beyond
-    MAX_DISTANCE_MILES)."""
-    return _NAME_TO_CRS.get(_normalize_name(strip_station_suffix(name)))
-
-
 def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
     """Filter to National Rail entries, strip the Rightmove suffix, and
     resolve each to a CRS code. Tube/tram-only stations (absent from
@@ -118,16 +109,23 @@ def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
     resolve to the same station).
 
     Only stations within `MAX_DISTANCE_MILES` are returned -- this is the
-    candidate set for walking-distance computation (handlers.py), not the
-    final "is this commute worth showing" cutoff; routes/commute.py applies
-    its own walk-duration-based filter on top of this list. A station with
-    no distance is dropped by this filter (nothing to compare against), but
-    not from resolution otherwise -- if none of the resolved stations have
-    a distance at all, the filter is skipped and everything resolved is
-    returned rather than silently producing an empty list."""
+    candidate set for the Commute section (routes/commute.py), which is
+    national-rail-only regardless of issue #40 PR2's walking-distance scope
+    expansion (station_walk_distances now covers every mode/distance, see
+    app/jobs/handlers.py -- this function's job is unchanged, it's just no
+    longer that computation's own candidate set).
+
+    Each result carries "index" -- the entry's position in the original
+    nearest_stations_raw list -- so callers can look up station_walk_distances
+    (keyed by that same index, see walk_store.py) without re-deriving a CRS
+    lookup of their own. A station with no distance is dropped by the
+    MAX_DISTANCE_MILES filter (nothing to compare against), but not from
+    resolution otherwise -- if none of the resolved stations have a distance
+    at all, the filter is skipped and everything resolved is returned rather
+    than silently producing an empty list."""
     resolved = []
     seen_crs = set()
-    for entry in nearest_stations_raw:
+    for index, entry in enumerate(nearest_stations_raw):
         if "NATIONAL_TRAIN" not in (entry.get("types") or []):
             continue
         name = strip_station_suffix(entry.get("name", ""))
@@ -135,7 +133,7 @@ def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
         if not crs or crs in seen_crs:
             continue
         seen_crs.add(crs)
-        resolved.append({"name": name, "crs": crs, "distance": entry.get("distance")})
+        resolved.append({"name": name, "crs": crs, "distance": entry.get("distance"), "index": index})
 
     if not any(r["distance"] is not None for r in resolved):
         return resolved

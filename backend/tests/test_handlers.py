@@ -177,11 +177,6 @@ def test_handle_rightmove_extract_raises_for_unknown_listing():
 def test_handle_rightmove_extract_stores_walk_distances_for_resolved_stations(listing_id, monkeypatch):
     from app.commute import walk_store
 
-    monkeypatch.setattr(
-        handlers,
-        "resolve_crs_codes",
-        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
-    )
     monkeypatch.setattr(handlers, "resolve_stop_point", lambda *a: "910GCLPHMJC")
     monkeypatch.setattr(
         handlers, "compute_walk_distance", lambda *a: {"distance_meters": 500, "duration_seconds": 360}
@@ -189,19 +184,39 @@ def test_handle_rightmove_extract_stores_walk_distances_for_resolved_stations(li
 
     handlers.handle_rightmove_extract(_job(listing_id))
 
+    # sample_property_data.json's nearestStations: [{"name": "Sampleton",
+    # "distance": 0.3, "types": ["NATIONAL_TRAIN"]}] -- index 0.
     assert walk_store.get_walk_distances(listing_id) == {
-        "CLJ": {"distance_meters": 500, "duration_seconds": 360}
+        0: {
+            "rightmove_name": "Sampleton",
+            "mode": "national-rail",
+            "stop_point_id": "910GCLPHMJC",
+            "distance_meters": 500,
+            "duration_seconds": 360,
+        }
     }
 
 
-def test_handle_rightmove_extract_skips_station_tfl_cannot_resolve(listing_id, monkeypatch):
+def test_handle_rightmove_extract_skips_unmapped_station_type(listing_id, sample_property_data, monkeypatch):
     from app.commute import walk_store
 
-    monkeypatch.setattr(
-        handlers,
-        "resolve_crs_codes",
-        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
-    )
+    sample_property_data["nearestStations"] = [{"name": "Somewhere", "distance": 0.3, "types": ["BUS_STOP"]}]
+    monkeypatch.setattr(handlers, "resolve_page_model", lambda html: {"propertyData": sample_property_data})
+
+    def boom(*a):
+        raise AssertionError("resolve_stop_point should not be called for an unmapped type")
+
+    monkeypatch.setattr(handlers, "resolve_stop_point", boom)
+
+    handlers.handle_rightmove_extract(_job(listing_id))  # should not raise
+
+    assert store.get_listing(listing_id)["extraction_status"] == "done"
+    assert walk_store.get_walk_distances(listing_id) == {}
+
+
+def test_handle_rightmove_extract_stores_row_with_null_distance_when_tfl_cannot_resolve(listing_id, monkeypatch):
+    from app.commute import walk_store
+
     monkeypatch.setattr(handlers, "resolve_stop_point", lambda *a: None)
 
     def boom(*a):
@@ -212,18 +227,21 @@ def test_handle_rightmove_extract_skips_station_tfl_cannot_resolve(listing_id, m
     handlers.handle_rightmove_extract(_job(listing_id))  # should not raise
 
     assert store.get_listing(listing_id)["extraction_status"] == "done"
-    assert walk_store.get_walk_distances(listing_id) == {}
+    assert walk_store.get_walk_distances(listing_id) == {
+        0: {
+            "rightmove_name": "Sampleton",
+            "mode": "national-rail",
+            "stop_point_id": None,
+            "distance_meters": None,
+            "duration_seconds": None,
+        }
+    }
 
 
 def test_handle_rightmove_extract_swallows_tfl_api_failure(listing_id, monkeypatch):
     from app.commute import walk_store
     from app.commute.tfl_client import TflApiError
 
-    monkeypatch.setattr(
-        handlers,
-        "resolve_crs_codes",
-        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
-    )
     monkeypatch.setattr(handlers, "resolve_stop_point", lambda *a: "910GCLPHMJC")
 
     def boom(*a):
@@ -234,7 +252,15 @@ def test_handle_rightmove_extract_swallows_tfl_api_failure(listing_id, monkeypat
     handlers.handle_rightmove_extract(_job(listing_id))  # should not raise
 
     assert store.get_listing(listing_id)["extraction_status"] == "done"
-    assert walk_store.get_walk_distances(listing_id) == {}
+    assert walk_store.get_walk_distances(listing_id) == {
+        0: {
+            "rightmove_name": "Sampleton",
+            "mode": "national-rail",
+            "stop_point_id": "910GCLPHMJC",
+            "distance_meters": None,
+            "duration_seconds": None,
+        }
+    }
 
 
 def test_handle_rightmove_extract_skips_walk_distances_without_listing_latlon(
@@ -248,6 +274,78 @@ def test_handle_rightmove_extract_skips_walk_distances_without_listing_latlon(
     handlers.handle_rightmove_extract(_job(listing_id))
 
     assert walk_store.get_walk_distances(listing_id) == {}
+
+
+@pytest.mark.parametrize(
+    "rightmove_type,tfl_mode",
+    [
+        ("NATIONAL_TRAIN", "national-rail"),
+        ("LONDON_UNDERGROUND", "tube"),
+        ("LONDON_OVERGROUND", "overground"),
+        ("LIGHT_RAILWAY", "dlr"),
+        ("TRAM", "tram"),
+        ("ELIZABETH_LINE", "elizabeth-line"),
+    ],
+)
+def test_handle_rightmove_extract_computes_walk_distance_for_every_mode(
+    listing_id, sample_property_data, monkeypatch, rightmove_type, tfl_mode
+):
+    # Issue #40 PR2: walk distance is no longer national-rail/1mi-only --
+    # every mode Rightmove reports must get a walk distance computed.
+    from app.commute import walk_store
+
+    sample_property_data["nearestStations"] = [{"name": "Somewhere", "distance": 2.0, "types": [rightmove_type]}]
+    monkeypatch.setattr(handlers, "resolve_page_model", lambda html: {"propertyData": sample_property_data})
+
+    seen_modes = []
+
+    def fake_resolve_stop_point(name, mode, lat, lon, distance_miles):
+        seen_modes.append(mode)
+        return "some-stop-point-id"
+
+    monkeypatch.setattr(handlers, "resolve_stop_point", fake_resolve_stop_point)
+    monkeypatch.setattr(
+        handlers, "compute_walk_distance", lambda *a: {"distance_meters": 500, "duration_seconds": 360}
+    )
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    assert seen_modes == [tfl_mode]
+    assert walk_store.get_walk_distances(listing_id) == {
+        0: {
+            "rightmove_name": "Somewhere",
+            "mode": tfl_mode,
+            "stop_point_id": "some-stop-point-id",
+            "distance_meters": 500,
+            "duration_seconds": 360,
+        }
+    }
+
+
+def test_handle_rightmove_extract_falls_back_to_closest_when_distance_unit_is_not_miles(
+    listing_id, sample_property_data, monkeypatch
+):
+    # Guard from issue #40's plan: gap-scoring against a non-mile distance
+    # would silently mis-rank TfL candidates, so it must be skipped.
+    from app.commute import walk_store
+
+    sample_property_data["nearestStations"] = [
+        {"name": "Somewhere", "distance": 500, "unit": "m", "types": ["NATIONAL_TRAIN"]}
+    ]
+    monkeypatch.setattr(handlers, "resolve_page_model", lambda html: {"propertyData": sample_property_data})
+
+    seen_distances = []
+
+    def fake_resolve_stop_point(name, mode, lat, lon, distance_miles):
+        seen_distances.append(distance_miles)
+        return None
+
+    monkeypatch.setattr(handlers, "resolve_stop_point", fake_resolve_stop_point)
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    assert seen_distances == [None]
+    assert walk_store.get_walk_distances(listing_id)[0]["rightmove_name"] == "Somewhere"
 
 
 def test_handle_media_download_uses_latest_snapshot(listing_id, media_dir):

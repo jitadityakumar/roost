@@ -181,28 +181,47 @@ nothing that would populate it.
 **Station walking distance/duration is the opposite: computed once and
 persisted, unlike the live commute-termini call above.** `app/commute/
 tfl_client.py` calls TfL's free Unified API (`api.tfl.gov.uk`) once per
-station `resolve_crs_codes()` resolves: `resolve_stop_point` maps a
-Rightmove station name to a TfL StopPoint id (free-text search,
-disambiguated against Rightmove's own stated straight-line distance --
-plain closest-lat/lon mis-resolved real stations in testing, see issue #40's
-plan comment for the validated fix), then `compute_walk_distance` calls
-TfL's Journey Planner from the listing's `latitude`/`longitude` (migration
-`0009`) to that StopPoint id. Replaced the billed Google Routes API
-(`walking.py`, deleted) in issue #40 -- TfL is free, so there's no opt-out
-flag (the old `skip_maps`/`--skip-maps` was removed entirely, migration
-`0017`). This runs inline in `handle_rightmove_extract`
-(`app/jobs/handlers.py`) — every scrape, `/refresh`, and backfill run
-covers it automatically, no separate job type. Results are stored in
-`station_walk_distances` (migration `0011`, `app/commute/walk_store.py`),
-rows deleted and reinserted wholesale per listing on each recompute. A
-per-station TfL failure (including an unset `TFL_API_KEY`, or a name TfL
-can't resolve) is caught and logged in `_compute_station_walk_distances`,
-not raised — the rightmove_extract job still succeeds, and
-`GET /api/listings/{id}/commute` falls back to Rightmove's raw
-straight-line `distance` for that station. Still national-rail-only and
-`resolve_crs_codes()`'s 1mi radius in this PR -- issue #40's mode/radius
-expansion (tube/tram/DLR/overground, no radius cap) is a separate
-follow-up.
+station: `resolve_stop_point` maps a Rightmove station name to a TfL
+StopPoint id (free-text search, disambiguated against Rightmove's own
+stated straight-line distance -- plain closest-lat/lon mis-resolved real
+stations in testing, see issue #40's plan comment for the validated fix),
+then `compute_walk_distance` calls TfL's Journey Planner from the listing's
+`latitude`/`longitude` (migration `0009`) to that StopPoint id. Replaced the
+billed Google Routes API (`walking.py`, deleted) in issue #40 -- TfL is
+free, so there's no opt-out flag (the old `skip_maps`/`--skip-maps` was
+removed entirely, migration `0017`). This runs inline in
+`handle_rightmove_extract` (`app/jobs/handlers.py`) — every scrape,
+`/refresh`, and backfill run covers it automatically, no separate job type.
+
+**Every mode, no radius cap (issue #40 PR2)** — `_compute_station_walk_
+distances` iterates `nearest_stations_raw` directly (not `resolve_crs_
+codes()`, which stays national-rail/1mi-only and is now solely the Commute
+section's own candidate set below), mapping each entry's Rightmove `types`
+to a TfL mode via `_TFL_MODE_BY_TYPE` (`handlers.py`) -- an unmapped type is
+skipped with a log line, not fatal. Results are stored in
+`station_walk_distances` (migration `0011`, re-keyed by migration `0018`,
+`app/commute/walk_store.py`), rows deleted and reinserted wholesale per
+listing on each recompute. **Keyed by `(listing_id, station_index)`, not
+CRS** -- tube/tram/DLR/overground stations have no CRS code, and
+`nearest_stations_raw` is always fully replaced (not merged) on every
+scrape, so positional keying is stable within one scrape and needs no
+name-matching to re-attach a row at render time. Every row also stores
+`rightmove_name`, and every reader (`routes/listings.py`'s `_attach_walk_
+data`, `routes/commute.py`) must look it up via `walk_store.lookup_walk()`,
+which checks the stored `rightmove_name` still matches the name currently
+at that index before returning a row -- guards against Rightmove reordering
+its nearest-3 between scrapes silently attaching the wrong station's
+distance (index-keying alone degrades *unsafely* without this; CRS-keying
+degraded safely, no match = no data). A per-station TfL failure (including
+an unset `TFL_API_KEY`, an unmapped mode, or a name TfL can't resolve) is
+caught and logged in `_compute_station_walk_distances`, not raised — the
+rightmove_extract job still succeeds, and `GET /api/listings/{id}/commute`
+falls back to Rightmove's raw straight-line `distance` for that station.
+**The Commute section's scope is unchanged** — it's still national-rail-only
+via `resolve_crs_codes()`'s 1mi radius (`fetch_station_termini` is a
+separate, national-rail-only integration keyed by CRS); tube/tram/DLR/
+overground stations get a walking distance/time in Nearest Stations only,
+same section boundary as before this PR.
 
 **Frequent-destination journeys, computed once and persisted (issue #28) --
 same "compute at scrape time, never live" precedent as station walking
