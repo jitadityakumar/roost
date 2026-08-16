@@ -104,6 +104,44 @@ def test_patch_destination_recomputes_home_journey(client, monkeypatch):
     assert journey_store.get_home_journeys()[d["id"]]["duration_minutes"] == 35
 
 
+def test_home_refresh_recomputes(client, monkeypatch):
+    # Issue #51's backfill script needs a way to recompute just the home
+    # journey (for a sample/test run) without triggering compute_for_destination's
+    # full per-listing loop -- this route is synchronous and calls
+    # compute_home_journey directly.
+    from app import config
+    from app.destinations import backfill_queue, compute, journey_store
+
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _fake_journey(20))
+    d = client.post("/api/destinations", json=_CREATE_BODY).json()
+    backfill_queue.wait_until_idle(timeout=5)
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _fake_journey(41))
+    resp = client.post(f"/api/destinations/{d['id']}/home-refresh")
+    assert resp.status_code == 200
+    assert resp.json()["resolved"] is True
+    assert resp.json()["duration_minutes"] == 41
+    assert journey_store.get_home_journeys()[d["id"]]["duration_minutes"] == 41
+
+
+def test_home_refresh_unknown_destination_404(client):
+    resp = client.post("/api/destinations/999/home-refresh")
+    assert resp.status_code == 404
+
+
+def test_home_refresh_no_home_configured_returns_unresolved(client, monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "HOME_LAT", None)
+    monkeypatch.setattr(config, "HOME_LON", None)
+    d = client.post("/api/destinations", json=_CREATE_BODY).json()
+    resp = client.post(f"/api/destinations/{d['id']}/home-refresh")
+    assert resp.status_code == 200
+    assert resp.json() == {"resolved": False}
+
+
 def test_station_search(client, monkeypatch):
     from app.routes import destinations as destinations_routes
 

@@ -75,6 +75,52 @@ def test_direct_journey_with_access_walk_excludes_it_from_changes(monkeypatch):
     assert result["operator"] == "South Western Railway"
 
 
+def test_scan_requests_least_interchange_and_excludes_bus(monkeypatch):
+    # Issue #51: the Frequent Destinations scan must ask TfL for
+    # journeyPreference=LeastInterchange and a non-bus mode allowlist, not
+    # LeastTime with every mode in play.
+    legs = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+    payload = {"journeys": [_journey(24, legs, start="2026-08-17T09:30:00", arrival="2026-08-17T09:54:00")]}
+    requested_urls = []
+
+    def fake_urlopen(req, timeout):
+        requested_urls.append(req.full_url)
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(tfl_client, "urlopen", fake_urlopen)
+
+    tfl_client.find_frequent_destination_journey(51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30))
+
+    assert len(requested_urls) == 1
+    assert "journeyPreference=LeastInterchange" in requested_urls[0]
+    assert "mode=national-rail%2Ctube%2Coverground%2Cdlr%2Ctram%2Celizabeth-line" in requested_urls[0]
+
+
+def test_scan_prefers_fewer_changes_over_faster_duration(monkeypatch):
+    # Issue #51: a faster-but-more-changes alternative must lose to a
+    # slower-but-fewer-changes one -- this is what actually enforces the
+    # "avoid bus/extra interchange" preference locally, since TfL's own
+    # journeyPreference only shapes what one response contains, not which
+    # candidate this code picks as best across a page.
+    direct_leg = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=26, operator="Test Rail")]
+    changed_legs = [
+        _leg("national-rail", "A", "910GA", "C", "910GC", duration=10, operator="Test Rail"),
+        _leg("national-rail", "C", "910GC", "B", "910GB", duration=12, operator="Test Rail"),
+    ]
+    payload = {
+        "journeys": [
+            _journey(22, changed_legs, start="2026-08-17T08:30:00", arrival="2026-08-17T08:52:00"),
+            _journey(26, direct_leg, start="2026-08-17T08:35:00", arrival="2026-08-17T09:01:00"),
+        ]
+    }
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse(payload))
+
+    result = tfl_client.find_frequent_destination_journey(51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30))
+
+    assert result["num_changes"] == 0
+    assert result["duration_minutes"] == 26
+
+
 def test_mid_journey_walking_leg_is_not_an_extra_change():
     """Old Street -> Tower Hill via a walking interchange (Bank -> Monument).
     Confirmed live (issue #47 follow-up): TfL itemises this exact kind of
