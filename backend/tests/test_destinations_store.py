@@ -1,5 +1,6 @@
 import pytest
 
+from app import config
 from app.destinations import journey_store, store
 
 
@@ -82,9 +83,16 @@ def test_delete_destination():
     assert store.list_destinations() == []
 
 
-def test_delete_destination_clears_home_journey():
+def test_delete_destination_clears_home_journey(monkeypatch):
+    # get_home_journeys() short-circuits to {} without touching the DB when
+    # home isn't configured (journey_store.py) -- home must be configured
+    # here or this assertion would pass vacuously regardless of whether the
+    # delete actually cascaded.
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
     d = store.create_destination("Office", "station", "910GPADTON", "Paddington", 0, "08:30")
     journey_store.set_home_journey(d["id"], {"duration_minutes": 42, "kind": "direct", "num_changes": 0})
+    assert journey_store.get_home_journeys() != {}
 
     store.delete_destination(d["id"])
 

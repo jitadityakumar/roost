@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app import config
 from app.db.connection import get_connection
 
 
@@ -126,7 +127,13 @@ def set_home_journey(destination_id: int, journey: dict | None) -> None:
 
 def get_home_journeys() -> dict[int, dict]:
     """Returns {destination_id: row_dict} for every destination with a
-    stored home journey."""
+    stored home journey. Short-circuits without touching the DB if home
+    isn't configured at all (config.HOME_LAT/LON unset) -- the expected
+    state on most deployments, see config.py -- since the table is
+    necessarily empty then anyway (compute_home_journey clears/never writes
+    a row in that case)."""
+    if config.HOME_LAT is None or config.HOME_LON is None:
+        return {}
     conn = get_connection()
     try:
         rows = conn.execute("SELECT * FROM home_journeys").fetchall()

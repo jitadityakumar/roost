@@ -4,12 +4,12 @@
 -- real home address never lands in the public repo or a shared DB dump).
 -- Keyed by destination_id alone, not (listing_id, destination_id) like
 -- destination_journeys -- home isn't a listing, it's a single fixed origin
--- shared across every listing's comparison. Computed once per destination's
--- lifetime (app/destinations/compute.py, same place/trigger as the
--- per-listing backfill) since a destination's day_of_week/time can't be
--- edited in the admin UI -- only deleted and recreated -- so there's no
--- "day/time changed, must recompute" case to handle, unlike
--- destination_journeys.
+-- shared across every listing's comparison. Recomputed by
+-- compute_for_destination (app/destinations/compute.py) on every call, same
+-- as the per-listing backfill, so a PATCH edit to day_of_week/time/
+-- tfl_identifier is picked up correctly -- the admin UI just never exposes
+-- editing those fields today (delete + recreate only), so in practice this
+-- only ever runs once per destination's lifetime.
 --
 -- Only the fields needed for a live duration-diff are stored -- no
 -- operator/origin_name/arrival_name/times, since the home journey itself is

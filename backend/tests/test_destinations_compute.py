@@ -231,6 +231,20 @@ def test_compute_home_journey_clears_when_destination_disabled(monkeypatch):
     assert journey_store.get_home_journeys() == {}
 
 
+def test_compute_home_journey_clears_when_configured_but_no_journey_found(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _journey(42))
+    compute.compute_home_journey(d)
+    assert journey_store.get_home_journeys() != {}
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: None)
+    compute.compute_home_journey(d)
+
+    assert journey_store.get_home_journeys() == {}
+
+
 def test_compute_for_destination_also_computes_home_journey(monkeypatch):
     d = _create_destination()
     monkeypatch.setattr(config, "HOME_LAT", 51.465)

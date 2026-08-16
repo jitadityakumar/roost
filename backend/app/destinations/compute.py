@@ -30,11 +30,15 @@ bar instead of blocking on the whole backfill.
 compute_home_journey) a single journey from the user's own home lat/lon
 (ROOST_HOME_LAT/ROOST_HOME_LON, app/config.py) to the destination, stored in
 home_journeys keyed by destination_id alone -- unlike destination_journeys,
-there's no per-listing loop here since home is one fixed origin. Since a
-destination's day_of_week/time/tfl_identifier can't be edited in the admin
-UI (delete + recreate only), this is a true one-time compute per
-destination's lifetime, not something that needs "did the schedule change"
-invalidation logic.
+there's no per-listing loop here since home is one fixed origin. There's no
+separate "did the schedule change" invalidation path for this -- it doesn't
+need one, since it's recomputed via this same function on every call,
+including a PATCH edit to day_of_week/time/tfl_identifier (any non-empty
+PATCH already re-triggers compute_for_destination, see routes/
+destinations.py). In practice the admin UI never exposes editing those
+fields (delete + recreate only), so this only ever runs once per
+destination's lifetime today -- but that's a UI choice, not something this
+function depends on for correctness.
 """
 from __future__ import annotations
 
@@ -162,11 +166,10 @@ def compute_for_destination(destination_id: int) -> None:
         backfill_status.finish(destination_id, "done")
         return
 
-    compute_home_journey(destination)
-
     listings = listings_store.list_listings()
     started = time.monotonic()
     try:
+        compute_home_journey(destination)
         for listing in listings:
             listing_id = listing["id"]
             if not destination["enabled"]:

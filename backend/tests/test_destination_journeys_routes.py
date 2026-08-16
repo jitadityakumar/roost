@@ -114,6 +114,30 @@ def test_refresh_destinations_includes_home_diff_when_home_configured(client, li
     assert resp.json()[0]["home_duration_diff_minutes"] == 42 - 18
 
 
+def test_refresh_destinations_omits_home_diff_when_this_destination_has_no_home_journey(
+    client, listing_id, monkeypatch
+):
+    # Distinct from test_refresh_destinations_omits_home_diff_when_no_home_configured:
+    # home *is* configured overall, but find_frequent_destination_journey
+    # never resolved a home journey for this specific destination (e.g. no
+    # route found) -- home_journeys has no row for it. Diff must still be
+    # omitted, not treated as a 0 or crash on a missing key.
+    from app import config
+    from app.destinations import backfill_queue, compute
+
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: None)
+    client.post("/api/destinations", json=_CREATE_BODY)
+    backfill_queue.wait_until_idle(timeout=5)
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _fake_journey(24))
+    resp = client.post(f"/api/listings/{listing_id}/destinations/refresh")
+
+    assert resp.json()[0]["resolved"] is True
+    assert "home_duration_diff_minutes" not in resp.json()[0]
+
+
 def _fake_journey(duration_minutes):
     return {
         "duration_minutes": duration_minutes,
