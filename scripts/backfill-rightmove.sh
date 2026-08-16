@@ -30,13 +30,10 @@
 # — that would double-run (and double-bill) work the auto-chain is already
 # doing.
 #
-# rightmove_extract also recomputes real Google Maps walking distances to
-# every nearby station (billed Google Routes API calls, one per station per
-# listing). Pass --skip-maps to opt out: /refresh?skip_maps=true (see
-# routes/listings.py, handlers.py's skip_maps check) still re-scrapes and
-# recomputes everything else, but leaves each listing's existing
-# station_walk_distances rows untouched. Independent of --skip-llm -- combine
-# both for a plain data backfill that avoids every billed external call.
+# rightmove_extract also recomputes station walking distances to every
+# nearby station via TfL's free Unified API (issue #40) -- unconditional,
+# no opt-out flag, unlike the old Google Routes API this replaced (which had
+# a --skip-maps flag specifically to dodge its per-call billing).
 #
 # "and there is new data" (per the original ask) has no cheap way to be
 # determined from outside the app (no snapshot diff exposed over the API) —
@@ -50,21 +47,17 @@ ASSUME_YES=false
 ONLY_ID=""
 THEN_LLM=false
 SKIP_LLM=false
-SKIP_MAPS=false
 POLL_INTERVAL=3
 POLL_TIMEOUT=180
 
 usage() {
-  echo "Usage: $0 [--base-url URL] [--listing-id ID] [--then-llm] [--skip-llm] [--skip-maps] [-y|--yes]"
+  echo "Usage: $0 [--base-url URL] [--listing-id ID] [--then-llm] [--skip-llm] [-y|--yes]"
   echo
   echo "  --base-url URL    Roost instance to target (default: $BASE_URL)"
   echo "  --listing-id ID   Only refresh this one listing, instead of all of them"
   echo "  --skip-llm        Re-scrape + re-download media only — don't auto-chain"
   echo "                    text_extract/floor_area_vision/epc_vision (no billed"
   echo "                    claude -p calls). Use for a plain data backfill."
-  echo "  --skip-maps       Re-scrape as normal but don't recompute Google Maps"
-  echo "                    walking distances to nearby stations (no billed"
-  echo "                    Google Routes API calls). Independent of --skip-llm."
   echo "  --then-llm        Block until each listing's full pipeline (Rightmove"
   echo "                    scrape + media download + whichever llm-lane jobs got"
   echo "                    auto-enqueued, none if --skip-llm) finishes, instead of"
@@ -78,7 +71,6 @@ while [ $# -gt 0 ]; do
     --listing-id) ONLY_ID="$2"; shift 2 ;;
     --then-llm) THEN_LLM=true; shift ;;
     --skip-llm) SKIP_LLM=true; shift ;;
-    --skip-maps) SKIP_MAPS=true; shift ;;
     -y|--yes) ASSUME_YES=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
@@ -109,13 +101,6 @@ else
   echo "This also auto-chains real, billed claude -p calls per listing (see script"
   echo "header) — pass --skip-llm to opt out."
 fi
-if [ "$SKIP_MAPS" = true ]; then
-  echo "--skip-maps set: existing station walking distances will not be recomputed"
-  echo "(no billed Google Routes API calls)."
-else
-  echo "This also recomputes real, billed Google Maps walking distances per listing"
-  echo "(see script header) — pass --skip-maps to opt out."
-fi
 if [ "$THEN_LLM" = true ]; then
   echo "--then-llm set: this script will block until each listing's full pipeline finishes."
 fi
@@ -128,7 +113,7 @@ if [ "$ASSUME_YES" != true ]; then
 fi
 
 for id in $ids; do
-  curl -sf -X POST "$BASE_URL/api/listings/$id/refresh?skip_llm=$SKIP_LLM&skip_maps=$SKIP_MAPS" >/dev/null
+  curl -sf -X POST "$BASE_URL/api/listings/$id/refresh?skip_llm=$SKIP_LLM" >/dev/null
   echo "listing $id: enqueued rightmove_extract"
 done
 

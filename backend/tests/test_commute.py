@@ -253,94 +253,183 @@ def test_get_commute_includes_station_at_exactly_half_mile_fallback_boundary(cli
     assert [s["crs"] for s in resp.json()["stations"]] == ["GLD"]
 
 
-# --- walking API client ----------------------------------------------------
+# --- TfL API client ---------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _tfl_no_throttle(monkeypatch):
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "_throttle", lambda: None)
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return json.dumps(self._payload).encode()
+
 
 def test_compute_walk_distance_raises_clearly_when_key_unset(monkeypatch):
-    from app.commute import walking
+    from app.commute import tfl_client
 
-    monkeypatch.setattr(walking, "GOOGLE_MAPS_API_KEY", None)
-    with pytest.raises(walking.WalkingApiError, match="GOOGLE_MAPS_API_KEY"):
-        walking.compute_walk_distance(51.0, -0.1, 51.1, -0.2)
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", None)
+    with pytest.raises(tfl_client.TflApiError, match="TFL_API_KEY"):
+        tfl_client.compute_walk_distance(51.0, -0.1, "940GZZLUCLJ")
 
 
 def test_compute_walk_distance_parses_success_response(monkeypatch):
-    from app.commute import walking
+    from app.commute import tfl_client
 
-    monkeypatch.setattr(walking, "GOOGLE_MAPS_API_KEY", "fake-key")
-
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self):
-            return json.dumps({"routes": [{"duration": "360s", "distanceMeters": 500}]}).encode()
-
-    monkeypatch.setattr(walking, "urlopen", lambda req, timeout: FakeResponse())
-    result = walking.compute_walk_distance(51.0, -0.1, 51.1, -0.2)
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    payload = {"journeys": [{"legs": [{"duration": 6, "distance": 500}]}]}
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse(payload))
+    result = tfl_client.compute_walk_distance(51.0, -0.1, "940GZZLUCLJ")
     assert result == {"distance_meters": 500, "duration_seconds": 360}
 
 
-def test_compute_walk_distance_handles_fractional_seconds(monkeypatch):
-    from app.commute import walking
+def test_compute_walk_distance_handles_missing_distance(monkeypatch):
+    from app.commute import tfl_client
 
-    monkeypatch.setattr(walking, "GOOGLE_MAPS_API_KEY", "fake-key")
-
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self):
-            return json.dumps({"routes": [{"duration": "360.7s", "distanceMeters": 500}]}).encode()
-
-    monkeypatch.setattr(walking, "urlopen", lambda req, timeout: FakeResponse())
-    result = walking.compute_walk_distance(51.0, -0.1, 51.1, -0.2)
-    assert result == {"distance_meters": 500, "duration_seconds": 360}
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    payload = {"journeys": [{"legs": [{"duration": 6, "distance": None}]}]}
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse(payload))
+    result = tfl_client.compute_walk_distance(51.0, -0.1, "940GZZLUCLJ")
+    assert result == {"distance_meters": None, "duration_seconds": 360}
 
 
-def test_compute_walk_distance_raises_walking_error_on_unparseable_duration(monkeypatch):
-    from app.commute import walking
+def test_compute_walk_distance_raises_when_no_journeys_returned(monkeypatch):
+    from app.commute import tfl_client
 
-    monkeypatch.setattr(walking, "GOOGLE_MAPS_API_KEY", "fake-key")
-
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self):
-            return json.dumps({"routes": [{"duration": "not-a-duration", "distanceMeters": 500}]}).encode()
-
-    monkeypatch.setattr(walking, "urlopen", lambda req, timeout: FakeResponse())
-    with pytest.raises(walking.WalkingApiError, match="unparseable"):
-        walking.compute_walk_distance(51.0, -0.1, 51.1, -0.2)
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse({"journeys": []}))
+    with pytest.raises(tfl_client.TflApiError, match="no journeys"):
+        tfl_client.compute_walk_distance(51.0, -0.1, "940GZZLUCLJ")
 
 
-def test_compute_walk_distance_raises_when_no_routes_returned(monkeypatch):
-    from app.commute import walking
+def test_compute_walk_distance_raises_when_journeys_key_missing(monkeypatch):
+    # A 300 (ambiguous from/to) response, or any other unexpected shape,
+    # won't raise via urlopen -- must be guarded explicitly.
+    from app.commute import tfl_client
 
-    monkeypatch.setattr(walking, "GOOGLE_MAPS_API_KEY", "fake-key")
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse({"$disambiguation": {}}))
+    with pytest.raises(tfl_client.TflApiError, match="missing journeys"):
+        tfl_client.compute_walk_distance(51.0, -0.1, "940GZZLUCLJ")
 
-    class FakeResponse:
-        def __enter__(self):
-            return self
 
-        def __exit__(self, *a):
-            return False
+def test_compute_walk_distance_raises_when_cloudflare_blocks_request(monkeypatch):
+    from urllib.error import HTTPError
 
-        def read(self):
-            return json.dumps({"routes": []}).encode()
+    from app.commute import tfl_client
 
-    monkeypatch.setattr(walking, "urlopen", lambda req, timeout: FakeResponse())
-    with pytest.raises(walking.WalkingApiError, match="no route"):
-        walking.compute_walk_distance(51.0, -0.1, 51.1, -0.2)
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+
+    def raise_403(req, timeout):
+        raise HTTPError(req.full_url, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(tfl_client, "urlopen", raise_403)
+    with pytest.raises(tfl_client.TflApiError):
+        tfl_client.compute_walk_distance(51.0, -0.1, "940GZZLUCLJ")
+
+
+def test_resolve_stop_point_returns_none_when_key_unset(monkeypatch):
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", None)
+    assert tfl_client.resolve_stop_point("Clapham Junction Station", "national-rail", 51.0, -0.1, 0.4) is None
+
+
+def test_resolve_stop_point_scores_by_gap_to_rightmove_distance(monkeypatch):
+    # Real validated case: Rightmove's "Streatham Station" (0.656mi) --
+    # plain closest-lat/lon picks the physically-closer but wrong
+    # "Streatham Common"; gap-scoring against Rightmove's own stated
+    # distance picks the right one. Coordinates/distances approximate the
+    # real ambiguous candidate set from issue #40's validation run.
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    listing_lat, listing_lon = 51.40, -0.10
+    payload = {
+        "matches": [
+            # ~0.657mi from the listing, matching Rightmove's stated distance -- correct.
+            {"id": "910GSTREATM", "name": "Streatham", "lat": 51.40951, "lon": -0.10},
+            # ~0.100mi from the listing -- physically closer, but the wrong station.
+            {"id": "910GSTRHCOM", "name": "Streatham Common", "lat": 51.40145, "lon": -0.10},
+        ]
+    }
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse(payload))
+    result = tfl_client.resolve_stop_point("Streatham Station", "national-rail", listing_lat, listing_lon, 0.656)
+    assert result == "910GSTREATM"
+
+
+def test_resolve_stop_point_falls_back_to_closest_when_no_rightmove_distance(monkeypatch):
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    payload = {
+        "matches": [
+            {"id": "far", "lat": 51.5, "lon": -0.5},
+            {"id": "near", "lat": 51.001, "lon": -0.001},
+        ]
+    }
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse(payload))
+    result = tfl_client.resolve_stop_point("Somewhere", "national-rail", 51.0, -0.0, None)
+    assert result == "near"
+
+
+def test_resolve_stop_point_returns_none_when_no_candidates(monkeypatch):
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse({"matches": []}))
+    assert tfl_client.resolve_stop_point("Nowhere", "national-rail", 51.0, -0.1, 0.4) is None
+
+
+def test_resolve_stop_point_drills_into_hub_children_for_target_mode(monkeypatch):
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    responses = [
+        _FakeResponse({"matches": [{"id": "HUBSRA", "lat": 51.5416, "lon": -0.0042}]}),
+        _FakeResponse(
+            {
+                "children": [
+                    {"id": "910GSTFD", "modes": ["national-rail"]},
+                    {"id": "940GZZLUSTD", "modes": ["tube"]},
+                ]
+            }
+        ),
+    ]
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: responses.pop(0))
+    result = tfl_client.resolve_stop_point("Stratford Station", "national-rail", 51.54, -0.0, 0.1)
+    assert result == "910GSTFD"
+
+
+def test_resolve_stop_point_falls_back_to_closest_hub_child_on_ambiguous_mode_match(monkeypatch):
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    responses = [
+        _FakeResponse({"matches": [{"id": "HUBSRA", "lat": 51.54, "lon": -0.0}]}),
+        _FakeResponse(
+            {
+                "children": [
+                    {"id": "far-dup", "modes": ["national-rail"], "lat": 51.6, "lon": -0.5},
+                    {"id": "near-dup", "modes": ["national-rail"], "lat": 51.541, "lon": -0.001},
+                ]
+            }
+        ),
+    ]
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: responses.pop(0))
+    result = tfl_client.resolve_stop_point("Stratford Station", "national-rail", 51.54, -0.0, 0.1)
+    assert result == "near-dup"
 
 
 # --- walk_store --------------------------------------------------------

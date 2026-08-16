@@ -10,12 +10,11 @@ def listing_id(client):  # client pulls in isolated_db + mock_rightmove_network
     return 1
 
 
-def _job(listing_id, job_id=1, skip_llm_chain=False, skip_maps=False):
+def _job(listing_id, job_id=1, skip_llm_chain=False):
     return {
         "id": job_id,
         "listing_id": listing_id,
         "skip_llm_chain": int(skip_llm_chain),
-        "skip_maps": int(skip_maps),
     }
 
 
@@ -183,7 +182,7 @@ def test_handle_rightmove_extract_stores_walk_distances_for_resolved_stations(li
         "resolve_crs_codes",
         lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
     )
-    monkeypatch.setattr(handlers, "latlong_for_crs", lambda crs: (51.4695, -0.1706))
+    monkeypatch.setattr(handlers, "resolve_stop_point", lambda *a: "910GCLPHMJC")
     monkeypatch.setattr(
         handlers, "compute_walk_distance", lambda *a: {"distance_meters": 500, "duration_seconds": 360}
     )
@@ -195,19 +194,40 @@ def test_handle_rightmove_extract_stores_walk_distances_for_resolved_stations(li
     }
 
 
-def test_handle_rightmove_extract_swallows_walking_api_failure(listing_id, monkeypatch):
+def test_handle_rightmove_extract_skips_station_tfl_cannot_resolve(listing_id, monkeypatch):
     from app.commute import walk_store
-    from app.commute.walking import WalkingApiError
 
     monkeypatch.setattr(
         handlers,
         "resolve_crs_codes",
         lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
     )
-    monkeypatch.setattr(handlers, "latlong_for_crs", lambda crs: (51.4695, -0.1706))
+    monkeypatch.setattr(handlers, "resolve_stop_point", lambda *a: None)
 
     def boom(*a):
-        raise WalkingApiError("no key")
+        raise AssertionError("compute_walk_distance should not be called when resolve_stop_point returns None")
+
+    monkeypatch.setattr(handlers, "compute_walk_distance", boom)
+
+    handlers.handle_rightmove_extract(_job(listing_id))  # should not raise
+
+    assert store.get_listing(listing_id)["extraction_status"] == "done"
+    assert walk_store.get_walk_distances(listing_id) == {}
+
+
+def test_handle_rightmove_extract_swallows_tfl_api_failure(listing_id, monkeypatch):
+    from app.commute import walk_store
+    from app.commute.tfl_client import TflApiError
+
+    monkeypatch.setattr(
+        handlers,
+        "resolve_crs_codes",
+        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
+    )
+    monkeypatch.setattr(handlers, "resolve_stop_point", lambda *a: "910GCLPHMJC")
+
+    def boom(*a):
+        raise TflApiError("no key")
 
     monkeypatch.setattr(handlers, "compute_walk_distance", boom)
 
@@ -228,56 +248,6 @@ def test_handle_rightmove_extract_skips_walk_distances_without_listing_latlon(
     handlers.handle_rightmove_extract(_job(listing_id))
 
     assert walk_store.get_walk_distances(listing_id) == {}
-
-
-def test_handle_rightmove_extract_skip_maps_does_not_call_walking_api(listing_id, monkeypatch):
-    from app.commute import walk_store
-
-    monkeypatch.setattr(
-        handlers,
-        "resolve_crs_codes",
-        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
-    )
-    monkeypatch.setattr(handlers, "latlong_for_crs", lambda crs: (51.4695, -0.1706))
-
-    def boom(*a):
-        raise AssertionError("compute_walk_distance should not be called when skip_maps is set")
-
-    monkeypatch.setattr(handlers, "compute_walk_distance", boom)
-
-    handlers.handle_rightmove_extract(_job(listing_id, skip_maps=True))
-
-    assert store.get_listing(listing_id)["extraction_status"] == "done"
-    assert walk_store.get_walk_distances(listing_id) == {}
-
-
-def test_handle_rightmove_extract_skip_maps_leaves_existing_walk_distances_untouched(listing_id, monkeypatch):
-    from app.commute import walk_store
-
-    monkeypatch.setattr(
-        handlers,
-        "resolve_crs_codes",
-        lambda raw: [{"name": "Clapham Junction", "crs": "CLJ", "distance": 0.4}],
-    )
-    monkeypatch.setattr(handlers, "latlong_for_crs", lambda crs: (51.4695, -0.1706))
-    monkeypatch.setattr(
-        handlers, "compute_walk_distance", lambda *a: {"distance_meters": 500, "duration_seconds": 360}
-    )
-    handlers.handle_rightmove_extract(_job(listing_id))
-    assert walk_store.get_walk_distances(listing_id) == {
-        "CLJ": {"distance_meters": 500, "duration_seconds": 360}
-    }
-
-    def boom(*a):
-        raise AssertionError("compute_walk_distance should not be called when skip_maps is set")
-
-    monkeypatch.setattr(handlers, "compute_walk_distance", boom)
-
-    handlers.handle_rightmove_extract(_job(listing_id, skip_maps=True))
-
-    assert walk_store.get_walk_distances(listing_id) == {
-        "CLJ": {"distance_meters": 500, "duration_seconds": 360}
-    }
 
 
 def test_handle_media_download_uses_latest_snapshot(listing_id, media_dir):

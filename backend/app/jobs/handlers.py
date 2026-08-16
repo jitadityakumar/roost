@@ -14,8 +14,8 @@ import json
 from datetime import datetime, timezone
 
 from app.commute import walk_store
-from app.commute.stations import latlong_for_crs, resolve_crs_codes
-from app.commute.walking import WalkingApiError, compute_walk_distance
+from app.commute.stations import resolve_crs_codes
+from app.commute.tfl_client import TflApiError, compute_walk_distance, resolve_stop_point
 from app.config import MEDIA_DIR
 from app.destinations.compute import compute_for_listing
 from app.jobs import llm_enqueue, llm_prompts, queue
@@ -140,14 +140,14 @@ def handle_rightmove_extract(job: dict) -> None:
     store.set_extraction_status(listing_id, "done")
     store.insert_snapshot(listing_id, fields.get("price_gbp"), fields.get("rightmove_status"), prop)
 
-    if not job.get("skip_maps"):
-        _compute_station_walk_distances(
-            listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
-        )
+    # Unconditional, same as any other Rightmove-derived field -- TfL's API
+    # is free, unlike the Google Routes API this used to call, so there's no
+    # cost pressure to make this opt-out-able (skip_maps/--skip-maps removed
+    # entirely, see issue #40).
+    _compute_station_walk_distances(
+        listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
+    )
 
-    # Not gated by skip_maps -- that flag exists specifically to dodge
-    # Google's billed Routes API during bulk backfill; train-journey-planner
-    # is a local/free service, so there's no cost pressure to skip this.
     compute_for_listing(listing_id, extracted.get("nearest_stations") or [])
 
     skip_llm_chain = bool(job.get("skip_llm_chain"))
@@ -161,25 +161,27 @@ def handle_rightmove_extract(job: dict) -> None:
 def _compute_station_walk_distances(
     listing_id: int, latitude: float | None, longitude: float | None, nearest_stations_raw: list[dict]
 ) -> None:
-    """Real walking distance/duration (Google Routes API v2) to every
-    station resolve_crs_codes() would surface for this listing, computed
-    once here at scrape time and stored -- never a live call on page load.
-    A missing listing lat/lon (Rightmove's location block can be absent) or
-    a per-station Maps failure just means that station keeps no stored
-    value; the frontend falls back to Rightmove's raw distance for it. This
-    must never raise -- the rightmove_extract job has already succeeded by
-    the time this runs."""
+    """Real walking distance/duration (TfL Journey Planner) to every station
+    resolve_crs_codes() would surface for this listing, computed once here
+    at scrape time and stored -- never a live call on page load. A missing
+    listing lat/lon (Rightmove's location block can be absent), an
+    unresolvable station name, or a per-station TfL failure just means that
+    station keeps no stored value; the frontend falls back to Rightmove's
+    raw distance for it. This must never raise -- the rightmove_extract job
+    has already succeeded by the time this runs. National-rail only and
+    resolve_crs_codes()'s 1mi radius, same scope as before this swap --
+    issue #40's mode/radius expansion is a separate follow-up PR."""
     if latitude is None or longitude is None:
         return
 
     rows = []
     for station in resolve_crs_codes(nearest_stations_raw):
-        latlong = latlong_for_crs(station["crs"])
-        if latlong is None:
+        stop_point_id = resolve_stop_point(station["name"], "national-rail", latitude, longitude, station["distance"])
+        if stop_point_id is None:
             continue
         try:
-            result = compute_walk_distance(latitude, longitude, latlong[0], latlong[1])
-        except WalkingApiError:
+            result = compute_walk_distance(latitude, longitude, stop_point_id)
+        except TflApiError:
             continue
         rows.append({"crs": station["crs"], **result})
 

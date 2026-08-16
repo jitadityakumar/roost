@@ -83,7 +83,7 @@ def fetch_journeys(from_crs: str, to_crs: str, date: dt.date, time_: dt.time) ->
     TrainPlannerApiError on any failure (base URL unset, network, non-200
     after retries, unparseable body) -- the caller (compute.py) treats a
     failed origin as just not contributing a candidate, same as
-    walking.py's per-station failure handling."""
+    tfl_client.py's per-station failure handling."""
     if not TRAIN_PLANNER_BASE:
         raise TrainPlannerApiError(
             "ROOST_TRAIN_PLANNER_BASE is not set -- the train-journey-planner API's "
