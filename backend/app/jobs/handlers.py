@@ -212,7 +212,7 @@ def handle_rightmove_extract(job: dict) -> None:
         listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
     )
 
-    compute_for_listing(listing_id, extracted.get("nearest_stations") or [])
+    compute_for_listing(listing_id, fields.get("latitude"), fields.get("longitude"))
 
     skip_llm_chain = bool(job.get("skip_llm_chain"))
     queue.enqueue_job(

@@ -10,8 +10,8 @@ from app.db.connection import get_connection
 
 def replace_journeys(listing_id: int, rows: list[dict]) -> None:
     """rows: [{"destination_id", "duration_minutes", "kind", "num_changes",
-    "operator", "origin_crs", "origin_name", "interchange_crs",
-    "departure_time", "arrival_time"}]."""
+    "operator", "origin_crs", "origin_name", "arrival_name",
+    "interchange_crs", "departure_time", "arrival_time"}]."""
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
@@ -19,8 +19,8 @@ def replace_journeys(listing_id: int, rows: list[dict]) -> None:
         conn.executemany(
             "INSERT INTO destination_journeys "
             "(listing_id, destination_id, duration_minutes, kind, num_changes, operator, "
-            "origin_crs, origin_name, interchange_crs, departure_time, arrival_time, computed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "origin_crs, origin_name, arrival_name, interchange_crs, departure_time, arrival_time, computed_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     listing_id,
@@ -31,6 +31,7 @@ def replace_journeys(listing_id: int, rows: list[dict]) -> None:
                     r["operator"],
                     r["origin_crs"],
                     r["origin_name"],
+                    r.get("arrival_name"),
                     r.get("interchange_crs"),
                     r["departure_time"],
                     r["arrival_time"],
@@ -75,8 +76,8 @@ def replace_single(listing_id: int, destination_id: int, row: dict | None) -> No
             conn.execute(
                 "INSERT INTO destination_journeys "
                 "(listing_id, destination_id, duration_minutes, kind, num_changes, operator, "
-                "origin_crs, origin_name, interchange_crs, departure_time, arrival_time, computed_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "origin_crs, origin_name, arrival_name, interchange_crs, departure_time, arrival_time, computed_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     listing_id,
                     destination_id,
@@ -86,6 +87,7 @@ def replace_single(listing_id: int, destination_id: int, row: dict | None) -> No
                     row["operator"],
                     row["origin_crs"],
                     row["origin_name"],
+                    row.get("arrival_name"),
                     row.get("interchange_crs"),
                     row["departure_time"],
                     row["arrival_time"],

@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.commute.stations import resolve_crs_codes, search_stations
+from app.commute.stations import resolve_crs_codes
 from app.listings import store
 
 
@@ -652,35 +652,3 @@ def test_get_listing_nearest_stations_walk_data_none_when_nothing_stored(client)
     nearest = resp.json()["nearest_stations_raw"]
     assert nearest[0]["walk_distance_meters"] is None
     assert nearest[0]["walk_duration_seconds"] is None
-
-
-# --- station search (issue #28's destination typeahead) --------------------
-
-def test_search_stations_matches_by_name():
-    results = search_stations("padding")
-    assert any(s["crs"] == "PAD" for s in results)
-
-
-def test_search_stations_matches_by_crs_code():
-    results = search_stations("pad")
-    assert results[0]["crs"] == "PAD"
-
-
-def test_search_stations_crs_exact_match_ranks_above_name_substring():
-    # "wat" is both Waterloo's/Watford's name-prefix AND could substring-
-    # match some other station's name -- an exact CRS match for a genuine
-    # 3-letter code should still win outright over any name-based match.
-    results = search_stations("wat")
-    # Every CRS/name-prefix match for "wat" ranks above a merely-contains
-    # match -- Watford Junction (name-prefix) should appear before a
-    # station that only contains "wat" somewhere mid-name, if any exist.
-    assert results[0]["name"].lower().startswith("wat") or results[0]["crs"].lower().startswith("wat")
-
-
-def test_search_stations_blank_query_returns_empty():
-    assert search_stations("") == []
-
-
-def test_search_stations_respects_limit():
-    results = search_stations("st", limit=3)
-    assert len(results) <= 3

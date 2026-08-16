@@ -1,4 +1,3 @@
-import json
 import threading
 import time
 
@@ -8,29 +7,37 @@ from app.destinations import backfill_status, compute, journey_store
 from app.destinations import store as destinations_store
 from app.listings import store as listings_store
 
-STATIONS_RAW = [{"name": "Woking Station", "distance": 0.2, "types": ["NATIONAL_TRAIN"]}]
+LAT, LON = 51.319, -0.559
+
+_CREATE_BODY = {
+    "name": "Office",
+    "destination_type": "station",
+    "tfl_identifier": "910GPADTON",
+    "station_name": "Paddington",
+    "day_of_week": 0,
+    "time": "08:30",
+}
 
 
 def _direct_journey(duration_minutes):
     return {
-        "journeys": [
-            {
-                "kind": "direct",
-                "departure_time": "08:40:00",
-                "arrival_time": "09:04:00",
-                "duration_minutes": duration_minutes,
-                "is_past": False,
-                "direct": {"operator": "South Western Railway"},
-                "interchange": None,
-            }
-        ]
+        "duration_minutes": duration_minutes,
+        "kind": "direct",
+        "num_changes": 0,
+        "operator": "South Western Railway",
+        "origin_crs": "910GWOKING",
+        "origin_name": "Woking Rail Station",
+        "arrival_name": "London Paddington",
+        "interchange_crs": None,
+        "departure_time": "2026-08-17T08:40:00",
+        "arrival_time": "2026-08-17T09:04:00",
     }
 
 
 @pytest.fixture
 def existing_listing():
     listings_store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
-    listings_store.apply_extracted_fields(1, {"nearest_stations_raw": json.dumps(STATIONS_RAW)})
+    listings_store.apply_extracted_fields(1, {"latitude": LAT, "longitude": LON})
     return 1
 
 
@@ -49,12 +56,9 @@ def _wait_for_backfill(client, destination_id, timeout=2.0):
 
 
 def test_create_destination_backfills_existing_listings(client, existing_listing, monkeypatch):
-    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: _direct_journey(24))
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _direct_journey(24))
 
-    resp = client.post(
-        "/api/destinations",
-        json={"name": "Office", "crs": "PAD", "station_name": "Paddington", "day_of_week": 0, "time": "08:30"},
-    )
+    resp = client.post("/api/destinations", json=_CREATE_BODY)
     destination_id = resp.json()["id"]
     _wait_for_backfill(client, destination_id)
 
@@ -63,14 +67,11 @@ def test_create_destination_backfills_existing_listings(client, existing_listing
 
 
 def test_patch_destination_recomputes_existing_listings(client, existing_listing, monkeypatch):
-    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: _direct_journey(24))
-    destination_id = client.post(
-        "/api/destinations",
-        json={"name": "Office", "crs": "PAD", "station_name": "Paddington", "day_of_week": 0, "time": "08:30"},
-    ).json()["id"]
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _direct_journey(24))
+    destination_id = client.post("/api/destinations", json=_CREATE_BODY).json()["id"]
     _wait_for_backfill(client, destination_id)
 
-    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: _direct_journey(40))
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _direct_journey(40))
     client.patch(f"/api/destinations/{destination_id}", json={"time": "09:00"})
     _wait_for_backfill(client, destination_id)
 
@@ -79,15 +80,19 @@ def test_patch_destination_recomputes_existing_listings(client, existing_listing
 
 
 def test_disabling_destination_clears_stored_journey_without_touching_others(client, existing_listing, monkeypatch):
-    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: _direct_journey(24))
-    office_id = client.post(
-        "/api/destinations",
-        json={"name": "Office", "crs": "PAD", "station_name": "Paddington", "day_of_week": 0, "time": "08:30"},
-    ).json()["id"]
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _direct_journey(24))
+    office_id = client.post("/api/destinations", json=_CREATE_BODY).json()["id"]
     _wait_for_backfill(client, office_id)
     home_id = client.post(
         "/api/destinations",
-        json={"name": "Mum & Dad's", "crs": "GLD", "station_name": "Guildford", "day_of_week": 6, "time": "12:00"},
+        json={
+            "name": "Mum & Dad's",
+            "destination_type": "station",
+            "tfl_identifier": "910GGLDFD",
+            "station_name": "Guildford",
+            "day_of_week": 6,
+            "time": "12:00",
+        },
     ).json()["id"]
     _wait_for_backfill(client, home_id)
 
@@ -109,12 +114,9 @@ def test_backfill_status_is_idle_for_a_destination_with_no_tracked_run(client):
 
 
 def test_backfill_status_reaches_done_with_full_total(client, existing_listing, monkeypatch):
-    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: _direct_journey(24))
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _direct_journey(24))
 
-    destination_id = client.post(
-        "/api/destinations",
-        json={"name": "Office", "crs": "PAD", "station_name": "Paddington", "day_of_week": 0, "time": "08:30"},
-    ).json()["id"]
+    destination_id = client.post("/api/destinations", json=_CREATE_BODY).json()["id"]
 
     status = _wait_for_backfill(client, destination_id)
     assert status == {"status": "done", "done": 1, "total": 1}
@@ -122,21 +124,18 @@ def test_backfill_status_reaches_done_with_full_total(client, existing_listing, 
 
 def test_create_destination_does_not_block_on_backfill(client, existing_listing, monkeypatch):
     """The whole point of issue #36 -- the create request must return before
-    the backfill finishes, not after. Uses an event so the fake
-    fetch_journeys blocks until the test explicitly releases it, proving the
-    POST response doesn't wait on it."""
+    the backfill finishes, not after. Uses an event so the fake journey
+    lookup blocks until the test explicitly releases it, proving the POST
+    response doesn't wait on it."""
     release = threading.Event()
 
-    def slow_fetch(*a, **k):
+    def slow_journey(*a, **k):
         release.wait(timeout=2.0)
         return _direct_journey(24)
 
-    monkeypatch.setattr(compute, "fetch_journeys", slow_fetch)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", slow_journey)
 
-    resp = client.post(
-        "/api/destinations",
-        json={"name": "Office", "crs": "PAD", "station_name": "Paddington", "day_of_week": 0, "time": "08:30"},
-    )
+    resp = client.post("/api/destinations", json=_CREATE_BODY)
     destination_id = resp.json()["id"]
 
     # The request already returned above -- the backfill is still blocked on
@@ -160,8 +159,10 @@ def test_compute_for_destination_marks_backfill_failed_on_exception(existing_lis
     indefinitely. Calls compute_for_destination directly (bypassing the
     route/thread) so the exception can be asserted on directly instead of
     only observed as a background-thread warning."""
-    monkeypatch.setattr(compute, "fetch_journeys", lambda *a, **k: _direct_journey(24))
-    d = destinations_store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _direct_journey(24))
+    d = destinations_store.create_destination(
+        "Office", "station", "910GPADTON", "Paddington", 0, "08:30"
+    )
 
     def boom(*a, **k):
         raise RuntimeError("boom")
@@ -187,24 +188,21 @@ def test_patch_while_a_backfill_is_already_running_is_queued_not_dropped(client,
     first_call_release = threading.Event()
     calls = []
 
-    def fetch_journeys(from_crs, to_crs, date, time_):
-        calls.append(time_)
+    def find_journey(lat, lon, to_identifier, target_date, target_time):
+        calls.append(target_time)
         if len(calls) == 1:
             first_call_release.wait(timeout=2.0)
             return _direct_journey(24)
         return _direct_journey(40)
 
-    monkeypatch.setattr(compute, "fetch_journeys", fetch_journeys)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", find_journey)
 
-    destination_id = client.post(
-        "/api/destinations",
-        json={"name": "Office", "crs": "PAD", "station_name": "Paddington", "day_of_week": 0, "time": "08:30"},
-    ).json()["id"]
+    destination_id = client.post("/api/destinations", json=_CREATE_BODY).json()["id"]
 
-    # The create's backfill is now blocked inside fetch_journeys. A PATCH
-    # arriving while it's still in flight ('queued' or 'running' -- see the
-    # comment in test_create_destination_does_not_block_on_backfill for why
-    # both are accepted) must still succeed and must not get dropped.
+    # The create's backfill is now blocked inside find_frequent_destination_journey.
+    # A PATCH arriving while it's still in flight ('queued' or 'running' --
+    # see the comment in test_create_destination_does_not_block_on_backfill
+    # for why both are accepted) must still succeed and must not get dropped.
     status_before_patch = client.get(f"/api/destinations/{destination_id}/backfill-status").json()
     assert status_before_patch["status"] in ("queued", "running")
 

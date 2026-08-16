@@ -16,9 +16,6 @@ COMMUTE_API_BASE = os.environ.get("ROOST_COMMUTE_API_BASE")
 MORTGAGE_API_BASE = os.environ.get("ROOST_MORTGAGE_API_BASE")
 
 # TfL's free Unified API key -- see app/commute/tfl_client.py. No in-repo
-# default; a missing key means walk distances just aren't computed (caught
-# and logged per-station, not fatal).
+# default; a missing key means walk distances/frequent-destination journeys
+# just aren't computed (caught and logged per-call, not fatal).
 TFL_API_KEY = os.environ.get("TFL_API_KEY")
-
-# Same reasoning as COMMUTE_API_BASE -- see app/destinations/client.py.
-TRAIN_PLANNER_BASE = os.environ.get("ROOST_TRAIN_PLANNER_BASE")

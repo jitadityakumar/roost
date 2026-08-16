@@ -27,6 +27,11 @@ def _validate_day_of_week(day_of_week: int) -> None:
         raise ValueError(f"day_of_week {day_of_week!r} must be an integer 0 (Monday) .. 6 (Sunday)")
 
 
+def _validate_destination_type(destination_type: str) -> None:
+    if destination_type not in ("station", "postcode"):
+        raise ValueError(f"destination_type {destination_type!r} must be 'station' or 'postcode'")
+
+
 def list_destinations() -> list[dict]:
     conn = get_connection()
     try:
@@ -36,9 +41,12 @@ def list_destinations() -> list[dict]:
         conn.close()
 
 
-def create_destination(name: str, crs: str, station_name: str, day_of_week: int, time: str) -> dict:
+def create_destination(
+    name: str, destination_type: str, tfl_identifier: str, station_name: str, day_of_week: int, time: str
+) -> dict:
     if not name.strip():
         raise ValueError("name is required")
+    _validate_destination_type(destination_type)
     _validate_day_of_week(day_of_week)
     _validate_time(time)
     conn = get_connection()
@@ -46,8 +54,9 @@ def create_destination(name: str, crs: str, station_name: str, day_of_week: int,
         now = _now_iso()
         cur = conn.execute(
             "INSERT INTO frequent_destinations "
-            "(name, crs, station_name, day_of_week, time, enabled, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
-            (name.strip(), crs.strip().upper(), station_name.strip(), day_of_week, time, now),
+            "(name, destination_type, tfl_identifier, station_name, day_of_week, time, enabled, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+            (name.strip(), destination_type, tfl_identifier.strip(), station_name.strip(), day_of_week, time, now),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM frequent_destinations WHERE id = ?", (cur.lastrowid,)).fetchone()
@@ -73,12 +82,17 @@ def update_destination(destination_id: int, **changes) -> dict | None:
             if not str(merged["name"]).strip():
                 raise ValueError("name is required")
             merged["name"] = str(merged["name"]).strip()
-        if "crs" in changes:
-            merged["crs"] = str(merged["crs"]).strip().upper()
+        if "destination_type" in changes:
+            _validate_destination_type(merged["destination_type"])
+        if "tfl_identifier" in changes:
+            merged["tfl_identifier"] = str(merged["tfl_identifier"]).strip()
         if "station_name" in changes:
             merged["station_name"] = str(merged["station_name"]).strip()
 
-        to_write = {k: merged[k] for k in ("name", "crs", "station_name", "day_of_week", "time", "enabled")}
+        to_write = {
+            k: merged[k]
+            for k in ("name", "destination_type", "tfl_identifier", "station_name", "day_of_week", "time", "enabled")
+        }
         set_clause = ", ".join(f"{k} = ?" for k in to_write)
         conn.execute(
             f"UPDATE frequent_destinations SET {set_clause} WHERE id = ?",

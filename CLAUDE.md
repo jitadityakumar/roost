@@ -39,10 +39,10 @@ docker run -p 8000:8000 -v $(pwd)/data:/data \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 `.env` (gitignored, not tracked in this repo) holds the host-specific
-`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `TFL_API_KEY`,
-and `ROOST_TRAIN_PLANNER_BASE` vars -- deliberately passed via `--env-file`
-rather than inline `-e`/python-dotenv, since inline flags leave the key
-visible in shell history / `ps aux`.
+`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, and `TFL_API_KEY`
+vars -- deliberately passed via `--env-file` rather than inline
+`-e`/python-dotenv, since inline flags leave the key visible in shell
+history / `ps aux`.
 
 There is no automated test suite yet — verification so far has been manual
 end-to-end runs against real Rightmove listings and a running Docker
@@ -231,54 +231,53 @@ separate, national-rail-only integration keyed by CRS); tube/tram/DLR/
 overground stations get a walking distance/time in Nearest Stations only,
 same section boundary as before this PR.
 
-**Frequent-destination journeys, computed once and persisted (issue #28) --
-same "compute at scrape time, never live" precedent as station walking
-distance above.** `app/destinations/` lets the admin define named
-destinations (`frequent_destinations`, migration `0013`) with a target
-day-of-week + time and the CRS code of the destination's own nearest
-station (resolved via a station-name typeahead, `GET
-/api/destinations/stations/search`, backed by the same `stations.csv`
-`app/commute/stations.py` already loads -- no extra network call). For each
-enabled destination, `app/destinations/compute.py` queries
-`train-journey-planner`'s `/api/journeys` (`app/destinations/client.py`,
-address required via `ROOST_TRAIN_PLANNER_BASE`, no in-repo default -- same
-reasoning as `ROOST_COMMUTE_API_BASE`) from every station
-`resolve_crs_codes()` surfaces for the listing to the destination's CRS, for
-the next upcoming occurrence of its day/time, and keeps the fastest
-(fewest-changes tiebreak) result across all candidate origins. This runs
-inline in `handle_rightmove_extract`, unconditionally -- train-journey-planner
-is local/free, same as TfL's walking-distance API above, so neither has an
+**Frequent-destination journeys, computed once and persisted (issue #28,
+fully moved onto TfL by issue #47) -- same "compute at scrape time, never
+live" precedent as station walking distance above.** `app/destinations/`
+lets the admin define named destinations (`frequent_destinations`,
+migration `0013`, reshaped by migration `0019`) with a target day-of-week +
+time and either a TfL StopPoint id (`destination_type = "station"`,
+resolved via `GET /api/destinations/stations/search` ->
+`tfl_client.search_stop_points()`, a live `/StopPoint/Search` proxy
+excluding `bus`/`river-bus`/`coach`) or a raw UK postcode
+(`destination_type = "postcode"` -- TfL's `to` param accepts a postcode
+directly, no resolution step). For each enabled destination,
+`app/destinations/compute.py` calls
+`tfl_client.find_frequent_destination_journey()` **once**, using the
+listing's own raw `latitude`/`longitude` as `from` -- no per-station
+candidate loop, no CRS requirement, which is what lets this reach
+Tube/DLR/Overground/tram-only stations the old CRS-only GTFS planner
+structurally couldn't (Southfields, Pudding Mill Lane). That function does
+a windowed scan (walks forward across a rolling 60-minute window,
+re-querying TfL's `/Journey/JourneyResults` as needed) for the next
+upcoming occurrence of the destination's day/time, and returns the fastest
+journey found, reading `duration` directly off TfL's response rather than
+diffing timestamps (DST-ambiguous around the fall-back hour, confirmed
+live). This runs inline in `handle_rightmove_extract`, unconditionally --
+TfL's API is free, same as its walking-distance API above, so there's no
 opt-out flag -- and again on manual
 `POST /api/listings/{id}/destinations/refresh`. Results are stored in
-`destination_journeys` (migration `0014`, `app/destinations/journey_store.py`),
-rows deleted and reinserted wholesale per listing on each recompute. A
-destination with no route found in any candidate origin (unresolvable CRS,
-service down, or train-journey-planner genuinely has nothing) simply gets no
-stored row -- `GET /api/listings/{id}/destinations` reports that as
-`resolved: false`, which the frontend renders as "no route found" rather
-than an error. This is the train-first primary path from issue #28; a
-Google Maps fallback for destinations with no nearby national-rail station
-is tracked separately as issue #25, not built here.
+`destination_journeys` (migration `0014`, widened by `0019` with
+`arrival_name`; `app/destinations/journey_store.py`), rows deleted and
+reinserted wholesale per listing on each recompute. A destination with no
+`tfl_identifier` yet, a listing with no resolved lat/lon, or no journey
+found in the scan window simply gets no stored row -- `GET
+/api/listings/{id}/destinations` reports that as `resolved: false`, which
+the frontend renders as "no journey found" rather than an error.
 
-**2-5 change journeys, via train-journey-planner's OTP-sidecar-backed
-fallback tier (its own issue #26).** Per origin, if `/api/journeys` comes
-back with zero journeys *and* that response's own `sidecar_healthy` is
-`true`, `compute.py::_best_across_origins` makes a second call to
-`GET /api/journeys/multi-change` (`client.py::fetch_multi_change_journeys`)
--- following train-journey-planner's own documented two-step call contract
-exactly (never called unconditionally, never called when the sidecar is
-already known unhealthy). Unlike `/api/journeys`, this endpoint never
-503s (train-journey-planner deliberately excludes it from its DB
-concurrency gate) and never hard-fails, so there's no retry loop here --
-only the same error handling as `fetch_journeys`. A multi-change result is
-tagged `kind: "multi_change"` (the raw `MultiChangeJourneyOut` has no
-`kind` field of its own) so `_num_changes`/`_operator`/`_interchange_crs`
-can treat all three kinds uniformly; `interchange_crs`
-(`destination_journeys`, migration `0016` widened its `kind` CHECK) is
-reused to hold a comma-joined list of every change station's CRS code for
-this kind, not a single code -- the frontend's existing route-label
-formatting (`FrequentDestinations.jsx`) already renders any `num_changes`
-correctly and needed no changes.
+**Walking-leg counting.** A TfL journey from a raw lat/lon always starts
+with a walking leg (access), and can also insert a walking leg *between*
+two transit legs for a genuine cross-station interchange (e.g. Bank ->
+Monument) -- only the very first leg (if walking) and very last leg (if
+walking, egress to a postcode/StopPoint) are excluded from
+`kind`/`num_changes`/`interchange_crs`; a walking leg anywhere in the
+middle counts as a change like any other mode transition
+(`tfl_client.py::_counted_legs`). `origin_crs`/`origin_name` hold the first
+counted leg's StopPoint id/`commonName` (repurposed, not schema-changed,
+from the old CRS-based meaning); `arrival_name` (migration `0019`) holds
+the last counted leg's `commonName` -- needed so a postcode-type
+destination's resolved arrival station has something to display
+(`FrequentDestinations.jsx`'s `{origin_name} -> {arrival_name}` line).
 
 ## Working in this repo
 
