@@ -575,6 +575,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 
 /* Frequent destinations -- admin form */
 .badge-station { background: var(--accent); color: white; }
+.badge-postcode { background: var(--muted); color: white; }
 .status-toggle-btn.ghost {
   background: none;
   color: var(--accent);
@@ -620,6 +621,9 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .radio-option input { width: auto; accent-color: var(--accent); }
 
 .station-search-wrap { position: relative; }
+.station-search-row { display: flex; gap: 0.5rem; }
+.station-search-row input { flex: 1; min-width: 0; }
+.station-search-row button { flex-shrink: 0; }
 .station-search-results {
   position: absolute;
   top: calc(100% + 0.25rem);

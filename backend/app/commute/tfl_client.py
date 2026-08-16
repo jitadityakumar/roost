@@ -12,6 +12,7 @@ correct against Roost's real listing data): score each candidate by how
 close its haversine distance from the listing is to Rightmove's own stated
 straight-line distance, not by raw closeness -- see resolve_stop_point.
 """
+import datetime as dt
 import json
 import logging
 import re
@@ -20,7 +21,7 @@ import time
 from collections import deque
 from math import asin, cos, radians, sin, sqrt
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from app.config import TFL_API_KEY
@@ -105,6 +106,47 @@ def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     dlambda = radians(lon2 - lon1)
     a = sin(dphi / 2) ** 2 + cos(p1) * cos(p2) * sin(dlambda / 2) ** 2
     return 2 * earth_radius_miles * asin(sqrt(a))
+
+
+_DESTINATION_SEARCH_MODES = "national-rail,tube,overground,dlr,tram,elizabeth-line"
+
+
+def search_stop_points(query: str, limit: int = 8) -> list[dict]:
+    """Admin-form destination-station search (issue #47) -- proxies TfL's
+    own /StopPoint/Search rather than Roost's local stations.csv (CRS-only,
+    can't address Tube/DLR/Overground/tram-only stations), so the form can
+    hand back a StopPoint id directly for any TfL-served destination. No
+    disambiguation heuristic here (unlike resolve_stop_point's distance-gap
+    scoring, which exists for *automatic* resolution against a listing's own
+    position) -- the admin sees the candidate list and picks the correct one
+    by name/mode themselves, same UX as the old CRS search. `bus`/
+    `river-bus`/`coach` are deliberately excluded -- TfL has thousands of bus
+    stops that would bury the station result the admin is actually looking
+    for (see issue #47's UX addendum). Never raises -- a failed/empty search
+    just returns []. Returns each match's raw `modes` list (e.g.
+    `["national-rail", "elizabeth-line"]`) rather than picking one -- the
+    frontend renders "Name (Mode)" itself so same-named stops on different
+    lines aren't ambiguous."""
+    query = query.strip()
+    if not query:
+        return []
+    try:
+        data = _get(f"https://api.tfl.gov.uk/StopPoint/Search/{quote(query)}?modes={_DESTINATION_SEARCH_MODES}")
+    except TflApiError as e:
+        logger.info("TfL StopPoint/Search failed for %r: %s", query, e)
+        return []
+
+    matches = data.get("matches") or [] if isinstance(data, dict) else []
+    results = []
+    for m in matches:
+        stop_id = m.get("id")
+        name = m.get("name")
+        if not stop_id or not name:
+            continue
+        results.append({"id": stop_id, "name": name, "modes": m.get("modes") or []})
+        if len(results) >= limit:
+            break
+    return results
 
 
 def resolve_stop_point(
@@ -259,3 +301,193 @@ def compute_walk_distance(origin_lat: float, origin_lon: float, stop_point_id: s
         raise TflApiError(f"TfL Journey API leg has unparseable duration/distance: {leg!r}") from e
 
     return {"distance_meters": distance_meters, "duration_seconds": duration_seconds}
+
+
+# Frequent-destinations windowed scan (issue #47). Same 60-minute convention
+# as the old destinations/client.py's WINDOW_MINUTES -- picks the fastest
+# journey found for the target day/time, not just the first one TfL hands
+# back. Bounds how many extra pages the scan will fetch once the first
+# page's own results already run right up to (or past) the window edge --
+# in practice TfL's own alternatives usually already span most/all of a
+# 60-minute window in one response (confirmed in the issue #47 spike's
+# call-cost analysis, ~570 calls total across a full-DB backfill implies
+# close to one call per listing x destination on average), so this is a
+# rarely-hit ceiling, not the common case.
+_FREQUENT_DESTINATION_WINDOW_MINUTES = 60
+_MAX_JOURNEY_SCAN_PAGES = 5
+
+
+def _parse_tfl_datetime(value) -> "dt.datetime | None":
+    if not isinstance(value, str):
+        return None
+    try:
+        return dt.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _leg_point(leg: dict, key: str) -> dict:
+    point = leg.get(key)
+    return point if isinstance(point, dict) else {}
+
+
+def _leg_operator(leg: dict) -> str | None:
+    """Best-effort operator name -- train-operating-company for national
+    rail, line name for tube/DLR/etc -- read off the leg's first
+    routeOptions entry. Purely descriptive (like origin_name/arrival_name),
+    never required, so any unexpected shape just yields None rather than
+    raising."""
+    route_options = leg.get("routeOptions")
+    if not isinstance(route_options, list) or not route_options:
+        return None
+    first = route_options[0]
+    return first.get("name") if isinstance(first, dict) else None
+
+
+def _counted_legs(legs: list[dict]) -> list[dict]:
+    """Every leg that counts toward kind/num_changes/interchange_crs --
+    every non-walking leg, PLUS any walking leg that isn't the very first
+    (access from the raw lat/lon origin) or very last (egress to the
+    postcode/StopPoint destination) leg in the list. A walking leg in the
+    middle is a real cross-station interchange (e.g. Bank -> Monument,
+    confirmed live during the issue #47 UX review) and must count as a
+    change like any other mode transition -- see issue #47's walking-
+    interchange addendum. Blindly excluding every walking leg would
+    silently understate num_changes/interchange_crs for journeys like
+    that."""
+    last_index = len(legs) - 1
+    counted = []
+    for i, leg in enumerate(legs):
+        is_walking = (leg.get("mode") or {}).get("id") == "walking"
+        if is_walking and i in (0, last_index):
+            continue
+        counted.append(leg)
+    return counted
+
+
+def _extract_journey(journey: dict) -> dict | None:
+    """Converts one TfL journey dict into the shape compute.py stores, or
+    None if the journey is missing data this can't work around (no legs, no
+    duration). duration_minutes is read directly off TfL's own `duration`
+    field -- never derived by diffing startDateTime/arrivalDateTime, which
+    is DST-ambiguous around the fall-back hour (confirmed live in the issue
+    #47 spike)."""
+    duration = journey.get("duration")
+    legs = journey.get("legs")
+    if duration is None or not isinstance(legs, list) or not legs:
+        return None
+
+    counted = _counted_legs(legs)
+    if counted:
+        first, last = counted[0], counted[-1]
+        origin_crs = _leg_point(first, "departurePoint").get("id")
+        origin_name = _leg_point(first, "departurePoint").get("commonName")
+        arrival_name = _leg_point(last, "arrivalPoint").get("commonName")
+        interchange_ids = [
+            cid
+            for leg in counted[:-1]
+            if (cid := _leg_point(leg, "arrivalPoint").get("id"))
+        ]
+        interchange_crs = ", ".join(interchange_ids) if interchange_ids else None
+        num_changes = len(counted) - 1
+        kind = "direct" if num_changes == 0 else "interchange"
+        operator = _leg_operator(first)
+    else:
+        # No non-walking leg at all -- the destination is within walking
+        # distance of the raw origin. Falls back to the (single) walking
+        # leg's own arrival point, so origin_crs/origin_name (NOT NULL in
+        # destination_journeys) always have a real value -- see issue #47's
+        # schema-gap addendum.
+        only_leg = legs[-1]
+        arrival_point = _leg_point(only_leg, "arrivalPoint")
+        origin_crs = arrival_point.get("id")
+        origin_name = arrival_point.get("commonName")
+        arrival_name = arrival_point.get("commonName")
+        interchange_crs = None
+        num_changes = 0
+        kind = "direct"
+        operator = None
+
+    if origin_crs is None or origin_name is None:
+        return None
+
+    try:
+        duration_minutes = int(round(float(duration)))
+    except (TypeError, ValueError):
+        return None
+
+    return {
+        "duration_minutes": duration_minutes,
+        "kind": kind,
+        "num_changes": num_changes,
+        "operator": operator,
+        "origin_crs": origin_crs,
+        "origin_name": origin_name,
+        "arrival_name": arrival_name,
+        "interchange_crs": interchange_crs,
+        "departure_time": journey.get("startDateTime"),
+        "arrival_time": journey.get("arrivalDateTime"),
+    }
+
+
+def find_frequent_destination_journey(
+    origin_lat: float,
+    origin_lon: float,
+    to_identifier: str,
+    target_date: "dt.date",
+    target_time: "dt.time",
+) -> dict | None:
+    """Best (fastest) journey from a listing's raw lat/lon to `to_identifier`
+    (a TfL StopPoint id or a raw UK postcode -- TfL's `to` accepts either
+    directly, no resolution step needed for a postcode) for the target
+    day/time, scanning a rolling window rather than trusting TfL's first
+    response page -- mirrors the validated methodology from issue #47's
+    research spike. Never raises: a bad/empty to_identifier, no journeys in
+    the window, or any request failure all just return None, same
+    never-fail contract as resolve_stop_point."""
+    if not to_identifier:
+        return None
+
+    window_end = dt.datetime.combine(target_date, target_time) + dt.timedelta(
+        minutes=_FREQUENT_DESTINATION_WINDOW_MINUTES
+    )
+    query_date, query_time = target_date, target_time
+    origin = f"{origin_lat},{origin_lon}"
+    best = None
+
+    for _ in range(_MAX_JOURNEY_SCAN_PAGES):
+        params = {
+            "date": query_date.strftime("%Y%m%d"),
+            "time": query_time.strftime("%H%M"),
+            "timeIs": "Departing",
+            "journeyPreference": "LeastTime",
+        }
+        url = f"https://api.tfl.gov.uk/Journey/JourneyResults/{quote(origin)}/to/{quote(to_identifier)}?{urlencode(params)}"
+        try:
+            data = _get(url)
+        except TflApiError as e:
+            logger.info("TfL Journey/JourneyResults failed for %r: %s", to_identifier, e)
+            break
+        if not isinstance(data, dict):
+            break
+        journeys = data.get("journeys")
+        if not isinstance(journeys, list) or not journeys:
+            break
+
+        max_departure = None
+        for journey in journeys:
+            departure_dt = _parse_tfl_datetime(journey.get("startDateTime"))
+            if departure_dt is not None and departure_dt > window_end:
+                continue
+            extracted = _extract_journey(journey)
+            if extracted is not None and (best is None or extracted["duration_minutes"] < best["duration_minutes"]):
+                best = extracted
+            if departure_dt is not None and (max_departure is None or departure_dt > max_departure):
+                max_departure = departure_dt
+
+        if max_departure is None or max_departure >= window_end:
+            break
+        next_query = max_departure + dt.timedelta(minutes=1)
+        query_date, query_time = next_query.date(), next_query.time()
+
+    return best

@@ -50,51 +50,79 @@ const DAY_OPTIONS = [
   { value: 6, label: "Sunday" },
 ];
 
+// TfL StopPoint mode ids -> a short display label, for the "Name (Mode)"
+// search-result format (issue #47 UX addendum) -- lets the admin
+// distinguish same-named stops on different lines (e.g. Wimbledon National
+// Rail vs. Wimbledon Tram). A match can carry more than one mode (a
+// multi-modal interchange), joined with "/".
+const TFL_MODE_LABELS = {
+  "national-rail": "National Rail",
+  tube: "Underground",
+  overground: "Overground",
+  dlr: "DLR",
+  tram: "Tram",
+  "elizabeth-line": "Elizabeth line",
+};
+
+function formatModes(modes) {
+  return (modes || []).map((m) => TFL_MODE_LABELS[m] || m).join("/");
+}
+
 function DestinationForm({ onAdded, onCancel }) {
   const [name, setName] = useState("");
+  const [destinationType, setDestinationType] = useState("station");
   const [dayOfWeek, setDayOfWeek] = useState(0);
   const [time, setTime] = useState("08:30");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const [station, setStation] = useState(null);
+  const [postcode, setPostcode] = useState("");
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!query.trim()) {
+  async function handleSearch(e) {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setSearching(true);
+    try {
+      setResults(await api.destinations.searchStations(query));
+    } catch {
       setResults([]);
-      return;
+    } finally {
+      setSearching(false);
     }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      api.destinations
-        .searchStations(query)
-        .then((r) => {
-          if (!cancelled) setResults(r);
-        })
-        .catch(() => {
-          if (!cancelled) setResults([]);
-        });
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [query]);
+  }
+
+  function handleTypeChange(nextType) {
+    setDestinationType(nextType);
+    setStation(null);
+    setQuery("");
+    setResults([]);
+    setPostcode("");
+  }
+
+  const postcodeValid = /^[A-Za-z]{1,2}\d[A-Za-z\d]?\s*\d[A-Za-z]{2}$/.test(postcode.trim());
+  const canSubmit = name.trim() && (destinationType === "station" ? station : postcodeValid);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
-    if (!name.trim() || !station) {
-      setError("Name and station are both required.");
+    if (!canSubmit) {
+      setError(
+        destinationType === "station"
+          ? "Name and station are both required."
+          : "Name and a valid postcode are both required."
+      );
       return;
     }
     setSubmitting(true);
     try {
       const created = await api.destinations.create({
         name: name.trim(),
-        crs: station.crs,
-        station_name: station.name,
+        destination_type: destinationType,
+        tfl_identifier: destinationType === "station" ? station.id : postcode.trim(),
+        station_name: destinationType === "station" ? station.name : postcode.trim(),
         day_of_week: dayOfWeek,
         time,
       });
@@ -123,55 +151,95 @@ function DestinationForm({ onAdded, onCancel }) {
         <span className="form-label">Type</span>
         <div className="radio-group" role="radiogroup" aria-label="Destination type">
           <label className="radio-option">
-            <input type="radio" name="dest-type" value="station" checked readOnly />
+            <input
+              type="radio"
+              name="dest-type"
+              value="station"
+              checked={destinationType === "station"}
+              onChange={() => handleTypeChange("station")}
+            />
             Station
+          </label>
+          <label className="radio-option">
+            <input
+              type="radio"
+              name="dest-type"
+              value="postcode"
+              checked={destinationType === "postcode"}
+              onChange={() => handleTypeChange("postcode")}
+            />
+            Postcode
           </label>
         </div>
       </div>
 
-      <div>
-        <label className="form-label" htmlFor="station-search">Nearest station</label>
-        {station ? (
-          <div className="station-chip">
-            <span>
-              <span className="station-chip-name">{station.name}</span>
-              <span className="station-chip-crs">{station.crs}</span>
-            </span>
-            <button type="button" onClick={() => setStation(null)} aria-label="Clear station">
-              ✕
-            </button>
-          </div>
-        ) : (
-          <div className="station-search-wrap">
-            <input
-              id="station-search"
-              type="text"
-              placeholder="Search station name…"
-              autoComplete="off"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {results.length > 0 && (
-              <div className="station-search-results">
-                {results.map((s) => (
-                  <div
-                    key={s.crs}
-                    className="station-search-result"
-                    onClick={() => {
-                      setStation(s);
-                      setQuery("");
-                      setResults([]);
-                    }}
-                  >
-                    <span>{s.name}</span>
-                    <span className="station-search-result-crs">{s.crs}</span>
-                  </div>
-                ))}
+      {destinationType === "station" ? (
+        <div>
+          <label className="form-label" htmlFor="station-search">Station</label>
+          {station ? (
+            <div className="station-chip">
+              <span>
+                <span className="station-chip-name">{station.name}</span>
+                <span className="station-chip-crs">{formatModes(station.modes)}</span>
+              </span>
+              <button type="button" onClick={() => setStation(null)} aria-label="Clear station">
+                ✕
+              </button>
+            </div>
+          ) : (
+            <div className="station-search-wrap">
+              <div className="station-search-row">
+                <input
+                  id="station-search"
+                  type="text"
+                  placeholder="Search station name…"
+                  autoComplete="off"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="status-toggle-btn secondary"
+                  onClick={handleSearch}
+                  disabled={searching || !query.trim()}
+                >
+                  {searching ? "Searching…" : "Search"}
+                </button>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+              {results.length > 0 && (
+                <div className="station-search-results">
+                  {results.map((s) => (
+                    <div
+                      key={s.id}
+                      className="station-search-result"
+                      onClick={() => {
+                        setStation(s);
+                        setQuery("");
+                        setResults([]);
+                      }}
+                    >
+                      <span>{s.name}</span>
+                      <span className="station-search-result-crs">{formatModes(s.modes)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          <label className="form-label" htmlFor="dest-postcode">Postcode</label>
+          <input
+            id="dest-postcode"
+            type="text"
+            placeholder="e.g. NW1 7JN"
+            autoComplete="off"
+            value={postcode}
+            onChange={(e) => setPostcode(e.target.value)}
+          />
+        </div>
+      )}
 
       <div className="form-row">
         <div>
@@ -194,7 +262,7 @@ function DestinationForm({ onAdded, onCancel }) {
         <button type="button" className="status-toggle-btn secondary" onClick={onCancel} disabled={submitting}>
           Cancel
         </button>
-        <button type="submit" className="status-toggle-btn" disabled={submitting || !name.trim() || !station}>
+        <button type="submit" className="status-toggle-btn" disabled={submitting || !canSubmit}>
           {submitting ? "Adding…" : "Add destination"}
         </button>
       </div>
@@ -492,8 +560,8 @@ export default function AdminPage() {
       <h2>Frequent destinations</h2>
       <p className="hint">
         Places you travel to often (office, family, an airport terminal). Roost computes the
-        best train journey from every station near a listing to each destination's day/time,
-        once, when the listing is added — recompute manually from the listing detail page.
+        best TfL journey from a listing to each destination's day/time, once, when the listing
+        is added — recompute manually from the listing detail page.
       </p>
 
       {destinationError && <p className="error">{destinationError}</p>}
@@ -509,9 +577,12 @@ export default function AdminPage() {
                 <span className="admin-rule-text">
                   <div className="admin-rule-title">{destination.name}</div>
                   <div className="admin-rule-sub">
-                    <span className="badge badge-station">Station</span>
-                    {DAY_OPTIONS[destination.day_of_week].label} · {destination.time} · nearest station{" "}
-                    {destination.station_name} ({destination.crs})
+                    <span className={`badge badge-${destination.destination_type}`}>
+                      {destination.destination_type === "station" ? "Station" : "Postcode"}
+                    </span>
+                    {DAY_OPTIONS[destination.day_of_week].label} · {destination.time} ·{" "}
+                    {destination.destination_type === "station" ? "nearest station " : "postcode "}
+                    {destination.station_name}
                   </div>
                   {backfill?.status === "queued" && (
                     <p className="backfill-progress-queued">

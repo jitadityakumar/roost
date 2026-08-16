@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
-// Mirrors train-journey-planner's own app/main.py::format_duration -- "45m"
-// under an hour, "2h" for an exact number of hours, "1h6m" otherwise --
-// rather than a bare minute count, matching the deep-linked planner_url's
-// own results page.
+// "45m" under an hour, "2h" for an exact number of hours, "1h6m" otherwise
+// -- rather than a bare minute count.
 function formatDuration(totalMinutes) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -21,24 +19,23 @@ function DestinationRow({ destination }) {
           <span className="destination-name">{destination.name}</span>
         </div>
         <div className="destination-unresolved">
-          No train route found for {destination.day_label.slice(0, 3)} {destination.time} from any nearby
-          station — will fall back to Google Maps once issue #25 lands.
+          No journey found for {destination.day_label.slice(0, 3)} {destination.time}
+          {destination.destination_type === "postcode" ? ` (${destination.station_name})` : ""}.
         </div>
-        {destination.planner_url && (
-          <div className="destination-line3">
-            <a href={destination.planner_url} target="_blank" rel="noreferrer">
-              Search manually ↗
-            </a>
-          </div>
-        )}
       </li>
     );
   }
 
+  // Postcode-type destinations show the resolved StationFrom -> StationTo
+  // once a journey exists (not the raw postcode, which is only useful
+  // before resolution -- see destination.resolved above) -- matches how
+  // station-type destinations already displayed. The row label is a plain
+  // change count, no "(via X, Y)" station-name suffix -- a leg-by-leg
+  // breakdown isn't buildable from what's stored (issue #47 UX addendum).
   const routeLabel =
     destination.kind === "direct"
       ? "direct"
-      : `${destination.num_changes} change${destination.num_changes === 1 ? "" : "s"} (via ${destination.interchange_crs})`;
+      : `${destination.num_changes} change${destination.num_changes === 1 ? "" : "s"}`;
 
   return (
     <li className="destination-row">
@@ -46,7 +43,7 @@ function DestinationRow({ destination }) {
         <span className="destination-name">
           {destination.name}{" "}
           <span className="destination-station">
-            · {destination.origin_crs} → {destination.crs}
+            · {destination.origin_name} → {destination.arrival_name}
           </span>
         </span>
         <span className="destination-duration good">{formatDuration(destination.duration_minutes)}</span>
@@ -57,13 +54,6 @@ function DestinationRow({ destination }) {
         </span>
         <span className="destination-route">{routeLabel}</span>
       </div>
-      {destination.planner_url && (
-        <div className="destination-line3">
-          <a href={destination.planner_url} target="_blank" rel="noreferrer">
-            View on Train Journey Planner ↗
-          </a>
-        </div>
-      )}
     </li>
   );
 }

@@ -108,7 +108,9 @@ def test_delete_listing_cascades_station_walk_distances_and_destination_journeys
             }
         ],
     )
-    destination = destinations_store.create_destination("Office", "PAD", "Paddington", 0, "08:30")
+    destination = destinations_store.create_destination(
+        "Office", "station", "910GPADTON", "Paddington", 0, "08:30"
+    )
     destination_journey_store.replace_single(
         listing_id,
         destination["id"],

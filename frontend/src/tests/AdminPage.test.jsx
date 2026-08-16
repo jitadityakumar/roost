@@ -200,16 +200,27 @@ describe("AdminPage", () => {
   it("lists existing frequent destinations", async () => {
     api.standards.list.mockResolvedValue([]);
     api.destinations.list.mockResolvedValue([
-      { id: 1, name: "Office", crs: "PAD", station_name: "Paddington", day_of_week: 0, time: "08:30", enabled: 1 },
+      {
+        id: 1,
+        name: "Office",
+        destination_type: "station",
+        tfl_identifier: "910GPADTON",
+        station_name: "Paddington",
+        day_of_week: 0,
+        time: "08:30",
+        enabled: 1,
+      },
     ]);
     renderAdmin();
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
-    expect(screen.getByText(/Monday · 08:30 · nearest station Paddington \(PAD\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Monday · 08:30 · nearest station Paddington/)).toBeInTheDocument();
   });
 
   it("opens the new-destination form, searches a station, and submits", async () => {
     api.standards.list.mockResolvedValue([]);
-    api.destinations.searchStations.mockResolvedValue([{ name: "Paddington", crs: "PAD" }]);
+    api.destinations.searchStations.mockResolvedValue([
+      { id: "910GPADTON", name: "Paddington", modes: ["national-rail", "elizabeth-line"] },
+    ]);
     api.destinations.create.mockResolvedValue({ id: 1 });
     const user = userEvent.setup();
     renderAdmin();
@@ -219,6 +230,7 @@ describe("AdminPage", () => {
 
     await user.type(screen.getByPlaceholderText("e.g. Office, Mum & Dad's"), "Office");
     await user.type(screen.getByPlaceholderText("Search station name…"), "padd");
+    await user.click(screen.getByRole("button", { name: "Search" }));
 
     await waitFor(() => expect(screen.getByText("Paddington")).toBeInTheDocument());
     await user.click(screen.getByText("Paddington"));
@@ -228,8 +240,36 @@ describe("AdminPage", () => {
     await waitFor(() =>
       expect(api.destinations.create).toHaveBeenCalledWith({
         name: "Office",
-        crs: "PAD",
+        destination_type: "station",
+        tfl_identifier: "910GPADTON",
         station_name: "Paddington",
+        day_of_week: 0,
+        time: "08:30",
+      })
+    );
+  });
+
+  it("opens the new-destination form, switches to postcode, and submits", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.destinations.create.mockResolvedValue({ id: 1 });
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByText("No destinations yet.")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "+ New destination" }));
+
+    await user.type(screen.getByPlaceholderText("e.g. Office, Mum & Dad's"), "Zappi");
+    await user.click(screen.getByRole("radio", { name: "Postcode" }));
+    await user.type(screen.getByPlaceholderText("e.g. NW1 7JN"), "NW1 7JN");
+
+    await user.click(screen.getByRole("button", { name: "Add destination" }));
+
+    await waitFor(() =>
+      expect(api.destinations.create).toHaveBeenCalledWith({
+        name: "Zappi",
+        destination_type: "postcode",
+        tfl_identifier: "NW1 7JN",
+        station_name: "NW1 7JN",
         day_of_week: 0,
         time: "08:30",
       })
@@ -239,7 +279,16 @@ describe("AdminPage", () => {
   it("shows a backfill progress bar for a destination whose backfill is running, and hides it once done", async () => {
     api.standards.list.mockResolvedValue([]);
     api.destinations.list.mockResolvedValue([
-      { id: 1, name: "Office", crs: "PAD", station_name: "Paddington", day_of_week: 0, time: "08:30", enabled: 1 },
+      {
+        id: 1,
+        name: "Office",
+        destination_type: "station",
+        tfl_identifier: "910GPADTON",
+        station_name: "Paddington",
+        day_of_week: 0,
+        time: "08:30",
+        enabled: 1,
+      },
     ]);
     api.destinations.backfillStatus
       .mockResolvedValueOnce({ status: "running", done: 3, total: 10 })
@@ -261,7 +310,16 @@ describe("AdminPage", () => {
   it("shows a queued message for a destination whose backfill is waiting behind another one", async () => {
     api.standards.list.mockResolvedValue([]);
     api.destinations.list.mockResolvedValue([
-      { id: 1, name: "Office", crs: "PAD", station_name: "Paddington", day_of_week: 0, time: "08:30", enabled: 1 },
+      {
+        id: 1,
+        name: "Office",
+        destination_type: "station",
+        tfl_identifier: "910GPADTON",
+        station_name: "Paddington",
+        day_of_week: 0,
+        time: "08:30",
+        enabled: 1,
+      },
     ]);
     api.destinations.backfillStatus
       .mockResolvedValueOnce({ status: "queued", done: 0, total: 10 })
@@ -302,7 +360,16 @@ describe("AdminPage", () => {
   it("deletes a frequent destination", async () => {
     api.standards.list.mockResolvedValue([]);
     api.destinations.list.mockResolvedValue([
-      { id: 1, name: "Office", crs: "PAD", station_name: "Paddington", day_of_week: 0, time: "08:30", enabled: 1 },
+      {
+        id: 1,
+        name: "Office",
+        destination_type: "station",
+        tfl_identifier: "910GPADTON",
+        station_name: "Paddington",
+        day_of_week: 0,
+        time: "08:30",
+        enabled: 1,
+      },
     ]);
     api.destinations.remove.mockResolvedValue(null);
     const user = userEvent.setup();

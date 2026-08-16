@@ -52,54 +52,6 @@ def strip_station_suffix(name: str) -> str:
     return _SUFFIX_RE.sub("", name)
 
 
-def _station_search_rank(query: str, name: str, crs: str) -> int | None:
-    """Same rank ordering as train-journey-planner's own client-side
-    autocomplete (~/github/train-journey-planner/app/static/app.js,
-    rankStation()) -- CRS matches ahead of name matches, exact/prefix ahead
-    of substring, so e.g. searching "wat" surfaces Waterloo (name-prefix)
-    ahead of a station that merely contains "wat" mid-name, and searching
-    a CRS code like "PAD" ranks that exact station first even though "pad"
-    could also substring-match some unrelated station name."""
-    crs_l, name_l = crs.lower(), name.lower()
-    if crs_l == query:
-        return 0
-    if crs_l.startswith(query):
-        return 1
-    if name_l.startswith(query):
-        return 2
-    if query in crs_l:
-        return 3
-    if query in name_l:
-        return 4
-    return None
-
-
-def search_stations(query: str, limit: int = 8) -> list[dict]:
-    """Case-insensitive match by station name OR CRS code against every
-    National Rail station in stations.csv, for the frequent-destinations
-    admin's station typeahead (issue #28) -- reuses the same dataset
-    resolve_crs_codes() already loads rather than depending on a network
-    call to a separate service (train-journey-planner's own /api/stations
-    is one of its concurrency-limited DB routes, see its CLAUDE.md's
-    MAX_CONCURRENT_DB_REQUESTS -- its own autocomplete avoids hitting that
-    per keystroke by fetching the full station list once and filtering
-    client-side; Roost sidesteps the question entirely by never calling
-    that service for station search at all). Matches on the raw display
-    name (not the punctuation-normalized lookup key), so results read
-    naturally in the UI."""
-    q = query.strip().lower()
-    if not q:
-        return []
-    with open(STATIONS_CSV, newline="", encoding="utf-8") as f:
-        ranked = []
-        for row in csv.DictReader(f):
-            rank = _station_search_rank(q, row["stationName"], row["crsCode"])
-            if rank is not None:
-                ranked.append((rank, {"name": row["stationName"], "crs": row["crsCode"]}))
-    ranked.sort(key=lambda r: (r[0], r[1]["name"]))
-    return [s for _, s in ranked[:limit]]
-
-
 def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
     """Filter to National Rail entries, strip the Rightmove suffix, and
     resolve each to a CRS code. Tube/tram-only stations (absent from

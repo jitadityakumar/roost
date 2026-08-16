@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.commute.stations import search_stations
+from app.commute.tfl_client import search_stop_points
 from app.destinations import backfill_queue, backfill_status, store
 from app.listings import store as listings_store
 
@@ -12,11 +12,9 @@ def _run_backfill_in_background(destination_id: int) -> None:
     """Hands the backfill to backfill_queue's single global FIFO worker
     rather than spawning a dedicated thread per destination -- several
     destinations backfilling concurrently would each fire real HTTP calls
-    against train-journey-planner at once, and that service's concurrency
-    cap plus this app's own bounded 503 retry (destinations/client.py)
-    means sustained contention from parallel backfills could silently
-    drop a real result as "no route found". See backfill_queue's module
-    docstring for the full reasoning. total is computed here (route
+    against TfL's API at once, all sharing tfl_client.py's single module-
+    level throttle. See backfill_queue's module docstring for the full
+    reasoning. total is computed here (route
     handler thread) rather than inside the queue so a client polling
     GET .../backfill-status right after this call returns is guaranteed
     to already see 'queued' (or 'running', if the queue was empty),
@@ -36,7 +34,8 @@ _TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
 
 class CreateDestinationRequest(BaseModel):
     name: str
-    crs: str
+    destination_type: str
+    tfl_identifier: str
     station_name: str
     day_of_week: int = Field(ge=0, le=6)
     time: str = Field(pattern=_TIME_PATTERN)
@@ -44,7 +43,8 @@ class CreateDestinationRequest(BaseModel):
 
 class PatchDestinationRequest(BaseModel):
     name: str | None = None
-    crs: str | None = None
+    destination_type: str | None = None
+    tfl_identifier: str | None = None
     station_name: str | None = None
     day_of_week: int | None = Field(default=None, ge=0, le=6)
     time: str | None = Field(default=None, pattern=_TIME_PATTERN)
@@ -66,7 +66,9 @@ def create_destination(body: CreateDestinationRequest):
     # frontend polls GET .../{id}/backfill-status for progress instead of
     # blocking on the whole backfill.
     try:
-        created = store.create_destination(body.name, body.crs, body.station_name, body.day_of_week, body.time)
+        created = store.create_destination(
+            body.name, body.destination_type, body.tfl_identifier, body.station_name, body.day_of_week, body.time
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     _run_backfill_in_background(created["id"])
@@ -82,7 +84,7 @@ def patch_destination(destination_id: int, body: PatchDestinationRequest):
         raise HTTPException(status_code=422, detail=str(e))
     if updated is None:
         raise HTTPException(status_code=404, detail="destination not found")
-    # Any of day_of_week/time/crs/enabled changing invalidates every
+    # Any of day_of_week/time/tfl_identifier/enabled changing invalidates every
     # existing listing's stored journey for this destination -- simplest
     # correct behavior is to always recompute rather than tracking which
     # specific fields actually changed. Backgrounded the same way as create.
@@ -111,4 +113,4 @@ def get_backfill_status(destination_id: int):
 
 @router.get("/stations/search")
 def station_search(q: str = ""):
-    return search_stations(q)
+    return search_stop_points(q)

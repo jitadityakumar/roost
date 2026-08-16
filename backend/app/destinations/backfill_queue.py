@@ -1,18 +1,18 @@
 """Global single-worker FIFO queue for compute.compute_for_destination
 backfills -- follow-up to issue #36. Before this module existed, every
 create/edit spawned its own dedicated thread, so backfilling 3-4
-destinations in quick succession (each looping every listing, minutes for
-a realistic listing count) meant that many threads hitting
-train-journey-planner's /api/journeys concurrently. That service caps
-concurrency at MAX_CONCURRENT_DB_REQUESTS (default 4) and
-destinations/client.py's own 503 retry is bounded (2 retries) -- under
-sustained contention from several parallel backfills, retries could
-exhaust and a listing that does have a route would silently get no stored
-row, indistinguishable from a genuine "no route found". Routing every
-backfill through one worker, processed strictly one destination at a
-time, removes that contention entirely at the cost of a later
-destination's backfill visibly waiting behind earlier ones -- an honest
-queue instead of several progress bars quietly racing each other.
+destinations in quick succession (each looping every listing) meant that
+many threads hitting TfL's Journey Planner API concurrently -- routing
+every backfill through one worker, processed strictly one destination at a
+time, keeps every caller of app.commute.tfl_client under its single shared
+throttle regardless of how many destinations are backfilling, at the cost
+of a later destination's backfill visibly waiting behind earlier ones -- an
+honest queue instead of several progress bars quietly racing each other.
+(Originally written against train-journey-planner, which had its own
+concurrency cap and bounded 503 retry this queue existed to protect --
+issue #47 replaced that service with TfL entirely, but the queue's
+one-at-a-time discipline is still the right shape now that
+tfl_client.py's module-level throttle is the thing every caller shares.)
 
 Per-destination dedup (a rerun queued behind an already in-flight backfill
 for the *same* destination_id, so N rapid edits collapse into at most one
