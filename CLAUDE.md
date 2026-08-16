@@ -192,8 +192,16 @@ free, so there's no opt-out flag (the old `skip_maps`/`--skip-maps` was
 removed entirely, migration `0017`). This runs inline in
 `handle_rightmove_extract` (`app/jobs/handlers.py`) — every scrape,
 `/refresh`, and backfill run covers it automatically, no separate job type.
+Also callable directly without a Rightmove re-scrape, via
+`POST /api/listings/{id}/walk-refresh` (`compute_station_walk_distances`
+is public specifically so this route can call it against already-stored
+`latitude`/`longitude`/`nearest_stations_raw` -- synchronous, not queued,
+since it's just a couple of TfL calls, no HTML fetch/parse) --
+`scripts/tfl-walk-backfill.sh` backfills every listing this way, for when a
+walk-distance-computation change needs re-running but the underlying
+Rightmove data hasn't changed.
 
-**Every mode, no radius cap (issue #40 PR2)** — `_compute_station_walk_
+**Every mode, no radius cap (issue #40 PR2)** — `compute_station_walk_
 distances` iterates `nearest_stations_raw` directly (not `resolve_crs_
 codes()`, which stays national-rail/1mi-only and is now solely the Commute
 section's own candidate set below), mapping each entry's Rightmove `types`
@@ -214,7 +222,7 @@ its nearest-3 between scrapes silently attaching the wrong station's
 distance (index-keying alone degrades *unsafely* without this; CRS-keying
 degraded safely, no match = no data). A per-station TfL failure (including
 an unset `TFL_API_KEY`, an unmapped mode, or a name TfL can't resolve) is
-caught and logged in `_compute_station_walk_distances`, not raised — the
+caught and logged in `compute_station_walk_distances`, not raised — the
 rightmove_extract job still succeeds, and `GET /api/listings/{id}/commute`
 falls back to Rightmove's raw straight-line `distance` for that station.
 **The Commute section's scope is unchanged** — it's still national-rail-only

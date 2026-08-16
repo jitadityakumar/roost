@@ -271,6 +271,95 @@ def test_refresh_listing_without_skip_llm_defaults_to_false(client):
     assert jobs[0]["skip_llm_chain"] == 0
 
 
+def test_walk_refresh_404_for_unknown_id(client):
+    assert client.post("/api/listings/999/walk-refresh").status_code == 404
+
+
+def test_walk_refresh_recomputes_without_enqueueing_a_scrape_job(client, monkeypatch):
+    import json
+
+    from app.routes import listings as listings_route
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(
+        1,
+        {
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]}]
+            ),
+        },
+    )
+
+    calls = []
+
+    def fake_compute(listing_id, lat, lon, nearest):
+        calls.append((listing_id, lat, lon, nearest))
+
+    monkeypatch.setattr(listings_route, "compute_station_walk_distances", fake_compute)
+
+    resp = client.post("/api/listings/1/walk-refresh")
+    assert resp.status_code == 200
+    assert calls == [(1, 51.5, -0.1, [{"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]}])]
+
+    # No rightmove_extract job enqueued -- unlike /refresh, this never
+    # touches the job queue at all.
+    jobs = [j for j in queue.get_jobs_for_listing(1) if j["job_type"] == "rightmove_extract"]
+    assert jobs == []
+
+
+def test_walk_refresh_returns_fresh_walk_data_in_response(client, monkeypatch):
+    import json
+
+    from app.commute import walk_store
+    from app.routes import listings as listings_route
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(
+        1,
+        {
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]}]
+            ),
+        },
+    )
+
+    def fake_compute(listing_id, latitude, longitude, nearest_stations_raw):
+        walk_store.replace_walk_distances(
+            listing_id,
+            [
+                {
+                    "station_index": 0,
+                    "rightmove_name": "Clapham Junction Station",
+                    "mode": "national-rail",
+                    "stop_point_id": "910GCLPHMJC",
+                    "distance_meters": 500,
+                    "duration_seconds": 360,
+                }
+            ],
+        )
+
+    monkeypatch.setattr(listings_route, "compute_station_walk_distances", fake_compute)
+
+    resp = client.post("/api/listings/1/walk-refresh")
+    assert resp.status_code == 200
+    nearest = resp.json()["nearest_stations_raw"]
+    assert nearest[0]["walk_distance_meters"] == 500
+    assert nearest[0]["walk_duration_seconds"] == 360
+
+
+def test_walk_refresh_handles_listing_with_no_stations_or_latlon(client):
+    # No latitude/longitude/nearest_stations_raw at all -- must not 500,
+    # same "just no data" degrade-gracefully path as the scrape-time call.
+    store.create_stub_listing(1, VALID_URL)
+
+    resp = client.post("/api/listings/1/walk-refresh")
+    assert resp.status_code == 200
+
+
 def test_llm_refresh_404_for_unknown_id(client):
     assert client.post("/api/listings/999/llm-refresh").status_code == 404
 

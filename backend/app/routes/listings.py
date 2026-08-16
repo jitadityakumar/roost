@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.config import MEDIA_DIR
 from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.jobs import llm_enqueue, queue
+from app.jobs.handlers import compute_station_walk_distances
 from app.jobs.pipeline_status import derive_pipeline_status
 from app.listings import store, url_utils
 from app.listings.serialize import serialize_listing
@@ -141,6 +142,34 @@ def refresh_listing(listing_id: int, skip_llm: bool = False):
     if not queue.has_pending_job(listing_id, "rightmove_extract"):
         store.set_extraction_status(listing_id, "queued")
         queue.enqueue_job(listing_id, "rightmove_extract", "http", skip_llm_chain=skip_llm)
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
+
+
+@router.post("/{listing_id}/walk-refresh")
+def refresh_walk_distances(listing_id: int):
+    """Recomputes station_walk_distances for this listing directly from
+    already-stored latitude/longitude/nearest_stations_raw -- no Rightmove
+    re-scrape, unlike /refresh. Same "recompute from what's already stored,
+    the underlying source data hasn't changed" precedent as /llm-refresh for
+    the llm lane; meant for backfilling after a walk-distance-computation
+    change (see scripts/tfl-walk-backfill.sh, issue #40 PR2's schema/mode-
+    mapping rewrite) without re-fetching Rightmove data that hasn't changed.
+
+    Synchronous, not queued through the job table -- unlike /refresh and
+    /llm-refresh, this is just a couple of TfL calls per station (no HTML
+    fetch/parse, no claude -p call), fast enough that the job-queue's async
+    tracking would be unnecessary overhead for a single-user tool. TfL's own
+    rate limit is respected regardless -- tfl_client.py's throttle is
+    module-level, not tied to how this function gets called."""
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise HTTPException(status_code=404, detail="listing not found")
+
+    serialized = serialize_listing(listing)
+    nearest_stations_raw = serialized.get("nearest_stations_raw") or []
+    compute_station_walk_distances(
+        listing_id, serialized.get("latitude"), serialized.get("longitude"), nearest_stations_raw
+    )
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 

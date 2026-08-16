@@ -185,7 +185,7 @@ def handle_rightmove_extract(job: dict) -> None:
     # is free, unlike the Google Routes API this used to call, so there's no
     # cost pressure to make this opt-out-able (skip_maps/--skip-maps removed
     # entirely, see issue #40).
-    _compute_station_walk_distances(
+    compute_station_walk_distances(
         listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
     )
 
@@ -199,7 +199,7 @@ def handle_rightmove_extract(job: dict) -> None:
         queue.enqueue_job(listing_id, "text_extract", "llm", depends_on_job_id=job["id"])
 
 
-def _compute_station_walk_distances(
+def compute_station_walk_distances(
     listing_id: int, latitude: float | None, longitude: float | None, nearest_stations_raw: list[dict]
 ) -> None:
     """Real walking distance/duration (TfL Journey Planner) to every station
@@ -218,7 +218,14 @@ def _compute_station_walk_distances(
     resolution/computation failed and distance_meters/duration_seconds stay
     None) keyed by the entry's position in nearest_stations_raw -- see
     walk_store.py's module docstring for why index-keying needs
-    rightmove_name carried alongside it."""
+    rightmove_name carried alongside it.
+
+    Public (no leading underscore) because routes/listings.py's
+    POST /{listing_id}/walk-refresh also calls this directly, against
+    already-stored latitude/longitude/nearest_stations_raw, to recompute
+    walk distances without a Rightmove re-scrape -- e.g. backfilling after
+    a walk-distance-computation change (this PR) where the underlying
+    Rightmove data hasn't changed, only how it's read."""
     if latitude is None or longitude is None:
         return
 
