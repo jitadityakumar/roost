@@ -505,6 +505,32 @@ def test_resolve_stop_point_falls_back_to_closest_hub_child_on_ambiguous_mode_ma
     assert result == "near-dup"
 
 
+def test_resolve_stop_point_hub_child_uses_search_modes_not_just_mode(monkeypatch):
+    # Regression for a gap found in code review: a hub picked via a widened
+    # search_modes (e.g. NATIONAL_TRAIN's "national-rail,elizabeth-line")
+    # could have only an elizabeth-line child, not a national-rail one --
+    # matching hub children on the single `mode` alone would silently fail
+    # to resolve it, reproducing the exact elizabeth-line StopPoint bug this
+    # widening exists to fix, one level down.
+    from app.commute import tfl_client
+
+    monkeypatch.setattr(tfl_client, "TFL_API_KEY", "fake-key")
+    responses = [
+        _FakeResponse({"matches": [{"id": "HUBXXX", "lat": 51.568, "lon": 0.129}]}),
+        _FakeResponse({"children": [{"id": "910GCHDWLHT", "modes": ["elizabeth-line"]}]}),
+    ]
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: responses.pop(0))
+    result = tfl_client.resolve_stop_point(
+        "Chadwell Heath Station",
+        "national-rail",
+        51.5796,
+        0.1329,
+        0.84,
+        search_modes="national-rail,elizabeth-line",
+    )
+    assert result == "910GCHDWLHT"
+
+
 # --- walk_store --------------------------------------------------------
 
 def test_replace_walk_distances_deletes_and_reinserts(client, listing_id):

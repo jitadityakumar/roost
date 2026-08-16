@@ -65,18 +65,22 @@ _TFL_SEARCH_MODES_BY_TYPE = {
 
 
 def _tfl_mode_for_entry(entry: dict) -> str | None:
-    for t in entry.get("types") or []:
-        mode = _TFL_MODE_BY_TYPE.get(t)
-        if mode:
-            return mode
-    return None
+    return _tfl_lookup_for_entry(entry)[0]
 
 
 def _tfl_search_modes_for_entry(entry: dict) -> str | None:
+    return _tfl_lookup_for_entry(entry)[1]
+
+
+def _tfl_lookup_for_entry(entry: dict) -> tuple[str | None, str | None]:
+    """(mode, search_modes) for the first Rightmove `types` entry with a TfL
+    mapping -- a single scan shared by _tfl_mode_for_entry and
+    _tfl_search_modes_for_entry, which both look at the same matched type."""
     for t in entry.get("types") or []:
-        if t in _TFL_MODE_BY_TYPE:
-            return _TFL_SEARCH_MODES_BY_TYPE.get(t)
-    return None
+        mode = _TFL_MODE_BY_TYPE.get(t)
+        if mode:
+            return mode, _TFL_SEARCH_MODES_BY_TYPE.get(t)
+    return None, None
 
 
 def _distance_miles_for_entry(entry: dict) -> float | None:
@@ -253,7 +257,7 @@ def compute_station_walk_distances(
         name = entry.get("name")
         if not name:
             continue
-        mode = _tfl_mode_for_entry(entry)
+        mode, search_modes = _tfl_lookup_for_entry(entry)
         if mode is None:
             logger.info("no TfL mode mapping for station %r, types=%r -- skipping", name, entry.get("types"))
             continue
@@ -264,7 +268,7 @@ def compute_station_walk_distances(
             latitude,
             longitude,
             _distance_miles_for_entry(entry),
-            search_modes=_tfl_search_modes_for_entry(entry),
+            search_modes=search_modes,
         )
         row = {
             "station_index": index,
