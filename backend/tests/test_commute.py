@@ -218,6 +218,28 @@ def test_get_commute_no_maps_url_when_listing_has_no_latlon(client, listing_id):
     assert station["walk_maps_url"] is None
 
 
+def test_get_commute_falls_back_to_raw_distance_when_stale_row_name_mismatches(client, listing_id, monkeypatch):
+    # Same rightmove_name-mismatch guard as _attach_walk_data, exercised
+    # through get_commute's own lookup_walk() call specifically -- a stored
+    # row at index 0 for a station Rightmove has since reordered away must
+    # not silently attach to whatever is now at index 0.
+    from app.commute.walk_store import replace_walk_distances
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    replace_walk_distances(listing_id, [_walk_row(0, "Some Other Station", 500, 360)])
+
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    station = resp.json()["stations"][0]
+    # listing_id's index-0 station is actually "Clapham Junction Station" at
+    # raw distance 0.4mi -- the stale row must be ignored, falling back to
+    # the 0.5mi raw-distance rule (0.4 <= 0.5, so still shown, but with no
+    # walk data attached).
+    assert station["walk_distance_meters"] is None
+    assert station["walk_duration_seconds"] is None
+    assert station["walk_maps_url"] is None
+
+
 def test_get_commute_excludes_station_with_walk_over_30_minutes(client, listing_id):
     from app.commute.walk_store import replace_walk_distances
 
