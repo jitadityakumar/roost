@@ -113,6 +113,7 @@ def resolve_stop_point(
     listing_lat: float,
     listing_lon: float,
     rightmove_distance_miles: float | None,
+    search_modes: str | None = None,
 ) -> str | None:
     """Resolve a Rightmove station name to a TfL StopPoint id, or None if it
     can't be resolved (never raises -- a station TfL can't resolve
@@ -126,12 +127,25 @@ def resolve_stop_point(
     rightmove_distance_miles is None (Rightmove sometimes omits `distance`)
     or isn't in miles (Rightmove's `unit` field defaults to miles but isn't
     guaranteed to be; gap-scoring against a non-mile value would silently
-    mis-rank candidates)."""
+    mis-rank candidates).
+
+    `search_modes` (comma-joined, e.g. "national-rail,elizabeth-line")
+    widens the `/StopPoint/Search` query beyond the single canonical `mode`
+    -- TfL's own StopPoint data classifies some Rightmove-NATIONAL_TRAIN
+    stations (e.g. Chadwell Heath, Goodmayes) as elizabeth-line-only, not
+    national-rail, so a strict single-mode search misses them entirely.
+    Defaults to `mode` when omitted. Deliberately NOT implemented as "search
+    all modes, drop bus stops" -- validated against Roost's real listing
+    data (issue #40 follow-up) and that broader search picked a wrong
+    station (Putney Pier, modes=["bus","river-bus"], over the real Putney
+    Rail Station) because river-bus/coach/etc aren't bus and can still
+    outscore the correct station on the gap heuristic. An explicit allowlist
+    per Rightmove type is the only safe way to widen this."""
     query = _strip_suffix(name.strip())
     if not query:
         return None
     try:
-        data = _get(f"https://api.tfl.gov.uk/StopPoint/Search/{quote(query)}?modes={mode}")
+        data = _get(f"https://api.tfl.gov.uk/StopPoint/Search/{quote(query)}?modes={search_modes or mode}")
     except TflApiError as e:
         logger.info("TfL StopPoint/Search failed for %r: %s", name, e)
         return None
@@ -161,14 +175,22 @@ def resolve_stop_point(
         return None
 
     if stop_id.startswith("HUB"):
-        return _resolve_hub_child(stop_id, mode, listing_lat, listing_lon)
+        return _resolve_hub_child(stop_id, mode, listing_lat, listing_lon, search_modes=search_modes)
     return stop_id
 
 
-def _resolve_hub_child(hub_id: str, mode: str, listing_lat: float, listing_lon: float) -> str | None:
+def _resolve_hub_child(
+    hub_id: str, mode: str, listing_lat: float, listing_lon: float, search_modes: str | None = None
+) -> str | None:
     """A HUB id groups several StopPoints of different modes at one
     multi-modal interchange (e.g. HUBSRA for Stratford) -- drill into its
-    children for the one matching the target mode."""
+    children for one matching any of the target modes. Accepts the same
+    widened `search_modes` as resolve_stop_point (falling back to the single
+    `mode` when omitted) -- a hub picked by a widened search (e.g.
+    NATIONAL_TRAIN's "national-rail,elizabeth-line") could plausibly have
+    only an elizabeth-line child, not a national-rail one, at a multi-modal
+    interchange; matching on `mode` alone would silently fail to resolve it,
+    reproducing the elizabeth-line StopPoint bug this widening exists to fix."""
     try:
         data = _get(f"https://api.tfl.gov.uk/StopPoint/{hub_id}")
     except TflApiError as e:
@@ -177,8 +199,9 @@ def _resolve_hub_child(hub_id: str, mode: str, listing_lat: float, listing_lon: 
     if not isinstance(data, dict):
         return None
 
+    modes = (search_modes or mode).split(",")
     children = data.get("children") or []
-    matching = [c for c in children if mode in (c.get("modes") or []) and c.get("id")]
+    matching = [c for c in children if set(modes) & set(c.get("modes") or []) and c.get("id")]
     if not matching:
         return None
     if len(matching) == 1:
@@ -187,7 +210,7 @@ def _resolve_hub_child(hub_id: str, mode: str, listing_lat: float, listing_lon: 
     # Not yet confirmed what the right tiebreak is here -- hasn't come up in
     # testing. Fall back to closest-lat/lon and log it as worth a second
     # look, per issue #40's plan.
-    logger.warning("TfL hub %s has multiple '%s' children: %s", hub_id, mode, [c.get("id") for c in matching])
+    logger.warning("TfL hub %s has multiple %r children: %s", hub_id, modes, [c.get("id") for c in matching])
     with_latlon = [c for c in matching if c.get("lat") is not None and c.get("lon") is not None]
     if not with_latlon:
         return matching[0]["id"]
