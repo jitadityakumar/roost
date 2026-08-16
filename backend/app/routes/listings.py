@@ -16,7 +16,7 @@ from app.standards.evaluate import evaluate_listing
 router = APIRouter(prefix="/api/listings", tags=["listings"])
 
 
-def _attach_walk_data(listing_id: int, out: dict) -> dict[int, dict]:
+def _attach_walk_data(listing_id: int, out: dict) -> None:
     """Attach stored walk_distance_meters/walk_duration_seconds onto each
     nearest_stations_raw entry (unfiltered top-3, straight-line distance, any
     mode -- issue #40 PR2 dropped the old national-rail/1mi computation
@@ -32,27 +32,26 @@ def _attach_walk_data(listing_id: int, out: dict) -> dict[int, dict]:
     distances is index-keyed, not CRS-keyed -- tube/tram/DLR/overground
     stations have no CRS at all), via lookup_walk()'s rightmove_name-match
     guard against a stale row surviving a Rightmove reorder between scrapes.
-
-    Returns the raw {station_index: {...}} lookup so callers that also need
-    it (e.g. get_listing's min_walk_minutes standards field) can reuse it
-    instead of querying station_walk_distances a second time."""
+    get_listing's min_walk_minutes standards field reads the already-guarded
+    walk_duration_seconds values this loop attaches, rather than querying
+    station_walk_distances again directly -- reading the raw table would
+    bypass this same stale-row guard."""
     nearest = out.get("nearest_stations_raw")
     if not isinstance(nearest, list) or not nearest:
-        return {}
+        return
     walk_distances = get_walk_distances(listing_id)
     for index, entry in enumerate(nearest):
         walk = lookup_walk(walk_distances, index, entry.get("name", ""))
         entry["walk_distance_meters"] = walk["distance_meters"] if walk else None
         entry["walk_duration_seconds"] = walk["duration_seconds"] if walk else None
-    return walk_distances
 
 
-def _serialize_with_pipeline_status(listing: dict) -> tuple[dict, dict[int, dict]]:
+def _serialize_with_pipeline_status(listing: dict) -> dict:
     statuses = queue.latest_job_statuses_for_listings([listing["id"]])
     out = serialize_listing(listing)
     out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
-    walk_distances = _attach_walk_data(listing["id"], out)
-    return out, walk_distances
+    _attach_walk_data(listing["id"], out)
+    return out
 
 
 def _serialize_many_with_pipeline_status(listings: list[dict]) -> list[dict]:
@@ -106,7 +105,7 @@ def create_listing(body: CreateListingRequest):
     inserted = store.create_stub_listing(property_id, canonical)
     if inserted:
         queue.enqueue_job(property_id, "rightmove_extract", "http")
-    return _serialize_with_pipeline_status(store.get_listing(property_id))[0]
+    return _serialize_with_pipeline_status(store.get_listing(property_id))
 
 
 @router.get("")
@@ -119,8 +118,14 @@ def get_listing(listing_id: int):
     listing = store.get_listing(listing_id)
     if listing is None:
         raise HTTPException(status_code=404, detail="listing not found")
-    out, walk_distances = _serialize_with_pipeline_status(listing)
-    durations = [w["duration_seconds"] for w in walk_distances.values() if w["duration_seconds"] is not None]
+    out = _serialize_with_pipeline_status(listing)
+    # Reads the already-guarded walk_duration_seconds values _attach_walk_data
+    # attached above (via lookup_walk's stale-row check), not a fresh
+    # get_walk_distances() call -- reading the raw table directly here would
+    # bypass that guard and risk a min computed from a station no longer
+    # among the listing's current nearest stations after a Rightmove reorder.
+    nearest = out.get("nearest_stations_raw") or []
+    durations = [e["walk_duration_seconds"] for e in nearest if e.get("walk_duration_seconds") is not None]
     listing["min_walk_minutes"] = round(min(durations) / 60) if durations else None
     out["standards_violations"] = evaluate_listing(listing, standards_store.list_rules())
     return out
@@ -149,7 +154,7 @@ def refresh_listing(listing_id: int, skip_llm: bool = False):
     if not queue.has_pending_job(listing_id, "rightmove_extract"):
         store.set_extraction_status(listing_id, "queued")
         queue.enqueue_job(listing_id, "rightmove_extract", "http", skip_llm_chain=skip_llm)
-    return _serialize_with_pipeline_status(store.get_listing(listing_id))[0]
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 
 @router.post("/{listing_id}/walk-refresh")
@@ -189,7 +194,7 @@ def refresh_walk_distances(listing_id: int):
         compute_station_walk_distances(
             listing_id, serialized.get("latitude"), serialized.get("longitude"), nearest_stations_raw
         )
-    return _serialize_with_pipeline_status(store.get_listing(listing_id))[0]
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 
 @router.post("/{listing_id}/llm-refresh", status_code=202)
@@ -254,7 +259,7 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
             raise HTTPException(status_code=422, detail=f"non-editable field(s): {sorted(unknown)}")
         store.apply_manual_edit(listing_id, body.fields)
 
-    return _serialize_with_pipeline_status(store.get_listing(listing_id))[0]
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 
 @router.delete("/{listing_id}", status_code=204)
