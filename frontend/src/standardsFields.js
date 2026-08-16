@@ -11,7 +11,7 @@ export const NUMERIC_FIELDS = {
   floor_area_sqft: "Floor area (sq ft)",
   // Computed, not a raw listing column -- see backend/app/standards/fields.py.
   // Value is in minutes, not seconds.
-  min_walk_minutes: "Min walk to nearest station (min)",
+  min_walk_minutes: "Walking time to nearest station (min)",
 };
 
 export const BOOLEAN_FIELDS = {

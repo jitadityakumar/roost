@@ -15,7 +15,7 @@ NUMERIC_FIELDS = {
     # rather than stored in the DB. Value is in minutes, not seconds --
     # there's no unit-conversion layer elsewhere in this module, so this
     # field's stored/compared value and its label must both stay minutes.
-    "min_walk_minutes": "Min walk to nearest station (min)",
+    "min_walk_minutes": "Walking time to nearest station (min)",
 }
 
 BOOLEAN_FIELDS = {
