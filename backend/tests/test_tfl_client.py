@@ -26,11 +26,17 @@ class _FakeResponse:
 
 
 def _leg(mode_id, dep_name, dep_id, arr_name, arr_id, duration=5, operator=None):
+    # Real Journey/JourneyResults responses leave departurePoint/
+    # arrivalPoint's `id` field null and carry the real StopPoint id under
+    # `naptanId` instead (confirmed live, issue #47 follow-up) -- match that
+    # shape here, `id` explicitly None, so the fixture can't mask a
+    # regression back to reading the wrong field the way it did before
+    # _leg_point_id existed.
     leg = {
         "mode": {"id": mode_id},
         "duration": duration,
-        "departurePoint": {"commonName": dep_name, "id": dep_id},
-        "arrivalPoint": {"commonName": arr_name, "id": arr_id},
+        "departurePoint": {"commonName": dep_name, "id": None, "naptanId": dep_id},
+        "arrivalPoint": {"commonName": arr_name, "id": None, "naptanId": arr_id},
     }
     if operator:
         leg["routeOptions"] = [{"name": operator}]
@@ -69,10 +75,16 @@ def test_direct_journey_with_access_walk_excludes_it_from_changes(monkeypatch):
     assert result["operator"] == "South Western Railway"
 
 
-def test_mid_journey_walking_leg_counts_as_a_change():
-    """Old Street -> Tower Hill, confirmed live during issue #47's UX
-    review: a walking leg between two transport legs (Bank -> Monument) is
-    a real interchange, not access/egress, and must count as a change."""
+def test_mid_journey_walking_leg_is_not_an_extra_change():
+    """Old Street -> Tower Hill via a walking interchange (Bank -> Monument).
+    Confirmed live (issue #47 follow-up): TfL itemises this exact kind of
+    transition as a separate walking leg for some journeys and folds it into
+    a single leg boundary for others -- e.g. two journeys with the same real
+    single bus->train change came back with different leg shapes. Counting
+    the walk as an extra change made num_changes depend on how TfL chose to
+    itemise the walk rather than on the actual number of transitions, so a
+    walking leg (wherever it falls) is excluded entirely and num_changes is
+    just len(transit legs) - 1."""
     legs = [
         _leg("tube", "Old Street Underground Station", "940GZZLUOST", "Bank Underground Station", "940GZZLUBNK"),
         _leg("walking", "Bank Underground Station", "940GZZLUBNK", "Monument Underground Station", "940GZZLUMON", duration=5),
@@ -81,21 +93,25 @@ def test_mid_journey_walking_leg_counts_as_a_change():
 
     extracted = tfl_client._extract_journey(_journey(20, legs))
 
-    assert extracted["num_changes"] == 2
+    assert extracted["num_changes"] == 1
     assert extracted["kind"] == "interchange"
-    assert extracted["interchange_crs"] == "940GZZLUBNK, 940GZZLUMON"
+    assert extracted["interchange_crs"] == "940GZZLUBNK"
     assert extracted["origin_crs"] == "940GZZLUOST"
     assert extracted["arrival_name"] == "Tower Hill Underground Station"
 
 
 def test_journey_with_no_non_walking_leg_falls_back_to_walking_legs_arrival_point():
     # Destination within walking distance of the raw origin -- no transit
-    # leg at all.
-    legs = [_leg("walking", "origin", None, "12 Example Street", "postcode-centroid", duration=8)]
+    # leg at all. A walking leg's arrivalPoint has BOTH id and naptanId null
+    # in real TfL responses (confirmed live, issue #47 follow-up) -- pass
+    # arr_id=None here (unlike every other test's synthetic id) so this
+    # exercises the real shape and origin_crs's name-based fallback, not the
+    # naptanId path.
+    legs = [_leg("walking", "origin", None, "12 Example Street", None, duration=8)]
 
     extracted = tfl_client._extract_journey(_journey(8, legs))
 
-    assert extracted["origin_crs"] == "postcode-centroid"
+    assert extracted["origin_crs"] == "12 Example Street"
     assert extracted["origin_name"] == "12 Example Street"
     assert extracted["arrival_name"] == "12 Example Street"
     assert extracted["kind"] == "direct"

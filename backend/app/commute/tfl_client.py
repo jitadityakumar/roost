@@ -221,29 +221,50 @@ def resolve_stop_point(
     return stop_id
 
 
-def _resolve_hub_child(
-    hub_id: str, mode: str, listing_lat: float, listing_lon: float, search_modes: str | None = None
-) -> str | None:
-    """A HUB id groups several StopPoints of different modes at one
-    multi-modal interchange (e.g. HUBSRA for Stratford) -- drill into its
-    children for one matching any of the target modes. Accepts the same
-    widened `search_modes` as resolve_stop_point (falling back to the single
-    `mode` when omitted) -- a hub picked by a widened search (e.g.
-    NATIONAL_TRAIN's "national-rail,elizabeth-line") could plausibly have
-    only an elizabeth-line child, not a national-rail one, at a multi-modal
-    interchange; matching on `mode` alone would silently fail to resolve it,
-    reproducing the elizabeth-line StopPoint bug this widening exists to fix."""
+def _hub_children(hub_id: str, modes: str) -> list[dict]:
+    """Raw StopPoint dicts (id/lat/lon/modes) of `hub_id`'s children
+    matching any of the comma-joined `modes` -- a HUB id groups several
+    StopPoints at one multi-modal interchange (e.g. HUBSRA for Stratford,
+    HUBKGX for King's Cross/St Pancras), and those children can be
+    different modes of the *same* station or genuinely different,
+    physically separate stations. Never raises -- a failed hub lookup or a
+    hub with no matching children just yields []."""
     try:
         data = _get(f"https://api.tfl.gov.uk/StopPoint/{hub_id}")
     except TflApiError as e:
         logger.info("TfL StopPoint/%s hub lookup failed: %s", hub_id, e)
-        return None
+        return []
     if not isinstance(data, dict):
-        return None
+        return []
 
-    modes = (search_modes or mode).split(",")
+    mode_set = set(modes.split(","))
     children = data.get("children") or []
-    matching = [c for c in children if set(modes) & set(c.get("modes") or []) and c.get("id")]
+    return [c for c in children if set(mode_set) & set(c.get("modes") or []) and c.get("id")]
+
+
+def _resolve_hub_child(
+    hub_id: str, mode: str, listing_lat: float, listing_lon: float, search_modes: str | None = None
+) -> str | None:
+    """Single-child resolution for resolve_stop_point's walk-distance use
+    case, where "closest to the listing" is meaningful because the listing
+    genuinely is near the station. Accepts the same widened `search_modes`
+    as resolve_stop_point (falling back to the single `mode` when omitted)
+    -- a hub picked by a widened search (e.g. NATIONAL_TRAIN's
+    "national-rail,elizabeth-line") could plausibly have only an
+    elizabeth-line child, not a national-rail one, at a multi-modal
+    interchange; matching on `mode` alone would silently fail to resolve it,
+    reproducing the elizabeth-line StopPoint bug this widening exists to
+    fix.
+
+    NOT used for frequent-destination journey lookups -- there, "closest to
+    the listing" is meaningless (the listing is typically tens of km from
+    the destination hub, so every child is roughly equidistant) and can
+    silently resolve to a different, genuinely wrong station per listing
+    (confirmed live, issue #47 follow-up -- HUBKGX resolved to St Pancras
+    instead of King's Cross depending on the listing's bearing).
+    find_frequent_destination_journey uses _hub_children directly instead,
+    querying every matching child and keeping the fastest result."""
+    matching = _hub_children(hub_id, search_modes or mode)
     if not matching:
         return None
     if len(matching) == 1:
@@ -252,7 +273,9 @@ def _resolve_hub_child(
     # Not yet confirmed what the right tiebreak is here -- hasn't come up in
     # testing. Fall back to closest-lat/lon and log it as worth a second
     # look, per issue #40's plan.
-    logger.warning("TfL hub %s has multiple %r children: %s", hub_id, modes, [c.get("id") for c in matching])
+    logger.warning(
+        "TfL hub %s has multiple %r children: %s", hub_id, search_modes or mode, [c["id"] for c in matching]
+    )
     with_latlon = [c for c in matching if c.get("lat") is not None and c.get("lon") is not None]
     if not with_latlon:
         return matching[0]["id"]
@@ -331,6 +354,22 @@ def _leg_point(leg: dict, key: str) -> dict:
     return point if isinstance(point, dict) else {}
 
 
+def _leg_point_id(leg: dict, key: str) -> str | None:
+    """A leg's departurePoint/arrivalPoint `id` field is null on every real
+    Journey/JourneyResults response observed live (confirmed against actual
+    national-rail and bus legs, issue #47 follow-up) -- the real StopPoint
+    identifier is under `naptanId` instead. `id` is kept as a fallback in
+    case some leg shape does populate it, but naptanId must be tried first
+    or every rail-leg journey silently fails origin_crs/origin_name's
+    NOT NULL check in _extract_journey and gets dropped as 'no journey
+    found', which is what happened before this fix (caught testing the
+    Clapham Junction destination -- test fixtures had used a synthetic `id`
+    field that doesn't match TfL's real shape, masking this in the test
+    suite)."""
+    point = _leg_point(leg, key)
+    return point.get("naptanId") or point.get("id")
+
+
 def _leg_operator(leg: dict) -> str | None:
     """Best-effort operator name -- train-operating-company for national
     rail, line name for tube/DLR/etc -- read off the leg's first
@@ -348,28 +387,22 @@ def _is_walking(leg: dict) -> bool:
     return (leg.get("mode") or {}).get("id") == "walking"
 
 
-def _counted_legs(legs: list[dict]) -> list[dict]:
-    """Every leg that counts toward kind/num_changes/interchange_crs --
-    every non-walking leg, PLUS any walking leg that isn't part of the
-    leading run (access from the raw lat/lon origin -- TfL can return more
-    than one consecutive walking leg here, e.g. a transfer between two
-    nearby stops before the first real transit leg) or the trailing run
-    (egress to the postcode/StopPoint destination). A walking leg in the
-    middle is a real cross-station interchange (e.g. Bank -> Monument,
-    confirmed live during the issue #47 UX review) and must count as a
-    change like any other mode transition -- see issue #47's walking-
-    interchange addendum. Blindly excluding every walking leg would
-    silently understate num_changes/interchange_crs for journeys like
-    that; excluding only index 0/-1 would under-exclude a journey with a
-    multi-leg walking access/egress run."""
-    n = len(legs)
-    start = 0
-    while start < n and _is_walking(legs[start]):
-        start += 1
-    end = n
-    while end > start and _is_walking(legs[end - 1]):
-        end -= 1
-    return legs[start:end]
+def _transit_legs(legs: list[dict]) -> list[dict]:
+    """Every non-walking leg, in order -- the count of *these* minus one is
+    num_changes. An earlier version of this function tried to also count a
+    walking leg in the middle of a journey as a change (reasoning: TfL can
+    insert a walking leg between two transit legs for a real cross-station
+    interchange, e.g. Bank -> Monument). That reasoning was wrong: TfL
+    sometimes emits that interchange walk as its own leg and sometimes
+    doesn't for an otherwise-identical bus->train transition (confirmed
+    live, issue #47 follow-up -- two journeys with the same real single
+    change came back as num_changes=1 and num_changes=2 depending on
+    whether TfL bothered to itemise the walk). A change is a transition
+    between two transit legs, walked or not; the walk is part of that one
+    change, not an extra one. len(transit_legs) - 1 is unambiguous and
+    matches what a human would call "changes" regardless of how TfL chose
+    to itemise the walking in between."""
+    return [leg for leg in legs if not _is_walking(leg)]
 
 
 def _extract_journey(journey: dict) -> dict | None:
@@ -384,32 +417,38 @@ def _extract_journey(journey: dict) -> dict | None:
     if duration is None or not isinstance(legs, list) or not legs:
         return None
 
-    counted = _counted_legs(legs)
-    if counted:
-        first, last = counted[0], counted[-1]
-        origin_crs = _leg_point(first, "departurePoint").get("id")
+    transit = _transit_legs(legs)
+    if transit:
+        first, last = transit[0], transit[-1]
+        origin_crs = _leg_point_id(first, "departurePoint")
         origin_name = _leg_point(first, "departurePoint").get("commonName")
         arrival_name = _leg_point(last, "arrivalPoint").get("commonName")
         interchange_ids = [
             cid
-            for leg in counted[:-1]
-            if (cid := _leg_point(leg, "arrivalPoint").get("id"))
+            for leg in transit[:-1]
+            if (cid := _leg_point_id(leg, "arrivalPoint"))
         ]
         interchange_crs = ", ".join(interchange_ids) if interchange_ids else None
-        num_changes = len(counted) - 1
+        num_changes = len(transit) - 1
         kind = "direct" if num_changes == 0 else "interchange"
         operator = _leg_operator(first)
     else:
         # No non-walking leg at all -- the destination is within walking
-        # distance of the raw origin. Falls back to the final walking leg's
-        # own arrival point, so origin_crs/origin_name (NOT NULL in
-        # destination_journeys) always have a real value -- see issue #47's
-        # schema-gap addendum.
+        # distance of the raw origin. A walking leg's departurePoint/
+        # arrivalPoint has BOTH `id` and `naptanId` null in real TfL
+        # responses (confirmed live, issue #47 follow-up -- only
+        # commonName is populated for a raw street address or the walked-to
+        # side of a StopPoint) -- _leg_point_id can't rescue this the way it
+        # does for a transit leg, so origin_crs falls back to the same
+        # commonName as origin_name rather than requiring a real id.
+        # origin_crs/origin_name are NOT NULL in destination_journeys (see
+        # issue #47's schema-gap addendum) and origin_crs isn't rendered by
+        # the frontend, so a name-shaped value here is safe.
         only_leg = legs[-1]
         arrival_point = _leg_point(only_leg, "arrivalPoint")
-        origin_crs = arrival_point.get("id")
         origin_name = arrival_point.get("commonName")
-        arrival_name = arrival_point.get("commonName")
+        origin_crs = _leg_point_id(only_leg, "arrivalPoint") or origin_name
+        arrival_name = origin_name
         interchange_crs = None
         num_changes = 0
         kind = "direct"
@@ -455,6 +494,57 @@ def find_frequent_destination_journey(
     if not to_identifier:
         return None
 
+    if to_identifier.startswith("HUB"):
+        # search_stop_points() (admin destination search) hands back raw
+        # StopPoint/Search ids, including HUB ids for multi-modal
+        # interchanges (e.g. HUBCLJ for Clapham Junction, HUBKGX for King's
+        # Cross/St Pancras) -- Journey/JourneyResults rejects HUB ids as
+        # `to` outright (always HTTP 300 "Multiple Choices", confirmed
+        # live, regardless of origin), so any HUB-id destination silently
+        # found "no journey" every time until resolved here.
+        #
+        # A hub's children can be genuinely different stations, not just
+        # different platforms of one building (HUBKGX's children are
+        # King's Cross mainline and St Pancras International) -- picking
+        # one child by any single heuristic (closest to the listing,
+        # preferred mode) produced a different, sometimes wrong, answer
+        # per listing (confirmed live, issue #47 follow-up). There's no
+        # way to know in advance which child is "correct" for a given
+        # listing/time -- e.g. Kings Cross via tube vs. via national rail
+        # can genuinely be the better route depending on where the listing
+        # is. So every matching child is queried and the overall fastest
+        # (fewest-changes on a tie) result wins, same comparison already
+        # used across scan pages below. TfL's API is free and this only
+        # runs for HUB-type destinations, so the extra calls (one full scan
+        # per child, typically 1-3 children) are an acceptable cost.
+        children = _hub_children(to_identifier, _DESTINATION_SEARCH_MODES)
+        if not children:
+            return None
+        best = None
+        for child in children:
+            candidate = _scan_journeys(origin_lat, origin_lon, child["id"], target_date, target_time)
+            if candidate is not None and (
+                best is None
+                or (candidate["duration_minutes"], candidate["num_changes"])
+                < (best["duration_minutes"], best["num_changes"])
+            ):
+                best = candidate
+        return best
+
+    return _scan_journeys(origin_lat, origin_lon, to_identifier, target_date, target_time)
+
+
+def _scan_journeys(
+    origin_lat: float,
+    origin_lon: float,
+    to_identifier: str,
+    target_date: "dt.date",
+    target_time: "dt.time",
+) -> dict | None:
+    """The actual windowed scan against one concrete `to_identifier` (never
+    a HUB id -- find_frequent_destination_journey resolves those first).
+    Picks the fastest (fewest-changes on a tie) journey found across
+    however many pages it takes to cover the window."""
     window_end = dt.datetime.combine(target_date, target_time) + dt.timedelta(
         minutes=_FREQUENT_DESTINATION_WINDOW_MINUTES
     )

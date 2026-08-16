@@ -42,15 +42,15 @@ function DestinationRow({ destination }) {
       <div className="destination-line1">
         <span className="destination-name">
           {destination.name}{" "}
-          <span className="destination-station">
-            · {destination.origin_name} → {destination.arrival_name}
+          <span className="destination-target">
+            · {destination.day_label.slice(0, 3)} {destination.time}
           </span>
         </span>
         <span className="destination-duration good">{formatDuration(destination.duration_minutes)}</span>
       </div>
       <div className="destination-line2">
-        <span className="destination-target">
-          {destination.day_label.slice(0, 3)} {destination.time}
+        <span className="destination-station">
+          {destination.origin_name} → {destination.arrival_name}
         </span>
         <span className="destination-route">{routeLabel}</span>
       </div>

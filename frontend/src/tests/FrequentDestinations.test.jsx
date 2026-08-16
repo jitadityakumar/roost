@@ -50,7 +50,8 @@ describe("FrequentDestinations", () => {
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
     expect(screen.getByText("24m")).toBeInTheDocument();
-    expect(screen.getByText("· Woking → Paddington")).toBeInTheDocument();
+    expect(screen.getByText("Woking → Paddington")).toBeInTheDocument();
+    expect(screen.getByText("· Mon 08:30")).toBeInTheDocument();
     expect(screen.getByText("direct")).toBeInTheDocument();
     expect(screen.queryByText(/South Western Railway/)).not.toBeInTheDocument();
   });
@@ -81,7 +82,8 @@ describe("FrequentDestinations", () => {
     render(<FrequentDestinations listingId={1} ready={true} />);
 
     await waitFor(() => expect(screen.getByText("Bandol")).toBeInTheDocument());
-    expect(screen.getByText("· Surbiton → London Road (Guildford)")).toBeInTheDocument();
+    expect(screen.getByText("Surbiton → London Road (Guildford)")).toBeInTheDocument();
+    expect(screen.getByText("· Sun 12:00")).toBeInTheDocument();
     expect(screen.getByText("1 change")).toBeInTheDocument();
     expect(screen.queryByText(/via/)).not.toBeInTheDocument();
     expect(screen.queryByText(/South Western Railway/)).not.toBeInTheDocument();
