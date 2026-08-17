@@ -575,13 +575,14 @@ export default function AdminPage() {
             return (
               <li key={destination.id} className="admin-rule-row">
                 <span className="admin-rule-text">
-                  <div className="admin-rule-title">{destination.name}</div>
-                  <div className="admin-rule-sub">
+                  <div className="admin-rule-title">
+                    {destination.name}
                     <span className={`badge badge-${destination.destination_type}`}>
                       {destination.destination_type === "station" ? "Station" : "Postcode"}
                     </span>
+                  </div>
+                  <div className="admin-rule-sub">
                     {DAY_OPTIONS[destination.day_of_week].label} · {destination.time} ·{" "}
-                    {destination.destination_type === "station" ? "nearest station " : "postcode "}
                     {destination.station_name}
                   </div>
                   {backfill?.status === "queued" && (

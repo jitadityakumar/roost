@@ -605,7 +605,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 
 /* Frequent destinations -- admin form */
 .badge-station { background: var(--accent); color: white; }
-.badge-postcode { background: var(--muted); color: white; }
+.badge-postcode { background: var(--accent); color: white; }
 .status-toggle-btn.ghost {
   background: none;
   color: var(--accent);
