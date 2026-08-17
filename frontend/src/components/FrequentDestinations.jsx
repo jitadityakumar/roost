@@ -11,7 +11,7 @@ function formatDuration(totalMinutes) {
   return `${hours}h${minutes}m`;
 }
 
-function DestinationRow({ destination }) {
+function DestinationRow({ destination, refreshing }) {
   if (!destination.resolved) {
     return (
       <li className="destination-row">
@@ -47,12 +47,18 @@ function DestinationRow({ destination }) {
           </span>
         </span>
         <span className="destination-duration good">
-          {formatDuration(destination.duration_minutes)}
-          {destination.home_duration_diff_minutes !== undefined && (
-            <sup className="destination-home-diff">
-              ({destination.home_duration_diff_minutes >= 0 ? "+" : ""}
-              {destination.home_duration_diff_minutes})
-            </sup>
+          {refreshing ? (
+            <span className="row-spinner" aria-label="Recomputing" />
+          ) : (
+            <>
+              {formatDuration(destination.duration_minutes)}
+              {destination.home_duration_diff_minutes !== undefined && (
+                <sup className="destination-home-diff">
+                  ({destination.home_duration_diff_minutes >= 0 ? "+" : ""}
+                  {destination.home_duration_diff_minutes})
+                </sup>
+              )}
+            </>
           )}
         </span>
       </div>
@@ -60,7 +66,9 @@ function DestinationRow({ destination }) {
         <span className="destination-station">
           {destination.origin_name} → {destination.arrival_name}
         </span>
-        <span className="destination-route">{routeLabel}</span>
+        <span className="destination-route">
+          {refreshing ? <span className="row-spinner" aria-label="Recomputing" /> : routeLabel}
+        </span>
       </div>
     </li>
   );
@@ -110,7 +118,7 @@ export default function FrequentDestinations({ listingId, ready }) {
             title="Recompute journeys"
             aria-label="Recompute journeys"
           >
-            ↻
+            <span className={`spin${refreshing ? " spinning" : ""}`}>↻</span>
           </button>
         )}
       </div>
@@ -128,7 +136,7 @@ export default function FrequentDestinations({ listingId, ready }) {
       ) : (
         <ul className="destination-list">
           {destinations.map((d) => (
-            <DestinationRow key={d.destination_id} destination={d} />
+            <DestinationRow key={d.destination_id} destination={d} refreshing={refreshing} />
           ))}
         </ul>
       )}

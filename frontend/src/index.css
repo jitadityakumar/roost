@@ -255,6 +255,23 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   line-height: 1;
 }
 .icon-btn[aria-pressed="true"] { background: var(--accent); color: white; }
+.icon-btn:disabled { cursor: default; opacity: 0.6; }
+.icon-btn .spin { display: inline-block; }
+.icon-btn .spin.spinning { animation: icon-spin 0.7s linear infinite; }
+@keyframes icon-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.row-spinner {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: icon-spin 0.7s linear infinite;
+}
 .icon-btn.edit { color: var(--edit-color); }
 .icon-btn.edit[aria-pressed="true"] { background: var(--edit-color); color: white; }
 .icon-btn.danger { background: var(--danger); color: white; border-color: var(--danger); }
