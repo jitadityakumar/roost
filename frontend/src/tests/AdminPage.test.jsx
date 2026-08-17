@@ -213,7 +213,7 @@ describe("AdminPage", () => {
     ]);
     renderAdmin();
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
-    expect(screen.getByText(/Monday · 08:30 · nearest station Paddington/)).toBeInTheDocument();
+    expect(screen.getByText(/Monday · 08:30 · Paddington/)).toBeInTheDocument();
   });
 
   it("opens the new-destination form, searches a station, and submits", async () => {
