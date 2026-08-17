@@ -48,7 +48,7 @@ function DestinationRow({ destination, refreshing }) {
         </span>
         <span className="destination-duration good">
           {refreshing ? (
-            <span className="row-spinner" aria-label="Recomputing" />
+            <span className="row-spinner" aria-hidden="true" />
           ) : (
             <>
               {formatDuration(destination.duration_minutes)}
@@ -67,7 +67,7 @@ function DestinationRow({ destination, refreshing }) {
           {destination.origin_name} → {destination.arrival_name}
         </span>
         <span className="destination-route">
-          {refreshing ? <span className="row-spinner" aria-label="Recomputing" /> : routeLabel}
+          {refreshing ? <span className="row-spinner" aria-hidden="true" /> : routeLabel}
         </span>
       </div>
     </li>
@@ -122,6 +122,9 @@ export default function FrequentDestinations({ listingId, ready }) {
           </button>
         )}
       </div>
+      <p role="status" className="visually-hidden">
+        {refreshing ? "Recomputing frequent destinations…" : ""}
+      </p>
 
       {!ready ? (
         <p className="coming-soon">Waiting for listing details…</p>
