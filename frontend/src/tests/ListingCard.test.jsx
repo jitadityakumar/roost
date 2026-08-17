@@ -69,3 +69,20 @@ describe("ListingCard pipeline status", () => {
     expect(screen.getByText("Processing…")).toBeInTheDocument();
   });
 });
+
+describe("ListingCard warning indicator", () => {
+  it("shows a warning dot once processing is done and the listing has a standards violation", () => {
+    renderCard(makeListing({ pipeline_status: null, has_warning: true }));
+    expect(document.querySelector(".warning-dot")).toBeInTheDocument();
+  });
+
+  it("shows no warning dot when the listing has no violation", () => {
+    renderCard(makeListing({ pipeline_status: null, has_warning: false }));
+    expect(document.querySelector(".warning-dot")).not.toBeInTheDocument();
+  });
+
+  it("hides the warning dot while still processing, even if has_warning is true", () => {
+    renderCard(makeListing({ pipeline_status: "processing", has_warning: true }));
+    expect(document.querySelector(".warning-dot")).not.toBeInTheDocument();
+  });
+});

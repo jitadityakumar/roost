@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
-import { USER_STATUS_LABEL } from "../userStatus.js";
 
 // Extraction flips to "done" before the media_download job (which writes
 // the photo files) has necessarily finished, so the photo list can come
@@ -78,9 +77,12 @@ export default function ListingCard({ listing, fromStatus }) {
           <div className="listing-card-body">
             <div className="listing-card-header">
               <span className="price">£{listing.price_gbp?.toLocaleString()}</span>
-              <span className={`badge badge-${listing.user_status}`}>
-                {USER_STATUS_LABEL[listing.user_status] || listing.user_status}
-              </span>
+              {/* Only shown once the pipeline is fully done -- a listing
+                  still mid-processing may not have all its standards-relevant
+                  fields yet, so a warning at that point would be premature. */}
+              {!listing.pipeline_status && listing.has_warning && (
+                <span className="warning-dot" title="Needs review" />
+              )}
             </div>
             <p className="address">{listing.address}</p>
             <p className="meta">

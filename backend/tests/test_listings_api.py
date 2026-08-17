@@ -118,6 +118,20 @@ def test_list_listings_filters_by_user_status(client):
     assert ids == [1]
 
 
+def test_list_listings_flags_has_warning_for_violating_listing(client):
+    from app.standards import store as standards_store
+
+    store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    store.create_stub_listing(2, "https://www.rightmove.co.uk/properties/2")
+    store.apply_extracted_fields(1, {"price_gbp": 600000})
+    store.apply_extracted_fields(2, {"price_gbp": 400000})
+    standards_store.create_rule("price_gbp", "gt", "500000")
+
+    resp = client.get("/api/listings")
+    flags = {l["id"]: l["has_warning"] for l in resp.json()}
+    assert flags == {1: True, 2: False}
+
+
 def test_patch_listing_rejects_invalid_user_status(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch("/api/listings/1", json={"user_status": "bogus"})
