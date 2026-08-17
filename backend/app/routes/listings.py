@@ -25,8 +25,12 @@ def _attach_walk_data(listing_id: int, out: dict) -> None:
     context.md's "Station walking distance" section. Runs on every
     single-listing response (`_serialize_with_pipeline_status`, used by
     GET/POST/PATCH on one listing), never on the list endpoint
-    (`_serialize_many_with_pipeline_status`) -- same "keep it off the hot
-    path" precedent as the standards-rules evaluation above.
+    (`_serialize_many_with_pipeline_status`) -- walk data is comparatively
+    expensive to attach for every card on the hot list path. One
+    consequence: the list endpoint's `has_warning` flag (below) can't catch
+    a `min_walk_minutes` rule violation, since that field is only computed
+    from this attached walk data -- a listing failing only that rule shows
+    no warning dot until its detail page is opened.
 
     Looks up by the entry's position in `nearest_stations_raw` (station_walk_
     distances is index-keyed, not CRS-keyed -- tube/tram/DLR/overground
@@ -56,10 +60,16 @@ def _serialize_with_pipeline_status(listing: dict) -> dict:
 
 def _serialize_many_with_pipeline_status(listings: list[dict]) -> list[dict]:
     statuses = queue.latest_job_statuses_for_listings([l["id"] for l in listings])
+    rules = standards_store.list_rules()
     result = []
     for listing in listings:
         out = serialize_listing(listing)
         out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
+        # Just a boolean here, not the full violation list the single-listing
+        # GET returns -- the list view only needs a red-dot indicator, so
+        # there's no reason to build per-field messages for every listing on
+        # this hot path.
+        out["has_warning"] = bool(evaluate_listing(listing, rules))
         result.append(out)
     return result
 

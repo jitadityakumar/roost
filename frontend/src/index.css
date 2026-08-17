@@ -134,15 +134,20 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   margin-left: 0.4rem;
   background: var(--border);
 }
-.badge-approved { background: #2a6f4f; color: white; }
-.badge-triage { background: #b8860b; color: white; }
-.badge-rejected { background: var(--danger); color: white; }
 .badge-edited { background: #4a5cc9; color: white; }
 .badge-source { color: var(--muted); }
 .badge-pipeline-queued { background: var(--muted); color: white; }
 .badge-pipeline-fetching { background: var(--accent); color: white; }
 .badge-pipeline-processing { background: var(--warn); color: white; }
 .badge-pipeline-failed { background: var(--danger); color: white; }
+
+.warning-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
 
 .empty-state { color: var(--muted); text-align: center; padding: 2rem; }
 .error { color: var(--danger); }
