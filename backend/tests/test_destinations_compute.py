@@ -114,6 +114,23 @@ def test_compute_for_listing_stores_nothing_when_no_journey_found(monkeypatch):
     assert journey_store.get_journeys(1) == {}
 
 
+def test_compute_for_listing_does_not_opt_into_retry_on_empty(monkeypatch):
+    # Issue #54: compute_for_listing backs both the scrape pipeline and the
+    # interactive "Recompute" button, neither of which should retry an empty
+    # TfL response -- only compute_for_destination's backfill path does.
+    _create_destination()
+    seen_kwargs = {}
+
+    def fake_journey(*a, **k):
+        seen_kwargs.update(k)
+        return _journey(24)
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", fake_journey)
+    compute.compute_for_listing(1, LAT, LON)
+
+    assert seen_kwargs.get("retry_on_empty", False) is False
+
+
 def test_compute_for_listing_ignores_disabled_destination(monkeypatch):
     d = _create_destination()
     store.update_destination(d["id"], enabled=False)
@@ -159,6 +176,23 @@ def test_compute_for_destination_backfills_every_listing(monkeypatch):
     assert journey_store.get_journeys(2)[d["id"]]["duration_minutes"] == 24
 
 
+def test_compute_for_destination_opts_into_retry_on_empty(monkeypatch):
+    # Issue #54: full backfills and destination-creation-triggered backfills
+    # both go through compute_for_destination, which should retry an empty
+    # TfL response for every listing it recomputes.
+    d = _create_destination()
+    seen_kwargs = {}
+
+    def fake_journey(*a, **k):
+        seen_kwargs.update(k)
+        return _journey(24)
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", fake_journey)
+    compute.compute_for_destination(d["id"])
+
+    assert seen_kwargs.get("retry_on_empty") is True
+
+
 def test_compute_for_destination_disabled_clears_rows(monkeypatch):
     d = _create_destination()
     monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _journey(24))
@@ -202,6 +236,25 @@ def test_compute_home_journey_uses_home_coords_as_origin(monkeypatch):
     compute.compute_home_journey(d)
 
     assert seen == {"lat": 51.465, "lon": -0.2407}
+
+
+def test_compute_home_journey_opts_into_retry_on_empty(monkeypatch):
+    # Issue #54: compute_home_journey only ever runs as part of
+    # compute_for_destination's backfill, so it should retry same as the
+    # rest of that path.
+    d = _create_destination()
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    seen_kwargs = {}
+
+    def fake_journey(*a, **k):
+        seen_kwargs.update(k)
+        return _journey(42)
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", fake_journey)
+    compute.compute_home_journey(d)
+
+    assert seen_kwargs.get("retry_on_empty") is True
 
 
 def test_compute_home_journey_clears_when_home_not_configured(monkeypatch):

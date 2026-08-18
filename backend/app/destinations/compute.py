@@ -71,14 +71,21 @@ def next_occurrence(day_of_week: int, time_str: str, now: dt.datetime | None = N
     return dt.datetime.combine(candidate_date, target_time)
 
 
-def _journey_row(destination: dict, latitude: float | None, longitude: float | None) -> dict | None:
+def _journey_row(
+    destination: dict, latitude: float | None, longitude: float | None, retry_on_empty: bool = False
+) -> dict | None:
     """Best journey to `destination` from (latitude, longitude), as a
     destination_journeys row dict -- or None if the destination has no
     tfl_identifier yet, the listing has no resolved lat/lon, or TfL found no
     journey in the scan window. Must be an explicit guard, not implicit --
     every destination is tfl_identifier IS NULL immediately after migration
     0019 lands, until it's re-picked through the admin form; calling TfL
-    with to=None would be a real bug, not just a "no route" degrade."""
+    with to=None would be a real bug, not just a "no route" degrade.
+
+    `retry_on_empty` (issue #54) is passed straight through to
+    find_frequent_destination_journey -- see its docstring. Only
+    compute_for_destination (backfills) opts in; compute_for_listing (scrape
+    pipeline + the interactive recompute button) doesn't."""
     if latitude is None or longitude is None:
         return None
     tfl_identifier = destination.get("tfl_identifier")
@@ -86,7 +93,9 @@ def _journey_row(destination: dict, latitude: float | None, longitude: float | N
         return None
 
     target = next_occurrence(destination["day_of_week"], destination["time"])
-    journey = find_frequent_destination_journey(latitude, longitude, tfl_identifier, target.date(), target.time())
+    journey = find_frequent_destination_journey(
+        latitude, longitude, tfl_identifier, target.date(), target.time(), retry_on_empty=retry_on_empty
+    )
     if journey is None:
         return None
 
@@ -110,7 +119,7 @@ def compute_home_journey(destination: dict) -> None:
     if not destination["enabled"] or config.HOME_LAT is None or config.HOME_LON is None:
         journey_store.delete_home_journey(destination["id"])
         return
-    row = _journey_row(destination, config.HOME_LAT, config.HOME_LON)
+    row = _journey_row(destination, config.HOME_LAT, config.HOME_LON, retry_on_empty=True)
     journey_store.set_home_journey(destination["id"], row)
 
 
@@ -176,7 +185,9 @@ def compute_for_destination(destination_id: int) -> None:
                 journey_store.delete_for_destination(listing_id, destination_id)
             else:
                 serialized = serialize_listing(listing)
-                row = _journey_row(destination, serialized.get("latitude"), serialized.get("longitude"))
+                row = _journey_row(
+                    destination, serialized.get("latitude"), serialized.get("longitude"), retry_on_empty=True
+                )
                 journey_store.replace_single(listing_id, destination_id, row)
             backfill_status.increment(destination_id)
     except Exception:

@@ -51,7 +51,7 @@ def test_refresh_destinations_computes_and_returns_result(client, listing_id, mo
     monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: None)
     client.post("/api/destinations", json=_CREATE_BODY)
 
-    def fake_journey(lat, lon, to_identifier, target_date, target_time):
+    def fake_journey(lat, lon, to_identifier, target_date, target_time, **kwargs):
         return {
             "duration_minutes": 24,
             "kind": "direct",

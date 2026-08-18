@@ -339,6 +339,17 @@ def compute_walk_distance(origin_lat: float, origin_lon: float, stop_point_id: s
 _FREQUENT_DESTINATION_WINDOW_MINUTES = 60
 _MAX_JOURNEY_SCAN_PAGES = 5
 
+# Issue #54: backfills (full and destination-creation-triggered) consistently
+# leave a chunk of listing x destination pairs unresolved even though the
+# route is genuinely servable -- spot-checking showed re-querying seconds
+# later with identical params returned a real journey. Bounded retry closes
+# the transient gap without meaningfully risking TfL's 500 req/min cap (the
+# module-level throttle in this file still governs every call regardless).
+# Deliberately NOT applied to every caller -- see retry_on_empty's docstring
+# on find_frequent_destination_journey/_scan_journeys.
+_EMPTY_RESULT_RETRIES = 2
+_EMPTY_RESULT_RETRY_DELAY_SECONDS = 2.0
+
 
 def _parse_tfl_datetime(value) -> "dt.datetime | None":
     if not isinstance(value, str):
@@ -482,6 +493,7 @@ def find_frequent_destination_journey(
     to_identifier: str,
     target_date: "dt.date",
     target_time: "dt.time",
+    retry_on_empty: bool = False,
 ) -> dict | None:
     """Best (fastest) journey from a listing's raw lat/lon to `to_identifier`
     (a TfL StopPoint id or a raw UK postcode -- TfL's `to` accepts either
@@ -490,7 +502,19 @@ def find_frequent_destination_journey(
     response page -- mirrors the validated methodology from issue #47's
     research spike. Never raises: a bad/empty to_identifier, no journeys in
     the window, or any request failure all just return None, same
-    never-fail contract as resolve_stop_point."""
+    never-fail contract as resolve_stop_point.
+
+    `retry_on_empty` (issue #54): when True, a scan that comes back with
+    zero journeys (TfL responded successfully, just found nothing -- not a
+    TflApiError) is retried up to _EMPTY_RESULT_RETRIES more times with a
+    _EMPTY_RESULT_RETRY_DELAY_SECONDS sleep between attempts, since that
+    specific case has been observed live to be transient (identical params,
+    requeried seconds later, returning a real journey). Callers opt in
+    deliberately: compute_for_destination (full backfills and
+    destination-creation-triggered backfills) passes True; compute_for_listing
+    (the scrape pipeline and the interactive "recompute" button) does not --
+    the button already gives the user a free manual retry, and retrying the
+    scrape/recompute path would add latency for no clearly-scoped benefit."""
     if not to_identifier:
         return None
 
@@ -522,7 +546,9 @@ def find_frequent_destination_journey(
             return None
         best = None
         for child in children:
-            candidate = _scan_journeys(origin_lat, origin_lon, child["id"], target_date, target_time)
+            candidate = _scan_journeys(
+                origin_lat, origin_lon, child["id"], target_date, target_time, retry_on_empty=retry_on_empty
+            )
             if candidate is not None and (
                 best is None
                 or (candidate["num_changes"], candidate["duration_minutes"])
@@ -531,7 +557,7 @@ def find_frequent_destination_journey(
                 best = candidate
         return best
 
-    return _scan_journeys(origin_lat, origin_lon, to_identifier, target_date, target_time)
+    return _scan_journeys(origin_lat, origin_lon, to_identifier, target_date, target_time, retry_on_empty=retry_on_empty)
 
 
 def _scan_journeys(
@@ -540,6 +566,7 @@ def _scan_journeys(
     to_identifier: str,
     target_date: "dt.date",
     target_time: "dt.time",
+    retry_on_empty: bool = False,
 ) -> dict | None:
     """The actual windowed scan against one concrete `to_identifier` (never
     a HUB id -- find_frequent_destination_journey resolves those first).
@@ -548,7 +575,42 @@ def _scan_journeys(
     requesting journeyPreference=LeastInterchange from TfL only shapes what
     each individual response contains, it doesn't guarantee every candidate
     across pages/hub children is interchange-optimal, so this local
-    comparison is what actually enforces the fewest-changes preference."""
+    comparison is what actually enforces the fewest-changes preference.
+
+    `retry_on_empty` (issue #54): see find_frequent_destination_journey's
+    docstring for the caller-scoping rationale. Only a scan that completes
+    with zero journeys AND no TflApiError along the way is retried -- a real
+    request failure (auth/rate-limit/network) is not, since that's not the
+    "TfL responded but genuinely found nothing" flakiness this exists for."""
+    attempts = 1 + (_EMPTY_RESULT_RETRIES if retry_on_empty else 0)
+    for attempt in range(attempts):
+        best, errored = _scan_journeys_once(origin_lat, origin_lon, to_identifier, target_date, target_time)
+        if best is not None or errored:
+            return best
+        if attempt < attempts - 1:
+            logger.info(
+                "TfL Journey/JourneyResults returned no journeys for %r, retrying in %.0fs (attempt %d/%d)",
+                to_identifier,
+                _EMPTY_RESULT_RETRY_DELAY_SECONDS,
+                attempt + 2,
+                attempts,
+            )
+            time.sleep(_EMPTY_RESULT_RETRY_DELAY_SECONDS)
+    return None
+
+
+def _scan_journeys_once(
+    origin_lat: float,
+    origin_lon: float,
+    to_identifier: str,
+    target_date: "dt.date",
+    target_time: "dt.time",
+) -> tuple[dict | None, bool]:
+    """One full windowed scan (up to _MAX_JOURNEY_SCAN_PAGES pages), same
+    behavior as the pre-#54 _scan_journeys. Returns (best, errored) --
+    errored is True iff a TflApiError was hit along the way, so the retry
+    wrapper above can tell "TfL responded but found nothing" (retry-eligible)
+    apart from "the request itself failed" (never retried)."""
     window_end = dt.datetime.combine(target_date, target_time) + dt.timedelta(
         minutes=_FREQUENT_DESTINATION_WINDOW_MINUTES
     )
@@ -575,7 +637,7 @@ def _scan_journeys(
             data = _get(url)
         except TflApiError as e:
             logger.info("TfL Journey/JourneyResults failed for %r: %s", to_identifier, e)
-            break
+            return best, True
         if not isinstance(data, dict):
             break
         journeys = data.get("journeys")
@@ -602,4 +664,4 @@ def _scan_journeys(
         next_query = max_departure + dt.timedelta(minutes=1)
         query_date, query_time = next_query.date(), next_query.time()
 
-    return best
+    return best, False

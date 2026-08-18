@@ -270,6 +270,89 @@ def test_returns_none_on_request_failure(monkeypatch):
     assert result is None
 
 
+# --- retry_on_empty (issue #54) -----------------------------------------
+
+def test_retry_on_empty_succeeds_on_third_attempt(monkeypatch):
+    legs = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+    # start pinned to exactly the 60-minute window's edge (target 8:30 + 60m)
+    # so this single page's journey both counts (not strictly past the
+    # window) and immediately ends the scan (max_departure >= window_end) --
+    # otherwise the fake `_get` would need a 4th response for a 2nd page.
+    journey = _journey(24, legs, start="2026-08-17T09:30:00", arrival="2026-08-17T09:54:00")
+    responses = [{"journeys": []}, {"journeys": []}, {"journeys": [journey]}]
+
+    calls = []
+
+    def fake_get(url):
+        calls.append(url)
+        return responses[len(calls) - 1]
+
+    monkeypatch.setattr(tfl_client, "_get", fake_get)
+    sleeps = []
+    monkeypatch.setattr(tfl_client.time, "sleep", lambda s: sleeps.append(s))
+
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30), retry_on_empty=True
+    )
+
+    assert result is not None
+    assert result["duration_minutes"] == 24
+    assert len(calls) == 3
+    assert sleeps == [tfl_client._EMPTY_RESULT_RETRY_DELAY_SECONDS] * 2
+
+
+def test_retry_on_empty_gives_up_after_max_retries(monkeypatch):
+    calls_via_get = []
+    monkeypatch.setattr(tfl_client, "_get", lambda url: (calls_via_get.append(url), {"journeys": []})[1])
+    sleeps = []
+    monkeypatch.setattr(tfl_client.time, "sleep", lambda s: sleeps.append(s))
+
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30), retry_on_empty=True
+    )
+
+    assert result is None
+    # 3 attempts total (1 + _EMPTY_RESULT_RETRIES), 1 page each since every
+    # page comes back empty.
+    assert len(calls_via_get) == 1 + tfl_client._EMPTY_RESULT_RETRIES
+    assert len(sleeps) == tfl_client._EMPTY_RESULT_RETRIES
+
+
+def test_retry_on_empty_not_applied_by_default(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tfl_client, "_get", lambda url: (calls.append(url), {"journeys": []})[1])
+    sleeps = []
+    monkeypatch.setattr(tfl_client.time, "sleep", lambda s: sleeps.append(s))
+
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30)
+    )
+
+    assert result is None
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+def test_retry_on_empty_does_not_retry_on_api_error(monkeypatch):
+    calls = []
+
+    def fake_get(url):
+        calls.append(url)
+        raise tfl_client.TflApiError("boom")
+
+    monkeypatch.setattr(tfl_client, "_get", fake_get)
+    sleeps = []
+    monkeypatch.setattr(tfl_client.time, "sleep", lambda s: sleeps.append(s))
+
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30), retry_on_empty=True
+    )
+
+    assert result is None
+    assert len(calls) == 1
+    assert sleeps == []
+
+
 def test_throttle_is_invoked(monkeypatch):
     calls = []
     monkeypatch.setattr(tfl_client, "_throttle", lambda: calls.append(1))
