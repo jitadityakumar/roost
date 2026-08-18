@@ -1,23 +1,26 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api.js";
+import { logoUrlForType } from "./networkLogos.js";
 
 // Leg badges are keyed by TfL leg `mode.id` values (national-rail, tube,
 // walking, ...) -- a different key space than NearestStations.jsx's
-// TYPE_BADGES (Rightmove's nearest_stations_raw[].types), so this needs its
-// own small map. Same colored-letter fallback style (no trademarked logo
-// SVGs), same reasoning as TYPE_BADGES.
+// TYPE_BADGES (Rightmove's nearest_stations_raw[].types). Mapped to the
+// equivalent Rightmove type below so the real logo files NearestStations.jsx
+// already uses (gitignored, see networkLogos.js) get reused for free when
+// present; the colored-letter fallback (same style as TYPE_BADGES) only
+// applies when a logo file for the type isn't on disk.
 const LEG_BADGES = {
-  tube: { letter: "U", bg: "#E32017" },
-  overground: { letter: "O", bg: "#EE7C0E" },
-  "elizabeth-line": { letter: "E", bg: "#7156A5" },
-  dlr: { letter: "D", bg: "#00A4A7" },
-  tram: { letter: "T", bg: "#84B817" },
-  "national-rail": { letter: "R", bg: "#003088" },
+  tube: { letter: "U", bg: "#E32017", rightmoveType: "LONDON_UNDERGROUND" },
+  overground: { letter: "O", bg: "#EE7C0E", rightmoveType: "LONDON_OVERGROUND" },
+  "elizabeth-line": { letter: "E", bg: "#7156A5", rightmoveType: "ELIZABETH_LINE" },
+  dlr: { letter: "D", bg: "#00A4A7", rightmoveType: "LIGHT_RAILWAY" },
+  tram: { letter: "T", bg: "#84B817", rightmoveType: "TRAM" },
+  "national-rail": { letter: "R", bg: "#003088", rightmoveType: "NATIONAL_TRAIN" },
 };
 
 function legBadge(mode) {
-  return LEG_BADGES[mode] || { letter: "?", bg: "#666" };
+  return LEG_BADGES[mode] || { letter: "?", bg: "#666", rightmoveType: null };
 }
 
 function formatClock(isoString) {
@@ -62,11 +65,16 @@ function formatFetchedAt(isoString) {
 function Leg({ leg }) {
   const isWalk = leg.mode === "walking";
   const badge = legBadge(leg.mode);
+  const logoUrl = !isWalk && badge.rightmoveType ? logoUrlForType(badge.rightmoveType) : undefined;
   return (
     <div className="jd-leg">
-      <span className={`jd-leg-badge${isWalk ? " jd-leg-badge-walk" : ""}`} style={isWalk ? undefined : { background: badge.bg }}>
-        {isWalk ? "W" : badge.letter}
-      </span>
+      {logoUrl ? (
+        <img className="jd-leg-badge jd-leg-badge-logo" src={logoUrl} alt="" title={leg.operator || undefined} />
+      ) : (
+        <span className={`jd-leg-badge${isWalk ? " jd-leg-badge-walk" : ""}`} style={isWalk ? undefined : { background: badge.bg }}>
+          {isWalk ? "W" : badge.letter}
+        </span>
+      )}
       <div className="jd-leg-info">
         <span className="jd-leg-op">{isWalk ? "Walk" : leg.operator || "—"}</span>
         <span className="jd-leg-route">

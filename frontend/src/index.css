@@ -767,6 +767,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   flex-shrink: 0;
 }
 .jd-leg-badge-walk { background: transparent; color: var(--muted); border: 1.5px dashed var(--border); }
+.jd-leg-badge-logo { border-radius: 0; object-fit: contain; }
 .jd-leg-info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .jd-leg-op { font-size: 0.85rem; font-weight: 500; }
 .jd-leg-route { font-size: 0.76rem; color: var(--muted); }

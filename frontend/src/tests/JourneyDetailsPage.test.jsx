@@ -4,9 +4,17 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import JourneyDetailsPage from "../components/JourneyDetailsPage.jsx";
 import { api } from "../api.js";
+import { logoUrlForType } from "../components/networkLogos.js";
 
 vi.mock("../api.js", () => ({
   api: { journeyScanPool: vi.fn() },
+}));
+
+// Deterministic: exercise the letter-badge fallback regardless of whether
+// the gitignored real logo files happen to be present on the machine
+// running the tests, same precedent as NearestStations.test.jsx.
+vi.mock("../components/networkLogos.js", () => ({
+  logoUrlForType: vi.fn(() => undefined),
 }));
 
 function renderPage(poolId = "42") {
@@ -102,6 +110,25 @@ describe("JourneyDetailsPage", () => {
     expect(screen.getByText("Northern line")).toBeInTheDocument();
     expect(screen.getAllByText("Walk").length).toBeGreaterThan(0);
     expect(screen.getByText("8m change")).toBeInTheDocument();
+  });
+
+  it("renders a real logo image instead of the letter badge when one is available for a leg's mode", async () => {
+    vi.mocked(logoUrlForType).mockImplementation((type) =>
+      type === "NATIONAL_TRAIN" ? "/fake/national-rail.svg" : undefined
+    );
+    api.journeyScanPool.mockResolvedValue(samplePool());
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    await waitFor(() => expect(screen.getByText(/1 change/)).toBeInTheDocument());
+    await user.click(screen.getByText(/1 change/));
+
+    expect(logoUrlForType).toHaveBeenCalledWith("NATIONAL_TRAIN");
+    const logo = container.querySelector("img.jd-leg-badge-logo");
+    expect(logo).toHaveAttribute("src", "/fake/national-rail.svg");
+    // The tube leg still falls back to the letter badge since only
+    // NATIONAL_TRAIN was mocked to have a logo.
+    expect(screen.getByText("U")).toBeInTheDocument();
   });
 
   it("shows an empty state when the pool has no candidates", async () => {
