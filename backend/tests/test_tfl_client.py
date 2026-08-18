@@ -569,3 +569,31 @@ def test_pool_out_hub_branch_uses_only_winning_child(monkeypatch):
     assert pool_out["query_params"]["to_name"] == "Child Two"
     assert len(pool_out["candidate_pool"]) == 1
     assert pool_out["candidate_pool"][0]["duration"] == 20
+
+
+def test_pool_out_hub_branch_does_not_raise_when_winning_child_errored_mid_scan(monkeypatch):
+    # Real _scan_journeys_once returns early on a TflApiError (`return best,
+    # True`) *before* ever populating pool_out -- so a child whose scan finds
+    # a best journey on page 1 and then errors on page 2 still "wins" (has a
+    # non-None candidate) but leaves its pool_out == {} (no "query_params"
+    # key). find_frequent_destination_journey's contract is "never raises" --
+    # this must degrade to no pool stored, not raise KeyError.
+    children = [{"id": "910GCHILD1", "name": "Child One"}]
+    monkeypatch.setattr(tfl_client, "_hub_children", lambda hub_id, modes: children)
+
+    legs = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+
+    def fake_scan_journeys(origin_lat, origin_lon, to_identifier, target_date, target_time, retry_on_empty=False, pool_out=None):
+        # pool_out deliberately left empty -- simulates the winning child
+        # erroring after already finding `best` on an earlier page.
+        return tfl_client._extract_journey(_journey(24, legs))
+
+    monkeypatch.setattr(tfl_client, "_scan_journeys", fake_scan_journeys)
+
+    pool_out = {}
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "HUBTEST", dt.date(2026, 8, 17), dt.time(8, 30), pool_out=pool_out
+    )
+
+    assert result["duration_minutes"] == 24
+    assert pool_out == {}

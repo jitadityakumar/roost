@@ -51,6 +51,8 @@ function DestinationRow({ destination, refreshing }) {
               href={`/journey-details/${destination.journey_scan_pool_id}`}
               target="_blank"
               rel="noopener noreferrer"
+              title="View journey details"
+              aria-label={`View journey details for ${destination.name}`}
             >
               ↗
             </a>

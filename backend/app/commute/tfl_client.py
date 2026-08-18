@@ -567,7 +567,14 @@ def find_frequent_destination_journey(
                 best = candidate
                 best_pool = child_pool
                 best_child_name = child.get("name")
-        if pool_out is not None and best_pool is not None:
+        # best_pool can be a still-empty {} here: _scan_journeys_once returns
+        # early on a TflApiError (before ever populating pool_out) even when
+        # an earlier page already found a `best` journey -- so a non-None
+        # `best_pool` doesn't guarantee "query_params" was set. Degrade the
+        # same way the non-HUB path already does (no pool stored) rather
+        # than raising, since find_frequent_destination_journey's contract
+        # is "never raises".
+        if pool_out is not None and best_pool and "query_params" in best_pool:
             best_pool["query_params"]["to_name"] = best_child_name
             pool_out.update(best_pool)
         return best

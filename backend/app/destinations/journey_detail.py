@@ -9,33 +9,7 @@ needs, reusing the same journey-summary extraction for each candidate's
 collapsed-row fields."""
 from __future__ import annotations
 
-import datetime as dt
-
-from app.commute.tfl_client import _extract_journey
-
-
-def _leg_point_name(leg: dict, key: str) -> str | None:
-    point = leg.get(key)
-    if not isinstance(point, dict):
-        return None
-    return point.get("commonName")
-
-
-def _leg_operator(leg: dict) -> str | None:
-    route_options = leg.get("routeOptions")
-    if not isinstance(route_options, list) or not route_options:
-        return None
-    first = route_options[0]
-    return first.get("name") if isinstance(first, dict) else None
-
-
-def _parse_tfl_datetime(value) -> "dt.datetime | None":
-    if not isinstance(value, str):
-        return None
-    try:
-        return dt.datetime.fromisoformat(value)
-    except ValueError:
-        return None
+from app.commute.tfl_client import _extract_journey, _leg_operator, _leg_point, _parse_tfl_datetime
 
 
 def _parse_leg(leg: dict, next_leg: dict | None) -> dict:
@@ -46,8 +20,8 @@ def _parse_leg(leg: dict, next_leg: dict | None) -> dict:
         "departure_time": leg.get("departureTime"),
         "arrival_time": leg.get("arrivalTime"),
         "duration": leg.get("duration"),
-        "from": _leg_point_name(leg, "departurePoint"),
-        "to": _leg_point_name(leg, "arrivalPoint"),
+        "from": _leg_point(leg, "departurePoint").get("commonName"),
+        "to": _leg_point(leg, "arrivalPoint").get("commonName"),
     }
 
     if next_leg is not None:

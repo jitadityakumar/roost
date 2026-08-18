@@ -112,6 +112,18 @@ def test_replace_single_none_row_clears_both_tables():
     assert journey_store.get_scan_pool_ids(1) == {}
 
 
+def test_replace_single_none_row_never_stores_an_orphan_pool():
+    # A pool row must never exist without its matching destination_journeys
+    # row -- the UI has no way to link to it. Not reachable from any current
+    # caller (compute.py always pairs row/pool together), but replace_single
+    # itself should enforce the invariant rather than relying on callers.
+    d = _create_destination()
+    journey_store.replace_single(1, d["id"], None, _pool())
+
+    assert journey_store.get_journeys(1) == {}
+    assert journey_store.get_scan_pool_ids(1) == {}
+
+
 def test_replace_single_leaves_other_destinations_pool_untouched():
     d1 = _create_destination()
     d2 = store.create_destination("Gym", "station", "910GOTHERID", "Other", 0, "08:30")

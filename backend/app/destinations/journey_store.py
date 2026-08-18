@@ -131,7 +131,7 @@ def replace_single(listing_id: int, destination_id: int, row: dict | None, pool:
                     now,
                 ),
             )
-        if pool is not None:
+        if row is not None and pool is not None:
             conn.execute(
                 "INSERT INTO journey_scan_pools "
                 "(listing_id, destination_id, scanned_at, query_params, candidate_pool) "
