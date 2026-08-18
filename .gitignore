@@ -24,7 +24,14 @@ frontend/.vite/
 # double-arrow, etc.) — present locally for the real-logo station badges,
 # not committed to this public repo. NearestStations.jsx falls back to
 # colored letter badges automatically when these files are absent.
-frontend/src/assets/network-logos/
+# (per-file, not per-directory, so the walking.svg exception below works —
+# git can't un-ignore a file inside an already-ignored directory)
+frontend/src/assets/network-logos/*
+# walking.svg is the exception: CC0/public-domain (Openclipart, via
+# Wikimedia Commons), no trademark restriction, safe to commit — used by
+# JourneyDetailsPage.jsx's walking-leg badge, so it must always be present,
+# not just on machines that happen to have the trademarked logos locally.
+!frontend/src/assets/network-logos/walking.svg
 
 # e2e (Playwright)
 e2e/node_modules/

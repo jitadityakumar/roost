@@ -151,3 +151,47 @@ def _fake_journey(duration_minutes):
         "departure_time": "2026-08-17T08:40:00",
         "arrival_time": "2026-08-17T09:04:00",
     }
+
+
+# --- journey_scan_pool_id (issue #59) ------------------------------------
+
+def test_refresh_destinations_omits_pool_id_when_scan_populates_no_pool(client, listing_id, monkeypatch):
+    from app.destinations import compute
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: None)
+    client.post("/api/destinations", json=_CREATE_BODY)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _fake_journey(24))
+
+    resp = client.post(f"/api/listings/{listing_id}/destinations/refresh")
+
+    assert resp.json()[0]["journey_scan_pool_id"] is None
+
+
+def test_refresh_destinations_includes_pool_id_when_scan_populates_pool(client, listing_id, monkeypatch):
+    from app.destinations import compute
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: None)
+    client.post("/api/destinations", json=_CREATE_BODY)
+
+    def fake_journey_with_pool(lat, lon, to_identifier, target_date, target_time, **kwargs):
+        pool_out = kwargs.get("pool_out")
+        if pool_out is not None:
+            pool_out["query_params"] = {
+                "journeyPreference": "LeastInterchange",
+                "mode": "national-rail",
+                "date": "20260824",
+                "time": "0830",
+                "to_identifier": to_identifier,
+            }
+            pool_out["candidate_pool"] = [{"startDateTime": "2026-08-17T08:40:00"}]
+        return _fake_journey(24)
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", fake_journey_with_pool)
+
+    resp = client.post(f"/api/listings/{listing_id}/destinations/refresh")
+    body = resp.json()
+
+    assert body[0]["journey_scan_pool_id"] is not None
+
+    get_resp = client.get(f"/api/listings/{listing_id}/destinations")
+    assert get_resp.json()[0]["journey_scan_pool_id"] == body[0]["journey_scan_pool_id"]

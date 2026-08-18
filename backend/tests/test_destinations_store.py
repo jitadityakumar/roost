@@ -97,3 +97,37 @@ def test_delete_destination_clears_home_journey(monkeypatch):
     store.delete_destination(d["id"])
 
     assert journey_store.get_home_journeys() == {}
+
+
+def test_delete_destination_with_scan_pool_does_not_raise():
+    # journey_scan_pools has a non-cascading NOT NULL FK on
+    # frequent_destinations(id) (issue #59) -- must be cleared alongside
+    # destination_journeys/home_journeys or this raises IntegrityError.
+    from app.listings import store as listings_store
+
+    listing_id = 1
+    listings_store.create_stub_listing(listing_id, "https://www.rightmove.co.uk/properties/1")
+    d = store.create_destination("Office", "station", "910GPADTON", "Paddington", 0, "08:30")
+    journey_store.replace_single(
+        listing_id,
+        d["id"],
+        {
+            "duration_minutes": 24,
+            "kind": "direct",
+            "num_changes": 0,
+            "operator": "South Western Railway",
+            "origin_crs": "910GWOKING",
+            "origin_name": "Woking",
+            "departure_time": "08:40:00",
+            "arrival_time": "09:04:00",
+        },
+        {
+            "query_params": {"journeyPreference": "LeastInterchange", "mode": "national-rail", "date": "20260824", "time": "0830", "to_identifier": "910GPADTON"},
+            "candidate_pool": [{"startDateTime": "2026-08-17T08:40:00"}],
+        },
+    )
+    assert journey_store.get_scan_pool_ids(listing_id) != {}
+
+    store.delete_destination(d["id"])
+
+    assert journey_store.get_scan_pool_ids(listing_id) == {}

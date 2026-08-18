@@ -4,6 +4,7 @@ import AddPage from "./components/AddPage.jsx";
 import ListingsPage from "./components/ListingsPage.jsx";
 import ListingDetail from "./components/ListingDetail.jsx";
 import AdminPage from "./components/AdminPage.jsx";
+import JourneyDetailsPage from "./components/JourneyDetailsPage.jsx";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
             <Route path="/rejected" element={<ListingsPage status="rejected" />} />
             <Route path="/listings/:id" element={<ListingDetail />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/journey-details/:poolId" element={<JourneyDetailsPage />} />
           </Routes>
         </main>
       </div>

@@ -398,3 +398,202 @@ def test_search_stop_points_returns_empty_on_error(monkeypatch):
 
     monkeypatch.setattr(tfl_client, "_get", raise_error)
     assert tfl_client.search_stop_points("paddington") == []
+
+
+# --- pool_out (issue #59) ------------------------------------------------
+
+def test_pool_out_collects_journeys_across_non_overlapping_pages(monkeypatch):
+    legs_a = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+    legs_b = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=20, operator="Test Rail")]
+    page1 = {"journeys": [_journey(24, legs_a, start="2026-08-17T08:30:00", arrival="2026-08-17T08:54:00")]}
+    page2 = {"journeys": [_journey(20, legs_b, start="2026-08-17T08:55:00", arrival="2026-08-17T09:15:00")]}
+    pages = [page1, page2]
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        calls.append(1)
+        return _FakeResponse(pages[len(calls) - 1] if len(calls) <= len(pages) else {"journeys": []})
+
+    monkeypatch.setattr(tfl_client, "urlopen", fake_urlopen)
+
+    pool_out = {}
+    tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30), pool_out=pool_out
+    )
+
+    assert len(pool_out["candidate_pool"]) == 2
+    starts = {j["startDateTime"] for j in pool_out["candidate_pool"]}
+    assert starts == {"2026-08-17T08:30:00", "2026-08-17T08:55:00"}
+
+
+def test_pool_out_dedups_journeys_repeated_across_overlapping_pages(monkeypatch):
+    # Reproduces the live-confirmed overlap: page 2 re-returns a journey
+    # page 1 already saw (same startDateTime/arrivalDateTime/duration), plus
+    # one genuinely new journey.
+    legs = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+    dup_journey = _journey(24, legs, start="2026-08-17T08:30:00", arrival="2026-08-17T08:54:00")
+    new_journey = _journey(20, legs, start="2026-08-17T08:56:00", arrival="2026-08-17T09:16:00")
+    page1 = {"journeys": [dup_journey]}
+    page2 = {"journeys": [dup_journey, new_journey]}
+    pages = [page1, page2]
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        calls.append(1)
+        return _FakeResponse(pages[len(calls) - 1] if len(calls) <= len(pages) else {"journeys": []})
+
+    monkeypatch.setattr(tfl_client, "urlopen", fake_urlopen)
+
+    pool_out = {}
+    tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30), pool_out=pool_out
+    )
+
+    assert len(pool_out["candidate_pool"]) == 2
+
+
+def test_pool_out_excludes_journeys_past_window_end(monkeypatch):
+    legs_in = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+    legs_out = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+    payload = {
+        "journeys": [
+            _journey(24, legs_in, start="2026-08-17T08:40:00", arrival="2026-08-17T09:04:00"),
+            # Past the 60-minute window (target 8:30 + 60m = 9:30).
+            _journey(24, legs_out, start="2026-08-17T09:40:00", arrival="2026-08-17T10:04:00"),
+        ]
+    }
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse(payload))
+
+    pool_out = {}
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30), pool_out=pool_out
+    )
+
+    assert result["departure_time"] == "2026-08-17T08:40:00"
+    assert len(pool_out["candidate_pool"]) == 1
+    assert pool_out["candidate_pool"][0]["startDateTime"] == "2026-08-17T08:40:00"
+
+
+def test_pool_out_query_params_use_original_target_not_paging_cursor(monkeypatch):
+    # Best journey is found on page 2 -- query_params.date/time must still
+    # reflect the original target_date/target_time, not the paging cursor
+    # (query_date/query_time) the scan had moved on to by page 2.
+    legs_slow = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=40, operator="Slow Rail")]
+    legs_fast = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=20, operator="Fast Rail")]
+    page1 = {"journeys": [_journey(40, legs_slow, start="2026-08-17T08:30:00", arrival="2026-08-17T09:10:00")]}
+    page2 = {"journeys": [_journey(20, legs_fast, start="2026-08-17T08:55:00", arrival="2026-08-17T09:15:00")]}
+    pages = [page1, page2]
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        calls.append(1)
+        return _FakeResponse(pages[len(calls) - 1] if len(calls) <= len(pages) else {"journeys": []})
+
+    monkeypatch.setattr(tfl_client, "urlopen", fake_urlopen)
+
+    pool_out = {}
+    tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30), pool_out=pool_out
+    )
+
+    assert pool_out["query_params"]["date"] == "20260817"
+    assert pool_out["query_params"]["time"] == "0830"
+    assert pool_out["query_params"]["to_identifier"] == "910GB"
+
+
+def test_pool_out_not_populated_when_no_best_journey(monkeypatch):
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse({"journeys": []}))
+
+    pool_out = {}
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30), pool_out=pool_out
+    )
+
+    assert result is None
+    assert pool_out == {}
+
+
+def test_pool_out_omitted_does_not_change_default_behavior(monkeypatch):
+    legs = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+    monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse({"journeys": [_journey(24, legs)]}))
+
+    result = tfl_client.find_frequent_destination_journey(51.3, -0.5, "910GB", dt.date(2026, 8, 17), dt.time(8, 30))
+
+    assert result["duration_minutes"] == 24
+
+
+def test_pool_out_hub_branch_uses_only_winning_child(monkeypatch):
+    children = [
+        {"id": "910GCHILD1", "name": "Child One"},
+        {"id": "910GCHILD2", "name": "Child Two"},
+    ]
+    monkeypatch.setattr(tfl_client, "_hub_children", lambda hub_id, modes: children)
+
+    slow_legs = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=40, operator="Slow Rail")]
+    fast_legs = [_leg("national-rail", "A", "910GA", "C", "910GC", duration=20, operator="Fast Rail")]
+
+    def fake_scan_journeys(origin_lat, origin_lon, to_identifier, target_date, target_time, retry_on_empty=False, pool_out=None):
+        if to_identifier == "910GCHILD1":
+            journey = tfl_client._extract_journey(_journey(40, slow_legs))
+            if pool_out is not None:
+                pool_out["query_params"] = {
+                    "journeyPreference": "LeastInterchange",
+                    "mode": tfl_client._DESTINATION_SEARCH_MODES,
+                    "date": target_date.strftime("%Y%m%d"),
+                    "time": target_time.strftime("%H%M"),
+                    "to_identifier": to_identifier,
+                }
+                pool_out["candidate_pool"] = [_journey(40, slow_legs)]
+            return journey
+        journey = tfl_client._extract_journey(_journey(20, fast_legs))
+        if pool_out is not None:
+            pool_out["query_params"] = {
+                "journeyPreference": "LeastInterchange",
+                "mode": tfl_client._DESTINATION_SEARCH_MODES,
+                "date": target_date.strftime("%Y%m%d"),
+                "time": target_time.strftime("%H%M"),
+                "to_identifier": to_identifier,
+            }
+            pool_out["candidate_pool"] = [_journey(20, fast_legs)]
+        return journey
+
+    monkeypatch.setattr(tfl_client, "_scan_journeys", fake_scan_journeys)
+
+    pool_out = {}
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "HUBTEST", dt.date(2026, 8, 17), dt.time(8, 30), pool_out=pool_out
+    )
+
+    assert result["duration_minutes"] == 20
+    assert pool_out["query_params"]["to_identifier"] == "910GCHILD2"
+    assert pool_out["query_params"]["to_name"] == "Child Two"
+    assert len(pool_out["candidate_pool"]) == 1
+    assert pool_out["candidate_pool"][0]["duration"] == 20
+
+
+def test_pool_out_hub_branch_does_not_raise_when_winning_child_errored_mid_scan(monkeypatch):
+    # Real _scan_journeys_once returns early on a TflApiError (`return best,
+    # True`) *before* ever populating pool_out -- so a child whose scan finds
+    # a best journey on page 1 and then errors on page 2 still "wins" (has a
+    # non-None candidate) but leaves its pool_out == {} (no "query_params"
+    # key). find_frequent_destination_journey's contract is "never raises" --
+    # this must degrade to no pool stored, not raise KeyError.
+    children = [{"id": "910GCHILD1", "name": "Child One"}]
+    monkeypatch.setattr(tfl_client, "_hub_children", lambda hub_id, modes: children)
+
+    legs = [_leg("national-rail", "A", "910GA", "B", "910GB", duration=24, operator="Test Rail")]
+
+    def fake_scan_journeys(origin_lat, origin_lon, to_identifier, target_date, target_time, retry_on_empty=False, pool_out=None):
+        # pool_out deliberately left empty -- simulates the winning child
+        # erroring after already finding `best` on an earlier page.
+        return tfl_client._extract_journey(_journey(24, legs))
+
+    monkeypatch.setattr(tfl_client, "_scan_journeys", fake_scan_journeys)
+
+    pool_out = {}
+    result = tfl_client.find_frequent_destination_journey(
+        51.3, -0.5, "HUBTEST", dt.date(2026, 8, 17), dt.time(8, 30), pool_out=pool_out
+    )
+
+    assert result["duration_minutes"] == 24
+    assert pool_out == {}

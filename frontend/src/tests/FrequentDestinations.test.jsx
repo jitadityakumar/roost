@@ -255,6 +255,67 @@ describe("FrequentDestinations", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
+  it("shows a details arrow linking to the journey details page when a scan pool exists", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Office",
+        destination_type: "station",
+        day_of_week: 0,
+        day_label: "Monday",
+        time: "08:30",
+        station_name: "Paddington",
+        resolved: true,
+        duration_minutes: 24,
+        kind: "direct",
+        num_changes: 0,
+        operator: "South Western Railway",
+        origin_crs: "910GWOKING",
+        origin_name: "Woking",
+        arrival_name: "Paddington",
+        interchange_crs: null,
+        departure_time: "2026-08-17T08:40:00",
+        arrival_time: "2026-08-17T09:04:00",
+        journey_scan_pool_id: 42,
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByRole("link")).toBeInTheDocument());
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/journey-details/42");
+    expect(screen.getByRole("link")).toHaveAttribute("target", "_blank");
+  });
+
+  it("hides the details arrow when no scan pool exists for a resolved destination", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Office",
+        destination_type: "station",
+        day_of_week: 0,
+        day_label: "Monday",
+        time: "08:30",
+        station_name: "Paddington",
+        resolved: true,
+        duration_minutes: 24,
+        kind: "direct",
+        num_changes: 0,
+        operator: "South Western Railway",
+        origin_crs: "910GWOKING",
+        origin_name: "Woking",
+        arrival_name: "Paddington",
+        interchange_crs: null,
+        departure_time: "2026-08-17T08:40:00",
+        arrival_time: "2026-08-17T09:04:00",
+        journey_scan_pool_id: null,
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("recomputes journeys via the refresh button", async () => {
     api.listingDestinations.mockResolvedValue([]);
     api.refreshListingDestinations.mockResolvedValue([]);
