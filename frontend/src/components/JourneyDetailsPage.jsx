@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api.js";
-import { logoUrlForType } from "./networkLogos.js";
+import { logoUrlForType, walkingLogoUrl } from "./networkLogos.js";
 
 // Leg badges are keyed by TfL leg `mode.id` values (national-rail, tube,
 // walking, ...) -- a different key space than NearestStations.jsx's
@@ -65,11 +65,16 @@ function formatFetchedAt(isoString) {
 function Leg({ leg }) {
   const isWalk = leg.mode === "walking";
   const badge = legBadge(leg.mode);
-  const logoUrl = !isWalk && badge.rightmoveType ? logoUrlForType(badge.rightmoveType) : undefined;
+  const logoUrl = isWalk ? walkingLogoUrl() : badge.rightmoveType ? logoUrlForType(badge.rightmoveType) : undefined;
   return (
     <div className="jd-leg">
       {logoUrl ? (
-        <img className="jd-leg-badge jd-leg-badge-logo" src={logoUrl} alt="" title={leg.operator || undefined} />
+        <img
+          className={`jd-leg-badge jd-leg-badge-logo${isWalk ? " jd-leg-badge-logo-walk" : ""}`}
+          src={logoUrl}
+          alt=""
+          title={isWalk ? "Walk" : leg.operator || undefined}
+        />
       ) : (
         <span className={`jd-leg-badge${isWalk ? " jd-leg-badge-walk" : ""}`} style={isWalk ? undefined : { background: badge.bg }}>
           {isWalk ? "W" : badge.letter}

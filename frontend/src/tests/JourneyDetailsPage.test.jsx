@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import JourneyDetailsPage from "../components/JourneyDetailsPage.jsx";
 import { api } from "../api.js";
-import { logoUrlForType } from "../components/networkLogos.js";
+import { logoUrlForType, walkingLogoUrl } from "../components/networkLogos.js";
 
 vi.mock("../api.js", () => ({
   api: { journeyScanPool: vi.fn() },
@@ -13,8 +13,12 @@ vi.mock("../api.js", () => ({
 // Deterministic: exercise the letter-badge fallback regardless of whether
 // the gitignored real logo files happen to be present on the machine
 // running the tests, same precedent as NearestStations.test.jsx.
+// walkingLogoUrl is deliberately mocked too, even though walking.svg is
+// always committed in real builds, so this file's own "falls back to the
+// letter badge" test stays deterministic.
 vi.mock("../components/networkLogos.js", () => ({
   logoUrlForType: vi.fn(() => undefined),
+  walkingLogoUrl: vi.fn(() => undefined),
 }));
 
 function renderPage(poolId = "42") {
@@ -129,6 +133,32 @@ describe("JourneyDetailsPage", () => {
     // The tube leg still falls back to the letter badge since only
     // NATIONAL_TRAIN was mocked to have a logo.
     expect(screen.getByText("U")).toBeInTheDocument();
+  });
+
+  it("renders the walking icon for a walking leg when walkingLogoUrl resolves", async () => {
+    vi.mocked(walkingLogoUrl).mockReturnValue("/fake/walking.svg");
+    api.journeyScanPool.mockResolvedValue(samplePool());
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    await waitFor(() => expect(screen.getByText(/1 change/)).toBeInTheDocument());
+    await user.click(screen.getByText(/1 change/));
+
+    const logo = container.querySelector("img.jd-leg-badge-logo-walk");
+    expect(logo).toHaveAttribute("src", "/fake/walking.svg");
+    expect(screen.queryByText("W")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the letter badge for a walking leg when walkingLogoUrl resolves nothing", async () => {
+    vi.mocked(walkingLogoUrl).mockReturnValue(undefined);
+    api.journeyScanPool.mockResolvedValue(samplePool());
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/1 change/)).toBeInTheDocument());
+    await user.click(screen.getByText(/1 change/));
+
+    expect(screen.getByText("W")).toBeInTheDocument();
   });
 
   it("shows an empty state when the pool has no candidates", async () => {

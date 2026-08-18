@@ -25,3 +25,10 @@ export function logoUrlForType(type) {
   const filename = LOGO_FILES[type];
   return filename ? LOGO_MODULES[`../assets/network-logos/${filename}`] : undefined;
 }
+
+// walking.svg (unlike every other file in this directory) is committed to
+// the repo -- CC0/public-domain, no trademark restriction -- so this always
+// resolves, on a fresh clone or the public build included.
+export function walkingLogoUrl() {
+  return LOGO_MODULES["../assets/network-logos/walking.svg"];
+}
