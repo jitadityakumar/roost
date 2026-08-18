@@ -188,7 +188,7 @@ def test_patch_while_a_backfill_is_already_running_is_queued_not_dropped(client,
     first_call_release = threading.Event()
     calls = []
 
-    def find_journey(lat, lon, to_identifier, target_date, target_time):
+    def find_journey(lat, lon, to_identifier, target_date, target_time, **kwargs):
         calls.append(target_time)
         if len(calls) == 1:
             first_call_release.wait(timeout=2.0)
