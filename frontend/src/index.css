@@ -722,3 +722,60 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .destination-route { text-align: right; }
 .destination-unresolved { color: var(--muted); font-size: 0.85rem; font-style: italic; margin-top: 0.2rem; }
 .destination-line3 { margin-top: 0.25rem; font-size: 0.82rem; }
+.destination-details-link { margin-left: 0.4rem; color: var(--accent); text-decoration: none; }
+.destination-details-link:hover { text-decoration: underline; }
+
+/* Journey details page -- issue #59 */
+.journey-details-page { max-width: 700px; margin: 0 auto; }
+.jd-header {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1rem;
+}
+.jd-header h2 { margin: 0 0 0.5rem; }
+.jd-header-meta { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-size: 0.85rem; color: var(--muted); }
+.jd-header-meta strong { color: var(--fg); font-weight: 600; }
+
+.jd-candidates { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.jd-candidate { border-bottom: 1px solid var(--border); }
+.jd-candidate:last-child { border-bottom: none; }
+.jd-candidate summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.9rem;
+}
+.jd-candidate summary::-webkit-details-marker { display: none; }
+.jd-candidate summary:hover { background: color-mix(in srgb, var(--muted) 8%, transparent); }
+.jd-candidate-time { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jd-candidate-meta { color: var(--muted); font-size: 0.82rem; }
+.jd-chevron { color: var(--muted); transition: transform 0.15s ease; flex-shrink: 0; }
+.jd-candidate[open] .jd-chevron { transform: rotate(90deg); }
+
+.jd-legs { padding: 0 0.9rem 0.7rem; border-left: 2px solid var(--border); margin: 0 0.9rem 0.6rem; }
+.jd-leg { display: grid; grid-template-columns: 1.7rem 1fr auto; gap: 0.7rem; align-items: center; padding: 0.4rem 0; }
+.jd-leg-badge {
+  width: 1.7rem; height: 1.7rem;
+  border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 0.78rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+.jd-leg-badge-walk { background: transparent; color: var(--muted); border: 1.5px dashed var(--border); }
+.jd-leg-info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.jd-leg-op { font-size: 0.85rem; font-weight: 500; }
+.jd-leg-route { font-size: 0.76rem; color: var(--muted); }
+.jd-leg-time { text-align: right; display: flex; flex-direction: column; gap: 0.1rem; flex-shrink: 0; }
+.jd-leg-clock { font-size: 0.8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jd-leg-dur { font-size: 0.72rem; color: var(--muted); }
+.jd-change { display: flex; align-items: center; gap: 0.4rem; padding: 0.1rem 0 0.1rem 2.4rem; font-size: 0.72rem; color: var(--warn); }
+
+.jd-footer { margin-top: 1rem; padding: 0.8rem 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.3rem; }
+.jd-footer-row { display: flex; justify-content: space-between; gap: 0.8rem; font-size: 0.78rem; }
+.jd-footer-label { color: var(--muted); }
+.jd-footer-val { font-weight: 500; text-align: right; word-break: break-word; }

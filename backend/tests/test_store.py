@@ -124,10 +124,17 @@ def test_delete_listing_cascades_station_walk_distances_and_destination_journeys
             "departure_time": "08:40:00",
             "arrival_time": "09:04:00",
         },
+        {
+            "query_params": {"journeyPreference": "LeastInterchange", "mode": "national-rail", "date": "20260824", "time": "0830", "to_identifier": "910GPADTON"},
+            "candidate_pool": [{"startDateTime": "2026-08-17T08:40:00"}],
+        },
     )
 
+    # Must not raise IntegrityError -- journey_scan_pools has a non-cascading
+    # NOT NULL FK on listings(id) (issue #59).
     store.delete_listing(listing_id)
 
     assert store.get_listing(listing_id) is None
     assert walk_store.get_walk_distances(listing_id) == {}
     assert destination_journey_store.get_journeys(listing_id) == {}
+    assert destination_journey_store.get_scan_pool_ids(listing_id) == {}

@@ -494,6 +494,7 @@ def find_frequent_destination_journey(
     target_date: "dt.date",
     target_time: "dt.time",
     retry_on_empty: bool = False,
+    pool_out: dict | None = None,
 ) -> dict | None:
     """Best (fastest) journey from a listing's raw lat/lon to `to_identifier`
     (a TfL StopPoint id or a raw UK postcode -- TfL's `to` accepts either
@@ -545,9 +546,18 @@ def find_frequent_destination_journey(
         if not children:
             return None
         best = None
+        best_pool: dict | None = None
+        best_child_name = None
         for child in children:
+            child_pool: dict = {}
             candidate = _scan_journeys(
-                origin_lat, origin_lon, child["id"], target_date, target_time, retry_on_empty=retry_on_empty
+                origin_lat,
+                origin_lon,
+                child["id"],
+                target_date,
+                target_time,
+                retry_on_empty=retry_on_empty,
+                pool_out=child_pool,
             )
             if candidate is not None and (
                 best is None
@@ -555,9 +565,16 @@ def find_frequent_destination_journey(
                 < (best["num_changes"], best["duration_minutes"])
             ):
                 best = candidate
+                best_pool = child_pool
+                best_child_name = child.get("name")
+        if pool_out is not None and best_pool is not None:
+            best_pool["query_params"]["to_name"] = best_child_name
+            pool_out.update(best_pool)
         return best
 
-    return _scan_journeys(origin_lat, origin_lon, to_identifier, target_date, target_time, retry_on_empty=retry_on_empty)
+    return _scan_journeys(
+        origin_lat, origin_lon, to_identifier, target_date, target_time, retry_on_empty=retry_on_empty, pool_out=pool_out
+    )
 
 
 def _scan_journeys(
@@ -567,6 +584,7 @@ def _scan_journeys(
     target_date: "dt.date",
     target_time: "dt.time",
     retry_on_empty: bool = False,
+    pool_out: dict | None = None,
 ) -> dict | None:
     """The actual windowed scan against one concrete `to_identifier` (never
     a HUB id -- find_frequent_destination_journey resolves those first).
@@ -584,7 +602,9 @@ def _scan_journeys(
     "TfL responded but genuinely found nothing" flakiness this exists for."""
     attempts = 1 + (_EMPTY_RESULT_RETRIES if retry_on_empty else 0)
     for attempt in range(attempts):
-        best, errored = _scan_journeys_once(origin_lat, origin_lon, to_identifier, target_date, target_time)
+        best, errored = _scan_journeys_once(
+            origin_lat, origin_lon, to_identifier, target_date, target_time, pool_out=pool_out
+        )
         if best is not None or errored:
             return best
         if attempt < attempts - 1:
@@ -605,6 +625,7 @@ def _scan_journeys_once(
     to_identifier: str,
     target_date: "dt.date",
     target_time: "dt.time",
+    pool_out: dict | None = None,
 ) -> tuple[dict | None, bool]:
     """One full windowed scan (up to _MAX_JOURNEY_SCAN_PAGES pages), same
     behavior as the pre-#54 _scan_journeys. Returns (best, errored) --
@@ -617,6 +638,8 @@ def _scan_journeys_once(
     query_date, query_time = target_date, target_time
     origin = f"{origin_lat},{origin_lon}"
     best = None
+    seen_keys: set[tuple] = set()
+    candidates: list[dict] = []
 
     for _ in range(_MAX_JOURNEY_SCAN_PAGES):
         params = {
@@ -656,6 +679,11 @@ def _scan_journeys_once(
                 < (best["num_changes"], best["duration_minutes"])
             ):
                 best = extracted
+            if pool_out is not None and extracted is not None:
+                key = (journey.get("startDateTime"), journey.get("arrivalDateTime"), journey.get("duration"))
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    candidates.append(journey)
             if departure_dt is not None and (max_departure is None or departure_dt > max_departure):
                 max_departure = departure_dt
 
@@ -663,5 +691,15 @@ def _scan_journeys_once(
             break
         next_query = max_departure + dt.timedelta(minutes=1)
         query_date, query_time = next_query.date(), next_query.time()
+
+    if pool_out is not None and best is not None:
+        pool_out["query_params"] = {
+            "journeyPreference": "LeastInterchange",
+            "mode": _DESTINATION_SEARCH_MODES,
+            "date": target_date.strftime("%Y%m%d"),
+            "time": target_time.strftime("%H%M"),
+            "to_identifier": to_identifier,
+        }
+        pool_out["candidate_pool"] = candidates
 
     return best, False

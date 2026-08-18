@@ -2,6 +2,7 @@ const BASE = "/api/listings";
 const STANDARDS_BASE = "/api/standards/rules";
 const CRIME_BASELINES_BASE = "/api/crime/baselines";
 const DESTINATIONS_BASE = "/api/destinations";
+const JOURNEY_SCAN_POOLS_BASE = "/api/journey-scan-pools";
 
 async function requestFrom(base, path, options) {
   const res = await fetch(`${base}${path}`, {
@@ -57,4 +58,6 @@ export const api = {
 
   listingDestinations: (id) => request(`/${id}/destinations`),
   refreshListingDestinations: (id) => request(`/${id}/destinations/refresh`, { method: "POST" }),
+
+  journeyScanPool: (poolId) => requestFrom(JOURNEY_SCAN_POOLS_BASE, `/${poolId}`),
 };

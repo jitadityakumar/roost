@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/listings", tags=["destinations"])
 _DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _serialize(destination: dict, journeys: dict, home_journeys: dict) -> dict:
+def _serialize(destination: dict, journeys: dict, home_journeys: dict, scan_pool_ids: dict) -> dict:
     journey = journeys.get(destination["id"])
     out = {
         "destination_id": destination["id"],
@@ -35,6 +35,7 @@ def _serialize(destination: dict, journeys: dict, home_journeys: dict) -> dict:
                 "departure_time": journey["departure_time"],
                 "arrival_time": journey["arrival_time"],
                 "computed_at": journey["computed_at"],
+                "journey_scan_pool_id": scan_pool_ids.get(destination["id"]),
             }
         )
         # Live diff, not stored -- computed fresh from each side's own
@@ -62,7 +63,8 @@ def get_destinations(listing_id: int):
     _listing_or_404(listing_id)
     journeys = journey_store.get_journeys(listing_id)
     home_journeys = journey_store.get_home_journeys()
-    return [_serialize(d, journeys, home_journeys) for d in store.list_destinations() if d["enabled"]]
+    scan_pool_ids = journey_store.get_scan_pool_ids(listing_id)
+    return [_serialize(d, journeys, home_journeys, scan_pool_ids) for d in store.list_destinations() if d["enabled"]]
 
 
 @router.post("/{listing_id}/destinations/refresh", status_code=202)
@@ -72,4 +74,5 @@ def refresh_destinations(listing_id: int):
     compute.compute_for_listing(listing_id, serialized.get("latitude"), serialized.get("longitude"))
     journeys = journey_store.get_journeys(listing_id)
     home_journeys = journey_store.get_home_journeys()
-    return [_serialize(d, journeys, home_journeys) for d in store.list_destinations() if d["enabled"]]
+    scan_pool_ids = journey_store.get_scan_pool_ids(listing_id)
+    return [_serialize(d, journeys, home_journeys, scan_pool_ids) for d in store.list_destinations() if d["enabled"]]

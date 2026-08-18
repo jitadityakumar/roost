@@ -307,3 +307,109 @@ def test_compute_for_destination_also_computes_home_journey(monkeypatch):
     compute.compute_for_destination(d["id"])
 
     assert journey_store.get_home_journeys()[d["id"]]["duration_minutes"] == 42
+
+
+# --- pool threading (issue #59) -----------------------------------------
+
+_POOL = {
+    "query_params": {"journeyPreference": "LeastInterchange", "mode": "national-rail", "date": "20260824", "time": "0830", "to_identifier": "910GPADTON"},
+    "candidate_pool": [{"startDateTime": "2026-08-17T08:40:00"}],
+}
+
+
+def _fake_journey_with_pool(*a, **k):
+    pool_out = k.get("pool_out")
+    if pool_out is not None:
+        pool_out.update(_POOL)
+    return _journey(24)
+
+
+def test_journey_row_returns_row_and_pool(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", _fake_journey_with_pool)
+
+    row, pool = compute._journey_row(d, LAT, LON)
+
+    assert row["duration_minutes"] == 24
+    assert pool == _POOL
+
+
+def test_journey_row_pool_is_none_when_scan_populates_nothing(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _journey(24))
+
+    row, pool = compute._journey_row(d, LAT, LON)
+
+    assert row is not None
+    assert pool is None
+
+
+def test_journey_row_returns_none_none_when_no_lat_lon():
+    d = _create_destination()
+    assert compute._journey_row(d, None, None) == (None, None)
+
+
+def test_compute_for_listing_stores_pool_alongside_journey(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", _fake_journey_with_pool)
+
+    compute.compute_for_listing(1, LAT, LON)
+
+    pool = journey_store.get_scan_pool(journey_store.get_scan_pool_ids(1)[d["id"]])
+    assert pool["query_params"]["to_identifier"] == "910GPADTON"
+    assert len(pool["candidate_pool"]) == 1
+
+
+def test_compute_for_listing_no_lat_lon_clears_existing_pool(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", _fake_journey_with_pool)
+    compute.compute_for_listing(1, LAT, LON)
+    assert journey_store.get_scan_pool_ids(1) != {}
+
+    compute.compute_for_listing(1, None, None)
+
+    assert journey_store.get_scan_pool_ids(1) == {}
+
+
+def test_compute_for_listing_disabled_destination_has_no_pool(monkeypatch):
+    d = _create_destination()
+    store.update_destination(d["id"], enabled=False)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", _fake_journey_with_pool)
+
+    compute.compute_for_listing(1, LAT, LON)
+
+    assert journey_store.get_scan_pool_ids(1) == {}
+
+
+def test_compute_for_destination_stores_pool_via_replace_single(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", _fake_journey_with_pool)
+
+    compute.compute_for_destination(d["id"])
+
+    pool = journey_store.get_scan_pool(journey_store.get_scan_pool_ids(1)[d["id"]])
+    assert pool["query_params"]["to_identifier"] == "910GPADTON"
+
+
+def test_compute_for_destination_disabled_clears_pool(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", _fake_journey_with_pool)
+    compute.compute_for_destination(d["id"])
+    assert journey_store.get_scan_pool_ids(1) != {}
+
+    store.update_destination(d["id"], enabled=False)
+    d = next(dd for dd in store.list_destinations() if dd["id"] == d["id"])
+    compute.compute_for_destination(d["id"])
+
+    assert journey_store.get_scan_pool_ids(1) == {}
+
+
+def test_compute_home_journey_never_touches_scan_pools(monkeypatch):
+    d = _create_destination()
+    monkeypatch.setattr(config, "HOME_LAT", 51.465)
+    monkeypatch.setattr(config, "HOME_LON", -0.2407)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", _fake_journey_with_pool)
+
+    compute.compute_home_journey(d)
+
+    assert journey_store.get_scan_pool_ids(1) == {}

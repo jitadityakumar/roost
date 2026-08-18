@@ -73,7 +73,7 @@ def next_occurrence(day_of_week: int, time_str: str, now: dt.datetime | None = N
 
 def _journey_row(
     destination: dict, latitude: float | None, longitude: float | None, retry_on_empty: bool = False
-) -> dict | None:
+) -> tuple[dict | None, dict | None]:
     """Best journey to `destination` from (latitude, longitude), as a
     destination_journeys row dict -- or None if the destination has no
     tfl_identifier yet, the listing has no resolved lat/lon, or TfL found no
@@ -85,25 +85,36 @@ def _journey_row(
     `retry_on_empty` (issue #54) is passed straight through to
     find_frequent_destination_journey -- see its docstring. Only
     compute_for_destination (backfills) opts in; compute_for_listing (scrape
-    pipeline + the interactive recompute button) doesn't."""
+    pipeline + the interactive recompute button) doesn't.
+
+    Returns `(row, pool)` (issue #59) -- `pool` is the raw candidate journey
+    pool behind the pick (`{"query_params", "candidate_pool"}`), or None
+    when there's no row to attach one to."""
     if latitude is None or longitude is None:
-        return None
+        return None, None
     tfl_identifier = destination.get("tfl_identifier")
     if not tfl_identifier:
-        return None
+        return None, None
 
     target = next_occurrence(destination["day_of_week"], destination["time"])
+    pool_holder: dict = {}
     journey = find_frequent_destination_journey(
-        latitude, longitude, tfl_identifier, target.date(), target.time(), retry_on_empty=retry_on_empty
+        latitude,
+        longitude,
+        tfl_identifier,
+        target.date(),
+        target.time(),
+        retry_on_empty=retry_on_empty,
+        pool_out=pool_holder,
     )
     if journey is None:
-        return None
+        return None, None
 
     # journey's keys (duration_minutes, kind, num_changes, operator,
     # origin_crs, origin_name, arrival_name, interchange_crs,
     # departure_time, arrival_time) already match journey_store's row shape
     # 1:1 -- see tfl_client.py::_extract_journey.
-    return {"destination_id": destination["id"], **journey}
+    return {"destination_id": destination["id"], **journey}, (pool_holder or None)
 
 
 def compute_home_journey(destination: dict) -> None:
@@ -119,7 +130,7 @@ def compute_home_journey(destination: dict) -> None:
     if not destination["enabled"] or config.HOME_LAT is None or config.HOME_LON is None:
         journey_store.delete_home_journey(destination["id"])
         return
-    row = _journey_row(destination, config.HOME_LAT, config.HOME_LON, retry_on_empty=True)
+    row, _pool = _journey_row(destination, config.HOME_LAT, config.HOME_LON, retry_on_empty=True)
     journey_store.set_home_journey(destination["id"], row)
 
 
@@ -136,15 +147,15 @@ def compute_for_listing(listing_id: int, latitude: float | None, longitude: floa
         journey_store.replace_journeys(listing_id, [])
         return
 
-    rows = []
+    entries = []
     for destination in store.list_destinations():
         if not destination["enabled"]:
             continue
-        row = _journey_row(destination, latitude, longitude)
+        row, pool = _journey_row(destination, latitude, longitude)
         if row is not None:
-            rows.append(row)
+            entries.append((row, pool))
 
-    journey_store.replace_journeys(listing_id, rows)
+    journey_store.replace_journeys(listing_id, entries)
 
 
 def compute_for_destination(destination_id: int) -> None:
@@ -185,10 +196,10 @@ def compute_for_destination(destination_id: int) -> None:
                 journey_store.delete_for_destination(listing_id, destination_id)
             else:
                 serialized = serialize_listing(listing)
-                row = _journey_row(
+                row, pool = _journey_row(
                     destination, serialized.get("latitude"), serialized.get("longitude"), retry_on_empty=True
                 )
-                journey_store.replace_single(listing_id, destination_id, row)
+                journey_store.replace_single(listing_id, destination_id, row, pool)
             backfill_status.increment(destination_id)
     except Exception:
         backfill_status.finish(destination_id, "failed")

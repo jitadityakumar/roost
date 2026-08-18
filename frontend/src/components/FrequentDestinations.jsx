@@ -45,6 +45,16 @@ function DestinationRow({ destination, refreshing }) {
           <span className="destination-target">
             · {destination.day_label.slice(0, 3)} {destination.time}
           </span>
+          {destination.journey_scan_pool_id != null && (
+            <a
+              className="destination-details-link"
+              href={`/journey-details/${destination.journey_scan_pool_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ↗
+            </a>
+          )}
         </span>
         <span className="destination-duration good">
           {refreshing ? (
