@@ -13,9 +13,18 @@ def test_create_listing_creates_stub_and_enqueues_job(client):
     assert body["id"] == 123456789
     assert body["extraction_status"] in ("queued", "running", "done")
     assert body["pipeline_status"] == "queued"
+    assert body["already_tracked"] is False
 
     jobs = queue.get_jobs_for_listing(123456789)
     assert any(j["job_type"] == "rightmove_extract" for j in jobs)
+
+
+def test_create_listing_flags_already_tracked_on_resubmit(client):
+    client.post("/api/listings", json={"url": VALID_URL})
+    resp = client.post("/api/listings", json={"url": VALID_URL})
+
+    assert resp.status_code == 201
+    assert resp.json()["already_tracked"] is True
 
 
 def test_pipeline_status_is_none_for_listing_with_no_jobs(client):
