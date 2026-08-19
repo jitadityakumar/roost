@@ -21,9 +21,19 @@ export default function AddPage() {
 
       {added.length > 0 && (
         <ul className="added-list">
-          {added.map((listing) => (
-            <li key={listing.id}>
-              Added — <Link to={`/listings/${listing.id}`}>{listing.url}</Link>
+          {added.map((listing, index) => (
+            <li key={`${listing.id}-${index}`}>
+              {listing.already_tracked ? (
+                <>
+                  Note — <Link to={`/listings/${listing.id}`}>{listing.url}</Link>
+                  <br />
+                  This listing has already been added.
+                </>
+              ) : (
+                <>
+                  Added — <Link to={`/listings/${listing.id}`}>{listing.url}</Link>
+                </>
+              )}
             </li>
           ))}
         </ul>

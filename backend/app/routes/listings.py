@@ -115,7 +115,9 @@ def create_listing(body: CreateListingRequest):
     inserted = store.create_stub_listing(property_id, canonical)
     if inserted:
         queue.enqueue_job(property_id, "rightmove_extract", "http")
-    return _serialize_with_pipeline_status(store.get_listing(property_id))
+    out = _serialize_with_pipeline_status(store.get_listing(property_id))
+    out["already_tracked"] = not inserted
+    return out
 
 
 @router.get("")
