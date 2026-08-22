@@ -205,20 +205,36 @@ def handle_rightmove_extract(job: dict) -> None:
         # shape as broadband above. Outcode-only postcodes (rare, incode
         # missing) are excluded by the `postcode` build above already being
         # None in that case.
+        #
+        # postcode is a sticky EDITABLE_FIELDS entry -- once hand-edited,
+        # apply_extracted_fields below will keep the *stored* postcode
+        # forever and silently discard this scrape's `postcode` value. If
+        # we resolved against the scraped value regardless, every future
+        # re-scrape would overwrite admin_district with whatever Rightmove
+        # currently reports, permanently out of sync with the postcode the
+        # listing actually displays. Resolve against the listing's current
+        # (possibly hand-edited) postcode instead whenever it's sticky --
+        # this also self-heals any listing whose postcode was hand-edited
+        # before this resolution existed at all.
         old_postcode = listing.get("postcode")
+        edited_fields = json.loads(listing.get("edited_fields") or "{}")
+        postcode_is_sticky = "postcode" in edited_fields
+        postcode_to_resolve = old_postcode if postcode_is_sticky else postcode
         try:
-            resolved = lookup_postcode(postcode)
+            resolved = lookup_postcode(postcode_to_resolve) if postcode_to_resolve else None
         except Exception:
             resolved = None  # nice-to-have, don't fail the job over it
         if resolved:
             fields["admin_district"] = resolved["admin_district"]
             fields["admin_district_gss"] = resolved["codes"]["admin_district"]
-        elif postcode != old_postcode:
+        elif not postcode_is_sticky and postcode != old_postcode:
             # Postcode changed and the new one didn't resolve -- clear the
             # stale council rather than silently keeping the old (now
-            # wrong) one attached. If postcode is unchanged, leave whatever
-            # is already stored alone (this call's own network hiccup
-            # shouldn't null out an otherwise-valid resolution).
+            # wrong) one attached. If postcode is unchanged (or sticky --
+            # in which case we're always resolving the same postcode as
+            # last time), leave whatever is already stored alone (this
+            # call's own network hiccup shouldn't null out an otherwise-
+            # valid resolution).
             fields["admin_district"] = None
             fields["admin_district_gss"] = None
 

@@ -36,6 +36,17 @@ def test_list_councils_merges_listing_and_rates_rows_for_the_same_council():
     assert councils[0]["band_a"] == 1200
 
 
+def test_list_councils_dedupes_listings_sharing_a_gss_with_different_names():
+    # A council rename between scrapes (or a stale row) shouldn't produce
+    # two rows for what is really one council -- grouping must be by GSS
+    # alone, not by the (gss, name) pair.
+    _listing(1, postcode="SM1 2AB", gss="E00000001", district="Sampleton")
+    _listing(2, postcode="SM2 3CD", gss="E00000001", district="Sampleton Borough")
+    councils = store.list_councils()
+    assert len(councils) == 1
+    assert councils[0]["gss_code"] == "E00000001"
+
+
 def test_list_councils_name_falls_back_to_listing_admin_district_when_no_rate_row():
     _listing(1, district="Listing-Derived Name")
     councils = store.list_councils()

@@ -277,22 +277,31 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
         unknown = set(body.fields) - EDITABLE_FIELDS
         if unknown:
             raise HTTPException(status_code=422, detail=f"non-editable field(s): {sorted(unknown)}")
-        edit_fields = dict(body.fields)
-        # postcode is EDITABLE_FIELDS (sticky once hand-edited), which means
-        # handle_rightmove_extract's own council resolution will keep
-        # re-resolving the *scraped* postcode forever once it's overridden
-        # here -- so a manual postcode edit must trigger the same
-        # resolution inline, bypassing the sticky check entirely since this
-        # write is a direct consequence of the just-accepted manual edit,
-        # not a scrape (issue #60).
-        if "postcode" in edit_fields:
+        store.apply_manual_edit(listing_id, body.fields)
+        # postcode is EDITABLE_FIELDS (sticky once hand-edited) -- resolve
+        # the council for it immediately rather than waiting for the next
+        # scrape (handlers.py's own resolution already resolves against the
+        # stored/sticky postcode once one exists, see its docstring, but
+        # that only runs on a scrape, which may never happen again for this
+        # listing). Written via apply_extracted_fields(from_scrape=False),
+        # NOT folded into the apply_manual_edit call above -- that would
+        # mark admin_district itself sticky and stop it from ever being
+        # refreshed by a later scrape, contradicting the "always overwrite
+        # freely" derived-field design (issue #60).
+        if "postcode" in body.fields:
+            postcode = body.fields["postcode"]
             try:
-                resolved = lookup_postcode(edit_fields["postcode"]) if edit_fields["postcode"] else None
+                resolved = lookup_postcode(postcode) if postcode else None
             except Exception:
                 resolved = None
-            edit_fields["admin_district"] = resolved["admin_district"] if resolved else None
-            edit_fields["admin_district_gss"] = resolved["codes"]["admin_district"] if resolved else None
-        store.apply_manual_edit(listing_id, edit_fields)
+            store.apply_extracted_fields(
+                listing_id,
+                {
+                    "admin_district": resolved["admin_district"] if resolved else None,
+                    "admin_district_gss": resolved["codes"]["admin_district"] if resolved else None,
+                },
+                from_scrape=False,
+            )
 
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 

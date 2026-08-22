@@ -85,9 +85,16 @@ function CouncilRow({ council, onSave, onClear }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  // Keyed on the actual band values (not the `council` object reference) --
+  // loadCouncilTax() replaces the whole councils array on every save, which
+  // gives every row a new object identity even when its own data didn't
+  // change. Depending on `council` directly would reset this row's
+  // unsaved, in-progress edits any time a *different* row was saved.
+  const bandsKey = BAND_COLUMNS.map((col) => council[col]).join("|");
   useEffect(() => {
     setBands(Object.fromEntries(BAND_COLUMNS.map((col) => [col, council[col] ?? ""])));
-  }, [council]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bandsKey]);
 
   const needsRates = councilNeedsRates(council);
 

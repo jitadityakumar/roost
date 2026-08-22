@@ -33,9 +33,17 @@ def list_councils() -> list[dict]:
     rates row yet shows every band as None (the "needs rates" case)."""
     conn = get_connection()
     try:
+        # GROUP BY gss (not DISTINCT (gss, name)) -- two listings resolved
+        # to the same GSS could carry slightly different admin_district
+        # text (a council renamed between scrapes, or a NULL from an old
+        # row), and DISTINCT over the pair would surface duplicate rows for
+        # what is really one council (duplicate React keys downstream, and
+        # saving one duplicate silently doesn't affect the other). Any one
+        # listing's name is an equally valid display fallback -- MAX just
+        # picks one deterministically.
         listing_rows = conn.execute(
-            "SELECT DISTINCT admin_district_gss AS gss, admin_district AS name "
-            "FROM listings WHERE admin_district_gss IS NOT NULL"
+            "SELECT admin_district_gss AS gss, MAX(admin_district) AS name "
+            "FROM listings WHERE admin_district_gss IS NOT NULL GROUP BY admin_district_gss"
         ).fetchall()
         rate_rows = conn.execute("SELECT * FROM council_tax_rates").fetchall()
         rates_by_gss = {r["gss_code"]: dict(r) for r in rate_rows}

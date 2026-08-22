@@ -200,6 +200,52 @@ def test_handle_rightmove_extract_keeps_council_when_postcode_unchanged_and_look
     assert listing["admin_district_gss"] == "E00000042"
 
 
+def test_handle_rightmove_extract_resolves_against_sticky_postcode_not_scraped_one(
+    listing_id, monkeypatch
+):
+    # A hand-edited postcode is sticky -- apply_extracted_fields will never
+    # overwrite it with the scraped "SM1 2AB" fixture value. Resolution must
+    # follow the same rule: resolving against the scraped value here would
+    # leave admin_district permanently out of sync with the postcode the
+    # listing actually displays, forever, on every future re-scrape. This
+    # also covers a listing whose postcode was hand-edited before this
+    # resolution existed at all (no admin_district in edited_fields yet).
+    store.apply_manual_edit(listing_id, {"postcode": "EDITED 9ZZ"})
+    calls = []
+
+    def fake_lookup(postcode):
+        calls.append(postcode)
+        return {"admin_district": "Edited Council", "codes": {"admin_district": "E00000077"}}
+
+    monkeypatch.setattr(handlers, "lookup_postcode", fake_lookup)
+
+    handlers.handle_rightmove_extract(_job(listing_id))  # scrapes "SM1 2AB"
+
+    assert calls == ["EDITED 9ZZ"]
+    listing = store.get_listing(listing_id)
+    assert listing["postcode"] == "EDITED 9ZZ"  # unchanged -- sticky
+    assert listing["admin_district"] == "Edited Council"
+    assert listing["admin_district_gss"] == "E00000077"
+
+
+def test_handle_rightmove_extract_keeps_council_on_transient_failure_with_sticky_postcode(
+    listing_id, monkeypatch
+):
+    store.apply_manual_edit(listing_id, {"postcode": "EDITED 9ZZ"})
+    store.apply_extracted_fields(
+        listing_id,
+        {"admin_district": "Existing Council", "admin_district_gss": "E00000042"},
+        from_scrape=False,
+    )
+    monkeypatch.setattr(handlers, "lookup_postcode", lambda postcode: None)
+
+    handlers.handle_rightmove_extract(_job(listing_id))  # scrapes "SM1 2AB" (irrelevant -- sticky)
+
+    listing = store.get_listing(listing_id)
+    assert listing["admin_district"] == "Existing Council"
+    assert listing["admin_district_gss"] == "E00000042"
+
+
 def test_handle_rightmove_extract_marks_failed_on_fetch_error(listing_id, monkeypatch):
     def boom(url):
         raise RuntimeError("network unreachable")

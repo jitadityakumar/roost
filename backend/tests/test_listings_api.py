@@ -274,6 +274,12 @@ def test_patch_postcode_re_resolves_council(client, monkeypatch):
     assert body["postcode"] == "NW1 7JN"
     assert body["admin_district"] == "New Council"
     assert body["admin_district_gss"] == "E00000042"
+    # admin_district itself must NOT become sticky (edited_fields should
+    # only contain the field the user actually edited) -- it's a derived
+    # field that a later scrape should still be free to refresh against
+    # this same (now sticky) postcode.
+    assert "admin_district" not in body["edited_fields"]
+    assert "postcode" in body["edited_fields"]
 
 
 def test_patch_postcode_clears_council_when_unresolvable(client, monkeypatch):

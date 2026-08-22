@@ -57,7 +57,7 @@ def _throttled_get(
 
 
 def geocode_postcode(postcode: str) -> tuple[float, float]:
-    data = _throttled_get(POSTCODES_IO.format(urllib.parse.quote(normalize_postcode(postcode))))
+    data = _throttled_get(POSTCODES_IO.format(urllib.parse.quote(normalize_postcode(postcode), safe="")))
     result = data.get("result")
     if not result:
         raise CrimeApiError(f"postcode not found: {postcode!r}")
@@ -73,7 +73,7 @@ def lookup_postcode(postcode: str) -> dict | None:
     doesn't recognise (404) rather than raising -- callers treat this as a
     best-effort resolution, same as the broadband lookup in handlers.py."""
     data = _throttled_get(
-        POSTCODES_IO.format(urllib.parse.quote(normalize_postcode(postcode))), treat_404_as_none=True
+        POSTCODES_IO.format(urllib.parse.quote(normalize_postcode(postcode), safe="")), treat_404_as_none=True
     )
     result = (data or {}).get("result") if data else None
     if not result:

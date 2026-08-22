@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -508,6 +508,44 @@ describe("AdminPage council tax rates", () => {
         band_g: null,
         band_h: null,
       })
+    );
+  });
+
+  it("preserves another row's unsaved edits when a different row is saved", async () => {
+    const councilA = {
+      gss_code: "E00000001",
+      council_name: "Sampleton",
+      band_a: null, band_b: null, band_c: null, band_d: 2340,
+      band_e: null, band_f: null, band_g: null, band_h: null,
+    };
+    const councilB = {
+      gss_code: "E00000002",
+      council_name: "Otherton",
+      band_a: null, band_b: null, band_c: null, band_d: null,
+      band_e: null, band_f: null, band_g: null, band_h: null,
+    };
+    api.standards.list.mockResolvedValue([]);
+    api.councilTax.list.mockResolvedValueOnce([councilA, councilB]);
+    // Refetch after saving councilA -- a brand new array/object for both
+    // rows, same shape as the real API always returning freshly-built rows.
+    api.councilTax.list.mockResolvedValueOnce([{ ...councilA, band_a: 1200 }, { ...councilB }]);
+    api.councilTax.update.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderAdmin();
+    await gotoPanel(user, "Council tax rates");
+
+    await waitFor(() => expect(screen.getByText("Sampleton")).toBeInTheDocument());
+    await user.click(screen.getByText("Sampleton"));
+    await user.click(screen.getByText("Otherton"));
+
+    // Type into Otherton's Band A, but only save Sampleton.
+    await user.type(within(screen.getByText("Otherton").closest(".council-row")).getByLabelText(/Band A/), "999");
+    await user.type(within(screen.getByText("Sampleton").closest(".council-row")).getByLabelText(/Band A/), "1200");
+    await user.click(within(screen.getByText("Sampleton").closest(".council-row")).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(api.councilTax.update).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(within(screen.getByText("Otherton").closest(".council-row")).getByLabelText(/Band A/)).toHaveValue(999)
     );
   });
 
