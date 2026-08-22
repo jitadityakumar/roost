@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from app.commute import walk_store
 from app.commute.tfl_client import TflApiError, compute_walk_distance, resolve_stop_point
 from app.config import MEDIA_DIR
+from app.crime.client import lookup_postcode
 from app.destinations.compute import compute_for_listing
 from app.jobs import llm_enqueue, llm_prompts, queue
 from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
@@ -199,6 +200,43 @@ def handle_rightmove_extract(job: dict) -> None:
             fields["broadband_top_speed_provider"] = summary.get("top_speed_provider")
         except Exception:
             pass  # broadband is a nice-to-have, not worth failing the job over
+
+        # Council resolution (issue #60), same postcode-derived, best-effort
+        # shape as broadband above. Outcode-only postcodes (rare, incode
+        # missing) are excluded by the `postcode` build above already being
+        # None in that case.
+        #
+        # postcode is a sticky EDITABLE_FIELDS entry -- once hand-edited,
+        # apply_extracted_fields below will keep the *stored* postcode
+        # forever and silently discard this scrape's `postcode` value. If
+        # we resolved against the scraped value regardless, every future
+        # re-scrape would overwrite admin_district with whatever Rightmove
+        # currently reports, permanently out of sync with the postcode the
+        # listing actually displays. Resolve against the listing's current
+        # (possibly hand-edited) postcode instead whenever it's sticky --
+        # this also self-heals any listing whose postcode was hand-edited
+        # before this resolution existed at all.
+        old_postcode = listing.get("postcode")
+        edited_fields = json.loads(listing.get("edited_fields") or "{}")
+        postcode_is_sticky = "postcode" in edited_fields
+        postcode_to_resolve = old_postcode if postcode_is_sticky else postcode
+        try:
+            resolved = lookup_postcode(postcode_to_resolve) if postcode_to_resolve else None
+        except Exception:
+            resolved = None  # nice-to-have, don't fail the job over it
+        if resolved:
+            fields["admin_district"] = resolved["admin_district"]
+            fields["admin_district_gss"] = resolved["codes"]["admin_district"]
+        elif not postcode_is_sticky and postcode != old_postcode:
+            # Postcode changed and the new one didn't resolve -- clear the
+            # stale council rather than silently keeping the old (now
+            # wrong) one attached. If postcode is unchanged (or sticky --
+            # in which case we're always resolving the same postcode as
+            # last time), leave whatever is already stored alone (this
+            # call's own network hiccup shouldn't null out an otherwise-
+            # valid resolution).
+            fields["admin_district"] = None
+            fields["admin_district_gss"] = None
 
     store.apply_extracted_fields(listing_id, fields)
     store.set_extraction_status(listing_id, "done")

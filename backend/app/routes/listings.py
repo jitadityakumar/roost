@@ -5,6 +5,8 @@ from pydantic import BaseModel
 
 from app.config import MEDIA_DIR
 from app.commute.walk_store import get_walk_distances, lookup_walk
+from app.counciltax import store as counciltax_store
+from app.crime.client import lookup_postcode
 from app.jobs import llm_enqueue, queue
 from app.jobs.handlers import compute_station_walk_distances
 from app.jobs.pipeline_status import derive_pipeline_status
@@ -55,6 +57,12 @@ def _serialize_with_pipeline_status(listing: dict) -> dict:
     out = serialize_listing(listing)
     out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
     _attach_walk_data(listing["id"], out)
+    # Live join, not a stored column -- computed here (not just in
+    # get_listing) so PATCH's response (e.g. editing council_tax_band)
+    # reflects the new estimate immediately too, issue #60.
+    out["council_tax_monthly_est"] = counciltax_store.monthly_estimate(
+        listing.get("admin_district_gss"), listing.get("council_tax_band")
+    )
     return out
 
 
@@ -270,6 +278,30 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
         if unknown:
             raise HTTPException(status_code=422, detail=f"non-editable field(s): {sorted(unknown)}")
         store.apply_manual_edit(listing_id, body.fields)
+        # postcode is EDITABLE_FIELDS (sticky once hand-edited) -- resolve
+        # the council for it immediately rather than waiting for the next
+        # scrape (handlers.py's own resolution already resolves against the
+        # stored/sticky postcode once one exists, see its docstring, but
+        # that only runs on a scrape, which may never happen again for this
+        # listing). Written via apply_extracted_fields(from_scrape=False),
+        # NOT folded into the apply_manual_edit call above -- that would
+        # mark admin_district itself sticky and stop it from ever being
+        # refreshed by a later scrape, contradicting the "always overwrite
+        # freely" derived-field design (issue #60).
+        if "postcode" in body.fields:
+            postcode = body.fields["postcode"]
+            try:
+                resolved = lookup_postcode(postcode) if postcode else None
+            except Exception:
+                resolved = None
+            store.apply_extracted_fields(
+                listing_id,
+                {
+                    "admin_district": resolved["admin_district"] if resolved else None,
+                    "admin_district_gss": resolved["codes"]["admin_district"] if resolved else None,
+                },
+                from_scrape=False,
+            )
 
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 

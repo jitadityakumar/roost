@@ -44,9 +44,10 @@ def sample_property_data():
 @pytest.fixture
 def mock_rightmove_network(monkeypatch, sample_property_data):
     """Stub out every network call the job handlers make (Rightmove page
-    fetch + broadband API + media downloads) with fixture data, so tests
-    never hit the real internet — mirrors mocking rightmove_extract at the
-    handlers boundary rather than touching the vendored scraper itself."""
+    fetch + broadband API + postcodes.io council lookup + media downloads)
+    with fixture data, so tests never hit the real internet — mirrors
+    mocking rightmove_extract at the handlers boundary rather than touching
+    the vendored scraper itself."""
     from app.jobs import handlers
 
     downloaded = []
@@ -79,10 +80,14 @@ def mock_rightmove_network(monkeypatch, sample_property_data):
         downloaded.append((prop, out_dir))
         return {"photos": 0, "floorplans": 0, "epc": 0}
 
+    def fake_lookup_postcode(postcode):
+        return {"admin_district": "Sampleton", "codes": {"admin_district": "E00000001"}}
+
     monkeypatch.setattr(handlers, "fetch_html", fake_fetch_html)
     monkeypatch.setattr(handlers, "resolve_page_model", fake_resolve_page_model)
     monkeypatch.setattr(handlers, "fetch_broadband_summary", fake_fetch_broadband_summary)
     monkeypatch.setattr(handlers, "download_media", fake_download_media)
+    monkeypatch.setattr(handlers, "lookup_postcode", fake_lookup_postcode)
 
     return downloaded
 

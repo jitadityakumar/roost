@@ -3,6 +3,7 @@ const STANDARDS_BASE = "/api/standards/rules";
 const CRIME_BASELINES_BASE = "/api/crime/baselines";
 const DESTINATIONS_BASE = "/api/destinations";
 const JOURNEY_SCAN_POOLS_BASE = "/api/journey-scan-pools";
+const COUNCIL_TAX_BASE = "/api/council-tax";
 
 async function requestFrom(base, path, options) {
   const res = await fetch(`${base}${path}`, {
@@ -60,4 +61,10 @@ export const api = {
   refreshListingDestinations: (id) => request(`/${id}/destinations/refresh`, { method: "POST" }),
 
   journeyScanPool: (poolId) => requestFrom(JOURNEY_SCAN_POOLS_BASE, `/${poolId}`),
+
+  councilTax: {
+    list: () => requestFrom(COUNCIL_TAX_BASE, ""),
+    update: (gss, body) => requestFrom(COUNCIL_TAX_BASE, `/${gss}`, { method: "PUT", body: JSON.stringify(body) }),
+    remove: (gss) => requestFrom(COUNCIL_TAX_BASE, `/${gss}`, { method: "DELETE" }),
+  },
 };

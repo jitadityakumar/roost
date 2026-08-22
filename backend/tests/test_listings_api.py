@@ -226,6 +226,76 @@ def test_patch_listing_applies_manual_edit_and_marks_sticky(client):
     assert "price_gbp" in body["edited_fields"]
 
 
+def test_get_listing_includes_council_tax_monthly_est(client):
+    from app.counciltax import store as counciltax_store
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(
+        1, {"admin_district": "Sampleton", "admin_district_gss": "E00000001", "council_tax_band": "D"}
+    )
+    counciltax_store.upsert_rates("E00000001", "Sampleton", {"band_d": 2340})
+
+    resp = client.get("/api/listings/1")
+    assert resp.json()["council_tax_monthly_est"] == 195
+    assert resp.json()["admin_district"] == "Sampleton"
+
+
+def test_get_listing_council_tax_monthly_est_null_without_rates(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.get("/api/listings/1")
+    assert resp.json()["council_tax_monthly_est"] is None
+
+
+def test_patch_council_tax_band_updates_estimate_without_reload(client):
+    from app.counciltax import store as counciltax_store
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(1, {"admin_district": "Sampleton", "admin_district_gss": "E00000001"})
+    counciltax_store.upsert_rates("E00000001", "Sampleton", {"band_d": 2340})
+
+    resp = client.patch("/api/listings/1", json={"fields": {"council_tax_band": "D"}})
+    assert resp.status_code == 200
+    assert resp.json()["council_tax_monthly_est"] == 195
+
+
+def test_patch_postcode_re_resolves_council(client, monkeypatch):
+    from app.routes import listings as listings_route
+
+    store.create_stub_listing(1, VALID_URL)
+    monkeypatch.setattr(
+        listings_route,
+        "lookup_postcode",
+        lambda postcode: {"admin_district": "New Council", "codes": {"admin_district": "E00000042"}},
+    )
+
+    resp = client.patch("/api/listings/1", json={"fields": {"postcode": "NW1 7JN"}})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["postcode"] == "NW1 7JN"
+    assert body["admin_district"] == "New Council"
+    assert body["admin_district_gss"] == "E00000042"
+    # admin_district itself must NOT become sticky (edited_fields should
+    # only contain the field the user actually edited) -- it's a derived
+    # field that a later scrape should still be free to refresh against
+    # this same (now sticky) postcode.
+    assert "admin_district" not in body["edited_fields"]
+    assert "postcode" in body["edited_fields"]
+
+
+def test_patch_postcode_clears_council_when_unresolvable(client, monkeypatch):
+    from app.routes import listings as listings_route
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(1, {"admin_district": "Old Council", "admin_district_gss": "E00000099"})
+    monkeypatch.setattr(listings_route, "lookup_postcode", lambda postcode: None)
+
+    resp = client.patch("/api/listings/1", json={"fields": {"postcode": "ZZ9 9ZZ"}})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["admin_district"] is None
+    assert body["admin_district_gss"] is None
+
+
 def test_patch_listing_toggles_user_status(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch("/api/listings/1", json={"user_status": "approved"})
