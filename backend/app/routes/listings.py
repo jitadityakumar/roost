@@ -5,6 +5,8 @@ from pydantic import BaseModel
 
 from app.config import MEDIA_DIR
 from app.commute.walk_store import get_walk_distances, lookup_walk
+from app.counciltax import store as counciltax_store
+from app.crime.client import lookup_postcode
 from app.jobs import llm_enqueue, queue
 from app.jobs.handlers import compute_station_walk_distances
 from app.jobs.pipeline_status import derive_pipeline_status
@@ -55,6 +57,12 @@ def _serialize_with_pipeline_status(listing: dict) -> dict:
     out = serialize_listing(listing)
     out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
     _attach_walk_data(listing["id"], out)
+    # Live join, not a stored column -- computed here (not just in
+    # get_listing) so PATCH's response (e.g. editing council_tax_band)
+    # reflects the new estimate immediately too, issue #60.
+    out["council_tax_monthly_est"] = counciltax_store.monthly_estimate(
+        listing.get("admin_district_gss"), listing.get("council_tax_band")
+    )
     return out
 
 
@@ -269,7 +277,22 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
         unknown = set(body.fields) - EDITABLE_FIELDS
         if unknown:
             raise HTTPException(status_code=422, detail=f"non-editable field(s): {sorted(unknown)}")
-        store.apply_manual_edit(listing_id, body.fields)
+        edit_fields = dict(body.fields)
+        # postcode is EDITABLE_FIELDS (sticky once hand-edited), which means
+        # handle_rightmove_extract's own council resolution will keep
+        # re-resolving the *scraped* postcode forever once it's overridden
+        # here -- so a manual postcode edit must trigger the same
+        # resolution inline, bypassing the sticky check entirely since this
+        # write is a direct consequence of the just-accepted manual edit,
+        # not a scrape (issue #60).
+        if "postcode" in edit_fields:
+            try:
+                resolved = lookup_postcode(edit_fields["postcode"]) if edit_fields["postcode"] else None
+            except Exception:
+                resolved = None
+            edit_fields["admin_district"] = resolved["admin_district"] if resolved else None
+            edit_fields["admin_district_gss"] = resolved["codes"]["admin_district"] if resolved else None
+        store.apply_manual_edit(listing_id, edit_fields)
 
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 

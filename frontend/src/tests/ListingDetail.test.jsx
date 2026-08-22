@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
@@ -75,6 +75,62 @@ describe("ListingDetail standards warning", () => {
 
     await waitFor(() => expect(screen.getByText(/View on Rightmove/)).toBeInTheDocument());
     expect(screen.queryByText("Doesn't meet your standards")).not.toBeInTheDocument();
+  });
+});
+
+describe("ListingDetail council tax rows", () => {
+  it("renders the estimate and council name as read-only rows", async () => {
+    api.get.mockResolvedValue(
+      baseListing({
+        council_tax_band: "D",
+        council_tax_monthly_est: 195,
+        admin_district: "Wandsworth",
+      })
+    );
+    renderDetail();
+
+    await waitFor(() => expect(screen.getByText("£195/mo")).toBeInTheDocument());
+    expect(screen.getByText("Wandsworth")).toBeInTheDocument();
+    // Neither derived row has an edit control -- editMode is off by default,
+    // but confirm there's no edit affordance even conceptually reachable:
+    // both fields are `editable: false` in FIELDS, unlike council_tax_band
+    // itself right above them.
+    expect(screen.queryByRole("button", { name: "✎" })).not.toBeInTheDocument();
+  });
+
+  it("shows an em dash for the estimate when no rate is set", async () => {
+    api.get.mockResolvedValue(baseListing({ council_tax_band: "D", council_tax_monthly_est: null }));
+    renderDetail();
+
+    await waitFor(() => expect(screen.getByText(/View on Rightmove/)).toBeInTheDocument());
+  });
+
+  it("updates the estimate after editing council_tax_band, without a reload", async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(
+      baseListing({ council_tax_band: "C", council_tax_monthly_est: 150, admin_district: "Wandsworth" })
+    );
+    api.patch.mockResolvedValue(
+      baseListing({ council_tax_band: "D", council_tax_monthly_est: 195, admin_district: "Wandsworth" })
+    );
+    renderDetail();
+
+    await waitFor(() => expect(screen.getByText("£150/mo")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    // council_tax_band is editable; the est./council rows next to it are
+    // not (no edit button) -- grab it by its row rather than assuming
+    // index stability among the page's other editable fields.
+    const bandRow = screen.getByText("Council tax band").closest(".field-row");
+    await user.click(within(bandRow).getByRole("button", { name: "✎" }));
+    await user.clear(within(bandRow).getByRole("textbox"));
+    await user.type(within(bandRow).getByRole("textbox"), "D");
+    await user.click(within(bandRow).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith("1", { fields: { council_tax_band: "D" } })
+    );
+    await waitFor(() => expect(screen.getByText("£195/mo")).toBeInTheDocument());
   });
 });
 

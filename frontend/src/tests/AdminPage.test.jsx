@@ -25,6 +25,11 @@ vi.mock("../api.js", () => ({
       searchStations: vi.fn(),
       backfillStatus: vi.fn(),
     },
+    councilTax: {
+      list: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn(),
+    },
   },
 }));
 
@@ -41,7 +46,12 @@ beforeEach(() => {
   api.crimeBaselines.list.mockResolvedValue([]);
   api.destinations.list.mockResolvedValue([]);
   api.destinations.backfillStatus.mockResolvedValue({ status: "idle", done: 0, total: 0 });
+  api.councilTax.list.mockResolvedValue([]);
 });
+
+async function gotoPanel(user, label) {
+  await user.click(screen.getByRole("button", { name: new RegExp(`^${label}`) }));
+}
 
 describe("AdminPage", () => {
   it("shows an empty state when there are no rules", async () => {
@@ -379,5 +389,153 @@ describe("AdminPage", () => {
     await user.click(screen.getByLabelText("Delete destination"));
 
     await waitFor(() => expect(api.destinations.remove).toHaveBeenCalledWith(1));
+  });
+
+  it("switches the visible panel via the sidebar nav without unmounting the destination poller", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.destinations.list.mockResolvedValue([
+      {
+        id: 1,
+        name: "Office",
+        destination_type: "station",
+        tfl_identifier: "910GPADTON",
+        station_name: "Paddington",
+        day_of_week: 0,
+        time: "08:30",
+        enabled: 1,
+      },
+    ]);
+    api.destinations.backfillStatus
+      .mockResolvedValueOnce({ status: "running", done: 3, total: 10 })
+      .mockResolvedValueOnce({ status: "running", done: 6, total: 10 });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByText(/Backfilling journeys… 30% \(3\/10\)/)).toBeInTheDocument());
+
+    await gotoPanel(user, "Council tax rates");
+    await waitFor(() => expect(screen.getByText("No councils yet — add a listing to get started.")).toBeInTheDocument());
+
+    // The poller kicked off before the nav switch is still running -- its
+    // setTimeout should still fire and update state even though the
+    // destinations panel is no longer the visible one.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    await gotoPanel(user, "Frequent destinations");
+    await waitFor(() => expect(screen.getByText(/Backfilling journeys… 60% \(6\/10\)/)).toBeInTheDocument());
+
+    vi.useRealTimers();
+  });
+});
+
+describe("AdminPage council tax rates", () => {
+  it("shows an empty state when there are no councils", async () => {
+    api.standards.list.mockResolvedValue([]);
+    renderAdmin();
+    const user = userEvent.setup();
+    await gotoPanel(user, "Council tax rates");
+    await waitFor(() =>
+      expect(screen.getByText("No councils yet — add a listing to get started.")).toBeInTheDocument()
+    );
+  });
+
+  it("shows a needs-rates chip and nav dot for a council with any unset band", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.councilTax.list.mockResolvedValue([
+      {
+        gss_code: "E00000001",
+        council_name: "Sampleton",
+        band_a: null,
+        band_b: null,
+        band_c: null,
+        band_d: null,
+        band_e: null,
+        band_f: null,
+        band_g: null,
+        band_h: null,
+      },
+    ]);
+    const user = userEvent.setup();
+    renderAdmin();
+    await gotoPanel(user, "Council tax rates");
+
+    await waitFor(() => expect(screen.getByText("Sampleton")).toBeInTheDocument());
+    expect(screen.getByText("New — needs rates")).toBeInTheDocument();
+    expect(screen.getByText("Needs rates")).toBeInTheDocument();
+    expect(screen.getByTitle("1 council needs rates")).toBeInTheDocument();
+  });
+
+  it("expands a council row and submits a full-replacement rate update", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.councilTax.list.mockResolvedValue([
+      {
+        gss_code: "E00000001",
+        council_name: "Sampleton",
+        band_a: null,
+        band_b: null,
+        band_c: null,
+        band_d: 2340,
+        band_e: null,
+        band_f: null,
+        band_g: null,
+        band_h: null,
+      },
+    ]);
+    api.councilTax.update.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderAdmin();
+    await gotoPanel(user, "Council tax rates");
+
+    await waitFor(() => expect(screen.getByText("Sampleton")).toBeInTheDocument());
+    await user.click(screen.getByText("Sampleton"));
+
+    const bandAInput = screen.getByLabelText(/Band A/);
+    await user.type(bandAInput, "1200");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(api.councilTax.update).toHaveBeenCalledWith("E00000001", {
+        council_name: "Sampleton",
+        band_a: 1200,
+        band_b: null,
+        band_c: null,
+        band_d: 2340,
+        band_e: null,
+        band_f: null,
+        band_g: null,
+        band_h: null,
+      })
+    );
+  });
+
+  it("clears a council's rates", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.councilTax.list.mockResolvedValue([
+      {
+        gss_code: "E00000001",
+        council_name: "Sampleton",
+        band_a: 1000,
+        band_b: null,
+        band_c: null,
+        band_d: null,
+        band_e: null,
+        band_f: null,
+        band_g: null,
+        band_h: null,
+      },
+    ]);
+    api.councilTax.remove.mockResolvedValue(null);
+    const user = userEvent.setup();
+    renderAdmin();
+    await gotoPanel(user, "Council tax rates");
+
+    await waitFor(() => expect(screen.getByText("Sampleton")).toBeInTheDocument());
+    await user.click(screen.getByText("Sampleton"));
+    await user.click(screen.getByRole("button", { name: "Clear rates" }));
+
+    await waitFor(() => expect(api.councilTax.remove).toHaveBeenCalledWith("E00000001"));
   });
 });

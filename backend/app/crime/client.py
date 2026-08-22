@@ -1,8 +1,10 @@
-"""Thin client for postcodes.io (geocoding) + data.police.uk (crime data),
-ported from the standalone crime-rate-tracker script. Both are fixed public
-APIs (not deployer-configured like commute/mortgage's sibling services), and
-a postcode only ever feeds a query param here, never a URL -- no SSRF
-concern, same reasoning as app/commute/client.py.
+"""Thin client for postcodes.io (geocoding + council resolution) +
+data.police.uk (crime data), ported from the standalone crime-rate-tracker
+script -- not scoped to the crime feature only, see lookup_postcode below
+(issue #60). Both are fixed public APIs (not deployer-configured like
+commute/mortgage's sibling services), and a postcode only ever feeds a
+query param here, never a URL -- no SSRF concern, same reasoning as
+app/commute/client.py.
 
 data.police.uk's crimes-street endpoint only accepts one month per request
 (no date-range param), so a full 12-month fetch means 12 calls; the API
@@ -31,7 +33,9 @@ class CrimeApiError(Exception):
     pass
 
 
-def _throttled_get(url: str, params: dict | None = None) -> dict | list:
+def _throttled_get(
+    url: str, params: dict | None = None, treat_404_as_none: bool = False
+) -> dict | list | None:
     full_url = f"{url}?{urllib.parse.urlencode(params)}" if params else url
     for attempt in range(MAX_RETRIES):
         try:
@@ -40,6 +44,9 @@ def _throttled_get(url: str, params: dict | None = None) -> dict | list:
             time.sleep(REQUEST_DELAY_SECONDS)
             return data
         except HTTPError as e:
+            if e.code == 404 and treat_404_as_none:
+                time.sleep(REQUEST_DELAY_SECONDS)
+                return None
             if e.code == 429 and attempt < MAX_RETRIES - 1:
                 time.sleep(2**attempt)
                 continue
@@ -55,6 +62,26 @@ def geocode_postcode(postcode: str) -> tuple[float, float]:
     if not result:
         raise CrimeApiError(f"postcode not found: {postcode!r}")
     return result["latitude"], result["longitude"]
+
+
+def lookup_postcode(postcode: str) -> dict | None:
+    """Resolves a UK postcode to its council-tax billing authority
+    (admin_district) and that authority's GSS code, via postcodes.io's
+    single-postcode lookup -- the sibling of geocode_postcode above, same
+    host/throttle/normalization, just reading a different part of the same
+    `result` object (issue #60). Returns None for a postcode postcodes.io
+    doesn't recognise (404) rather than raising -- callers treat this as a
+    best-effort resolution, same as the broadband lookup in handlers.py."""
+    data = _throttled_get(
+        POSTCODES_IO.format(urllib.parse.quote(normalize_postcode(postcode))), treat_404_as_none=True
+    )
+    result = (data or {}).get("result") if data else None
+    if not result:
+        return None
+    return {
+        "admin_district": result["admin_district"],
+        "codes": {"admin_district": result["codes"]["admin_district"]},
+    }
 
 
 def last_12_months() -> list[str]:

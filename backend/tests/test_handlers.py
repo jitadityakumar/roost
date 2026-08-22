@@ -41,6 +41,8 @@ def test_handle_rightmove_extract_maps_fields(listing_id):
     assert listing["latitude"] == 51.5074
     assert listing["longitude"] == -0.1278
     assert listing["pin_type"] == "APPROXIMATE_POINT"
+    assert listing["admin_district"] == "Sampleton"
+    assert listing["admin_district_gss"] == "E00000001"
 
 
 def test_handle_rightmove_extract_nulls_lease_years_for_freehold_zero(listing_id, sample_property_data, monkeypatch):
@@ -144,6 +146,58 @@ def test_handle_rightmove_extract_swallows_broadband_failure(listing_id, monkeyp
     listing = store.get_listing(listing_id)
     assert listing["extraction_status"] == "done"
     assert listing["broadband_top_speed"] is None
+
+
+def test_handle_rightmove_extract_swallows_council_lookup_failure(listing_id, monkeypatch):
+    def boom(postcode):
+        raise RuntimeError("postcodes.io down")
+
+    monkeypatch.setattr(handlers, "lookup_postcode", boom)
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    listing = store.get_listing(listing_id)
+    assert listing["extraction_status"] == "done"
+    # postcode is unchanged from its prior (None) value on a stub listing --
+    # a transient lookup failure shouldn't null out an already-stored council.
+    assert listing["admin_district"] is None
+    assert listing["admin_district_gss"] is None
+
+
+def test_handle_rightmove_extract_clears_council_when_postcode_changes_and_unresolvable(
+    listing_id, monkeypatch
+):
+    store.apply_extracted_fields(
+        listing_id,
+        {"postcode": "OLD 1AA", "admin_district": "Old Council", "admin_district_gss": "E00000099"},
+        from_scrape=False,
+    )
+    monkeypatch.setattr(handlers, "lookup_postcode", lambda postcode: None)
+
+    handlers.handle_rightmove_extract(_job(listing_id))  # scrapes "SM1 2AB", different from "OLD 1AA"
+
+    listing = store.get_listing(listing_id)
+    assert listing["postcode"] == "SM1 2AB"
+    assert listing["admin_district"] is None
+    assert listing["admin_district_gss"] is None
+
+
+def test_handle_rightmove_extract_keeps_council_when_postcode_unchanged_and_lookup_fails(
+    listing_id, monkeypatch
+):
+    store.apply_extracted_fields(
+        listing_id,
+        {"postcode": "SM1 2AB", "admin_district": "Existing Council", "admin_district_gss": "E00000042"},
+        from_scrape=False,
+    )
+    monkeypatch.setattr(handlers, "lookup_postcode", lambda postcode: None)
+
+    handlers.handle_rightmove_extract(_job(listing_id))  # scrapes "SM1 2AB" again -- unchanged
+
+    listing = store.get_listing(listing_id)
+    assert listing["postcode"] == "SM1 2AB"
+    assert listing["admin_district"] == "Existing Council"
+    assert listing["admin_district_gss"] == "E00000042"
 
 
 def test_handle_rightmove_extract_marks_failed_on_fetch_error(listing_id, monkeypatch):

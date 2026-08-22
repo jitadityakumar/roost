@@ -11,6 +11,7 @@ from app.jobs.llm_client import cli_available
 from app.jobs.worker import HttpLaneWorkerPool, LlmLaneWorkerPool
 from app.routes import (
     commute,
+    council_tax,
     crime,
     crime_baselines,
     destination_journeys,
@@ -63,6 +64,7 @@ app.include_router(crime_baselines.router)
 app.include_router(destinations.router)
 app.include_router(destination_journeys.router)
 app.include_router(journey_details.router)
+app.include_router(council_tax.router)
 
 
 @app.get("/api/health")

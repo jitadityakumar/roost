@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from app.commute import walk_store
 from app.commute.tfl_client import TflApiError, compute_walk_distance, resolve_stop_point
 from app.config import MEDIA_DIR
+from app.crime.client import lookup_postcode
 from app.destinations.compute import compute_for_listing
 from app.jobs import llm_enqueue, llm_prompts, queue
 from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
@@ -199,6 +200,27 @@ def handle_rightmove_extract(job: dict) -> None:
             fields["broadband_top_speed_provider"] = summary.get("top_speed_provider")
         except Exception:
             pass  # broadband is a nice-to-have, not worth failing the job over
+
+        # Council resolution (issue #60), same postcode-derived, best-effort
+        # shape as broadband above. Outcode-only postcodes (rare, incode
+        # missing) are excluded by the `postcode` build above already being
+        # None in that case.
+        old_postcode = listing.get("postcode")
+        try:
+            resolved = lookup_postcode(postcode)
+        except Exception:
+            resolved = None  # nice-to-have, don't fail the job over it
+        if resolved:
+            fields["admin_district"] = resolved["admin_district"]
+            fields["admin_district_gss"] = resolved["codes"]["admin_district"]
+        elif postcode != old_postcode:
+            # Postcode changed and the new one didn't resolve -- clear the
+            # stale council rather than silently keeping the old (now
+            # wrong) one attached. If postcode is unchanged, leave whatever
+            # is already stored alone (this call's own network hiccup
+            # shouldn't null out an otherwise-valid resolution).
+            fields["admin_district"] = None
+            fields["admin_district_gss"] = None
 
     store.apply_extracted_fields(listing_id, fields)
     store.set_extraction_status(listing_id, "done")
