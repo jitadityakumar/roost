@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,17 +8,38 @@ from fastapi.testclient import TestClient
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
+@pytest.fixture(scope="session")
+def _migrated_db_template(tmp_path_factory):
+    """Build the fully-migrated schema once per test session instead of once
+    per test. Re-running all migrations from scratch for every test (23
+    executescript+commit calls each) was ~90% of total suite wall time --
+    each test now gets a cheap file copy of this template instead."""
+    template_path = str(tmp_path_factory.mktemp("db_template") / "template.db")
+    old_db_path = os.environ.get("ROOST_DB_PATH")
+    os.environ["ROOST_DB_PATH"] = template_path
+    try:
+        from app.db.migrate import run_migrations
+
+        run_migrations()
+    finally:
+        if old_db_path is None:
+            os.environ.pop("ROOST_DB_PATH", None)
+        else:
+            os.environ["ROOST_DB_PATH"] = old_db_path
+    return template_path
+
+
 @pytest.fixture(autouse=True)
-def isolated_db(tmp_path, monkeypatch):
-    """Point every DB connection at a fresh per-test SQLite file and apply
-    migrations against it, so tests never touch the real data directory."""
+def isolated_db(_migrated_db_template, tmp_path, monkeypatch):
+    """Point every DB connection at a fresh per-test SQLite file, seeded
+    from the already-migrated session template, so tests never touch the
+    real data directory."""
     db_path = str(tmp_path / "test.db")
+    shutil.copyfile(_migrated_db_template, db_path)
     monkeypatch.setenv("ROOST_DB_PATH", db_path)
 
-    from app.db.migrate import run_migrations
     from app.destinations import backfill_queue, backfill_status
 
-    run_migrations()
     # backfill_status is deliberately process-wide, in-memory state (issue
     # #36) -- reset it per test too, same as the DB, so a leftover 'running'
     # entry from one test's destination_id can never be mistaken for a
