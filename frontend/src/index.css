@@ -677,25 +677,36 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .mortgage-summary .field-value { font-variant-numeric: tabular-nums; }
 .mortgage-accent { color: var(--accent); font-weight: 600; }
 
-.crime-baseline-circles { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0 0 0.75rem; }
-.crime-baseline-circle {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 5.5rem;
-  height: 5.5rem;
-  border-radius: 50%;
-  color: white;
-  text-align: center;
-  line-height: 1.2;
+.crime-bar-chart { display: flex; flex-direction: column; gap: 0.6rem; margin: 0 0 0.75rem; }
+.crime-bar-row { display: grid; grid-template-columns: 9rem 1fr 3rem; align-items: center; gap: 0.75rem; }
+.crime-bar-label { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.crime-bar-label-name,
+.crime-bar-postcode { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crime-bar-label-name { font-size: 0.85rem; font-weight: 600; }
+.crime-bar-postcode { font-size: 0.75rem; color: var(--muted); }
+.crime-bar-track {
+  height: 20px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--border) 40%, transparent);
+  overflow: hidden;
 }
-.crime-baseline-postcode { font-size: 0.75rem; font-weight: 600; overflow-wrap: break-word; max-width: 100%; }
-.crime-baseline-ratio { font-size: 0.9rem; font-weight: 700; }
-.badge-crime-good { background: var(--accent); color: white; }
-.badge-crime-warn { background: var(--warn); color: white; }
-.badge-crime-bad { background: var(--danger); color: white; }
-.badge-crime-neutral { background: var(--muted); color: white; }
+.crime-bar-fill { height: 100%; border-radius: 10px; min-width: 4px; }
+.crime-bar-fill-good { background: var(--accent); }
+.crime-bar-fill-warn { background: var(--warn); }
+.crime-bar-fill-bad { background: var(--danger); }
+.crime-bar-fill-neutral { background: var(--muted); }
+.crime-bar-fill-property { background: var(--edit-color); }
+.crime-bar-ratio { font-size: 0.85rem; font-weight: 700; text-align: right; }
+.crime-bar-error-text { font-size: 0.8rem; color: var(--muted); font-style: italic; grid-column: 2 / span 2; }
+.crime-details-toggle {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
 .crime-category-table-wrap { overflow-x: auto; margin-top: 0.75rem; }
 .crime-category-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
 .crime-category-table th,

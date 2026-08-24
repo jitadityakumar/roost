@@ -8,8 +8,8 @@ export function formatWalkMeters(meters) {
   return meters < 1000 ? `${Math.round(meters)}m` : `${(meters / 1000).toFixed(1)}km`;
 }
 
-// Same good/warn/bad tier convention as the crime-baseline badges
-// (badge-crime-good/warn/bad in index.css).
+// Same good/warn/bad tier convention as the crime-baseline bars
+// (crime-bar-fill-good/warn/bad in index.css).
 export function walkDurationClass(minutes) {
   if (minutes <= 7) return "station-walk-duration-good";
   if (minutes <= 15) return "station-walk-duration-warn";

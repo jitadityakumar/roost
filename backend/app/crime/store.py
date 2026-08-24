@@ -6,8 +6,6 @@ from datetime import datetime, timezone
 
 from app.db.connection import get_connection
 
-MAX_BASELINES = 4
-
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -29,9 +27,6 @@ def list_baselines() -> list[dict]:
 def create_baseline(label: str, postcode: str) -> dict:
     conn = get_connection()
     try:
-        count = conn.execute("SELECT COUNT(*) FROM crime_baselines").fetchone()[0]
-        if count >= MAX_BASELINES:
-            raise ValueError(f"only {MAX_BASELINES} baselines are allowed")
         now = _now_iso()
         cur = conn.execute(
             "INSERT INTO crime_baselines (label, postcode, created_at) VALUES (?, ?, ?)",
