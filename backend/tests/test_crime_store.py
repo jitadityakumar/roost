@@ -10,12 +10,13 @@ def test_create_and_list_baseline():
     assert store.list_baselines() == [baseline]
 
 
-def test_create_baseline_rejects_a_fourth():
+def test_create_baseline_rejects_a_fifth():
     store.create_baseline("A", "ZZ1 1AA")
     store.create_baseline("B", "ZZ3 3CC")
     store.create_baseline("C", "ZZ4 4DD")
-    with pytest.raises(ValueError, match="only 3 baselines"):
-        store.create_baseline("D", "ZZ2 2BB")
+    store.create_baseline("D", "ZZ2 2BB")
+    with pytest.raises(ValueError, match="only 4 baselines"):
+        store.create_baseline("E", "ZZ5 5EE")
 
 
 def test_delete_baseline():
