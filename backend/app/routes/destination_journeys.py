@@ -9,8 +9,9 @@ router = APIRouter(prefix="/api/listings", tags=["destinations"])
 _DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _serialize(destination: dict, journeys: dict, home_journeys: dict, scan_pool_ids: dict) -> dict:
+def _serialize(destination: dict, journeys: dict, home_journeys: dict, scan_pool_info: dict) -> dict:
     journey = journeys.get(destination["id"])
+    info = scan_pool_info.get(destination["id"])
     out = {
         "destination_id": destination["id"],
         "name": destination["name"],
@@ -35,9 +36,23 @@ def _serialize(destination: dict, journeys: dict, home_journeys: dict, scan_pool
                 "departure_time": journey["departure_time"],
                 "arrival_time": journey["arrival_time"],
                 "computed_at": journey["computed_at"],
-                "journey_scan_pool_id": scan_pool_ids.get(destination["id"]),
+                "journey_scan_pool_id": info["id"] if info is not None else None,
             }
         )
+        # Issue #67: whole-window, ungrouped candidate count (not just ones
+        # matching this journey's specific route) -- deliberately not
+        # grouped by route, per investigation against live
+        # journey_scan_pools data: alternative routes TfL finds within the
+        # window are consistently close in duration/num_changes to each
+        # other, so lumping them into one count matches how a rider would
+        # actually experience "how often can I make this trip". See
+        # journey_store.frequency_per_hour for the count->rate formula.
+        # Omitted entirely (unlike journey_scan_pool_id, which is always
+        # present as None) when no pool was captured for this destination
+        # (e.g. the HUB best_pool edge case documented in tfl_client.py) --
+        # matches how the frontend already treats a missing field.
+        if info is not None:
+            out["frequency_per_hour"] = info["frequency_per_hour"]
         # Live diff, not stored -- computed fresh from each side's own
         # duration_minutes every request, so it's never stale relative to
         # either. Omitted entirely (not even a null key) if either side has
@@ -63,8 +78,10 @@ def get_destinations(listing_id: int):
     _listing_or_404(listing_id)
     journeys = journey_store.get_journeys(listing_id)
     home_journeys = journey_store.get_home_journeys()
-    scan_pool_ids = journey_store.get_scan_pool_ids(listing_id)
-    return [_serialize(d, journeys, home_journeys, scan_pool_ids) for d in store.list_destinations() if d["enabled"]]
+    scan_pool_info = journey_store.get_scan_pool_info(listing_id)
+    return [
+        _serialize(d, journeys, home_journeys, scan_pool_info) for d in store.list_destinations() if d["enabled"]
+    ]
 
 
 @router.post("/{listing_id}/destinations/refresh", status_code=202)
@@ -74,5 +91,7 @@ def refresh_destinations(listing_id: int):
     compute.compute_for_listing(listing_id, serialized.get("latitude"), serialized.get("longitude"))
     journeys = journey_store.get_journeys(listing_id)
     home_journeys = journey_store.get_home_journeys()
-    scan_pool_ids = journey_store.get_scan_pool_ids(listing_id)
-    return [_serialize(d, journeys, home_journeys, scan_pool_ids) for d in store.list_destinations() if d["enabled"]]
+    scan_pool_info = journey_store.get_scan_pool_info(listing_id)
+    return [
+        _serialize(d, journeys, home_journeys, scan_pool_info) for d in store.list_destinations() if d["enabled"]
+    ]

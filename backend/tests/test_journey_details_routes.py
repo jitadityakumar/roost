@@ -114,3 +114,16 @@ def test_get_scan_pool_returns_parsed_candidates(client):
 
     assert tube_leg["operator"] == "Northern line"
     assert "change_minutes" not in tube_leg
+
+
+def test_get_scan_pool_includes_frequency_per_hour(client):
+    listings_store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    listings_store.apply_extracted_fields(1, {"latitude": LAT, "longitude": LON})
+    d = _create_destination()
+    _create_pool(destination_id=d["id"], journeys=[_journey_with_legs(), _journey_with_legs()])
+    pool_id = journey_store.get_scan_pool_ids(1)[d["id"]]
+
+    resp = client.get(f"/api/journey-scan-pools/{pool_id}")
+
+    # Window is 60 minutes, so a 2-candidate pool is a 2/hr rate.
+    assert resp.json()["frequency_per_hour"] == 2

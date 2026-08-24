@@ -42,6 +42,7 @@ function samplePool(overrides = {}) {
       time: "0800",
       to_identifier: "910GPADTON",
     },
+    frequency_per_hour: 6,
     candidates: [
       {
         duration_minutes: 78,
@@ -100,6 +101,7 @@ describe("JourneyDetailsPage", () => {
     expect(screen.getByText("LeastInterchange")).toBeInTheDocument();
     expect(screen.getByText("national-rail,tube,overground,dlr,tram,elizabeth-line")).toBeInTheDocument();
     expect(screen.getByText(/1 change/)).toBeInTheDocument();
+    expect(screen.getByText("6/hr")).toBeInTheDocument();
   });
 
   it("expands a candidate to show its legs, including a change-time row only where the gap is non-zero", async () => {
