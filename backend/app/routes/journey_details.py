@@ -12,9 +12,15 @@ def get_scan_pool(pool_id: int):
     if pool is None:
         raise HTTPException(status_code=404, detail="journey scan pool not found")
     destination = next((d for d in store.list_destinations() if d["id"] == pool["destination_id"]), None)
+    candidates = pool["candidate_pool"]
     return {
         "destination_name": destination["name"] if destination else None,
         "scanned_at": pool["scanned_at"],
         "query_params": pool["query_params"],
-        "candidates": [parse_candidate(j) for j in pool["candidate_pool"]],
+        # Issue #67: same whole-window, ungrouped count as the listing-detail
+        # row (routes/destination_journeys.py) -- see journey_store.
+        # frequency_per_hour for why grouping by route was deliberately
+        # skipped and for the shared count->rate formula.
+        "frequency_per_hour": journey_store.frequency_per_hour(len(candidates)),
+        "candidates": [parse_candidate(j) for j in candidates],
     }

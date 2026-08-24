@@ -8,6 +8,7 @@ import json
 from datetime import datetime, timezone
 
 from app import config
+from app.commute.tfl_client import _FREQUENT_DESTINATION_WINDOW_MINUTES
 from app.db.connection import get_connection
 
 
@@ -163,6 +164,41 @@ def get_scan_pool_ids(listing_id: int) -> dict[int, int]:
             "SELECT destination_id, id FROM journey_scan_pools WHERE listing_id = ?", (listing_id,)
         ).fetchall()
         return {r["destination_id"]: r["id"] for r in rows}
+    finally:
+        conn.close()
+
+
+def frequency_per_hour(candidate_count: int) -> int:
+    """Issue #67's route-frequency figure: a whole-window, ungrouped count
+    of every distinct candidate journey TfL returned (deliberately not
+    grouped by route -- confirmed against live journey_scan_pools data that
+    alternative candidates in one window are consistently close in
+    duration/num_changes, so a whole-pool count is a fair proxy for "how
+    often can I make this trip"), scaled to a per-hour rate. The scan
+    window is a fixed 60 minutes today, so this is currently a no-op
+    (`candidate_count * 60 / 60`) -- the explicit scaling is just so this
+    doesn't silently go wrong if _FREQUENT_DESTINATION_WINDOW_MINUTES ever
+    changes. Single home for this formula so routes/destination_journeys.py
+    and routes/journey_details.py can't drift apart on it."""
+    return round(candidate_count * 60 / _FREQUENT_DESTINATION_WINDOW_MINUTES)
+
+
+def get_scan_pool_info(listing_id: int) -> dict[int, dict]:
+    """{destination_id: {"id": journey_scan_pools.id, "frequency_per_hour":
+    int}} for one listing -- one query backing both the details-page link
+    and the route-frequency figure on the listing-detail row (routes/
+    destination_journeys.py), replacing what would otherwise be two
+    separate SELECTs against the same table/predicate."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT destination_id, id, json_array_length(candidate_pool) AS n "
+            "FROM journey_scan_pools WHERE listing_id = ?",
+            (listing_id,),
+        ).fetchall()
+        return {
+            r["destination_id"]: {"id": r["id"], "frequency_per_hour": frequency_per_hour(r["n"])} for r in rows
+        }
     finally:
         conn.close()
 

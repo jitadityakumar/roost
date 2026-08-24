@@ -80,6 +80,52 @@ def test_refresh_destinations_computes_and_returns_result(client, listing_id, mo
     assert resp.json()[0]["duration_minutes"] == 24
 
 
+def _fake_journey_row(duration_minutes=24):
+    return {
+        "duration_minutes": duration_minutes,
+        "kind": "direct",
+        "num_changes": 0,
+        "operator": "South Western Railway",
+        "origin_crs": "910GWOKING",
+        "origin_name": "Woking Rail Station",
+        "arrival_name": "London Paddington",
+        "interchange_crs": None,
+        "departure_time": "2026-08-17T08:40:00",
+        "arrival_time": "2026-08-17T09:04:00",
+    }
+
+
+def test_refresh_destinations_includes_frequency_per_hour_when_pool_captured(client, listing_id, monkeypatch):
+    from app.destinations import compute
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: None)
+    client.post("/api/destinations", json=_CREATE_BODY)
+
+    def fake_journey(lat, lon, to_identifier, target_date, target_time, **kwargs):
+        pool_out = kwargs.get("pool_out")
+        if pool_out is not None:
+            pool_out["query_params"] = {"to_identifier": to_identifier}
+            # Window is 60 minutes -- 3 candidates is a 3/hr rate.
+            pool_out["candidate_pool"] = [{"a": 1}, {"a": 2}, {"a": 3}]
+        return _fake_journey_row()
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", fake_journey)
+
+    resp = client.post(f"/api/listings/{listing_id}/destinations/refresh")
+    assert resp.json()[0]["frequency_per_hour"] == 3
+
+
+def test_refresh_destinations_omits_frequency_per_hour_when_no_pool_captured(client, listing_id, monkeypatch):
+    from app.destinations import compute
+
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: None)
+    client.post("/api/destinations", json=_CREATE_BODY)
+    monkeypatch.setattr(compute, "find_frequent_destination_journey", lambda *a, **k: _fake_journey_row())
+
+    resp = client.post(f"/api/listings/{listing_id}/destinations/refresh")
+    assert "frequency_per_hour" not in resp.json()[0]
+
+
 def test_refresh_destinations_omits_home_diff_when_no_home_configured(client, listing_id, monkeypatch):
     from app.destinations import compute
 

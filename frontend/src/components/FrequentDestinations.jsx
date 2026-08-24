@@ -32,10 +32,16 @@ function DestinationRow({ destination, refreshing }) {
   // station-type destinations already displayed. The row label is a plain
   // change count, no "(via X, Y)" station-name suffix -- a leg-by-leg
   // breakdown isn't buildable from what's stored (issue #47 UX addendum).
-  const routeLabel =
+  const changeLabel =
     destination.kind === "direct"
       ? "direct"
       : `${destination.num_changes} change${destination.num_changes === 1 ? "" : "s"}`;
+  // Issue #67: whole-window departure count, not just ones matching this
+  // journey's specific route -- see routes/destination_journeys.py's
+  // frequency_per_hour comment. Omitted when the backend has no pool for
+  // this destination (undefined), same precedent as journey_scan_pool_id.
+  const routeLabel =
+    destination.frequency_per_hour != null ? `${changeLabel} · Freq ${destination.frequency_per_hour}/hr` : changeLabel;
 
   return (
     <li className="destination-row">

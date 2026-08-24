@@ -59,6 +59,27 @@ def test_replace_journeys_writes_both_tables():
     assert len(pool["candidate_pool"]) == 1
 
 
+def test_get_scan_pool_info_reflects_id_and_frequency():
+    d = _create_destination()
+    journey_store.replace_journeys(1, [(_row(d["id"]), _pool())])
+
+    info = journey_store.get_scan_pool_info(1)
+    pool_id = journey_store.get_scan_pool_ids(1)[d["id"]]
+    assert info == {d["id"]: {"id": pool_id, "frequency_per_hour": 1}}
+
+
+def test_get_scan_pool_info_empty_for_destination_without_pool():
+    d = _create_destination()
+    journey_store.replace_journeys(1, [(_row(d["id"]), None)])
+
+    assert journey_store.get_scan_pool_info(1) == {}
+
+
+def test_frequency_per_hour_scales_candidate_count_to_the_60_minute_window():
+    assert journey_store.frequency_per_hour(6) == 6
+    assert journey_store.frequency_per_hour(0) == 0
+
+
 def test_replace_journeys_row_without_pool_stores_no_pool_row():
     d = _create_destination()
     journey_store.replace_journeys(1, [(_row(d["id"]), None)])

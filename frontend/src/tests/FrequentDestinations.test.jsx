@@ -56,6 +56,36 @@ describe("FrequentDestinations", () => {
     expect(screen.queryByText(/South Western Railway/)).not.toBeInTheDocument();
   });
 
+  it("renders the route frequency alongside the change count when present", async () => {
+    api.listingDestinations.mockResolvedValue([
+      {
+        destination_id: 1,
+        name: "Office",
+        destination_type: "station",
+        day_of_week: 0,
+        day_label: "Monday",
+        time: "08:30",
+        station_name: "Paddington",
+        resolved: true,
+        duration_minutes: 24,
+        kind: "interchange",
+        num_changes: 1,
+        frequency_per_hour: 6,
+        operator: "South Western Railway",
+        origin_crs: "910GWOKING",
+        origin_name: "Woking",
+        arrival_name: "Paddington",
+        interchange_crs: null,
+        departure_time: "2026-08-17T08:40:00",
+        arrival_time: "2026-08-17T09:04:00",
+      },
+    ]);
+    render(<FrequentDestinations listingId={1} ready={true} />);
+
+    await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
+    expect(screen.getByText("1 change · Freq 6/hr")).toBeInTheDocument();
+  });
+
   it("renders an interchange destination's change count without a via suffix", async () => {
     api.listingDestinations.mockResolvedValue([
       {

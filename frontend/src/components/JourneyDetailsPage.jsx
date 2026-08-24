@@ -168,6 +168,9 @@ export default function JourneyDetailsPage() {
           <span>
             Fetched <strong>{formatFetchedAt(data.scanned_at)}</strong>
           </span>
+          <span>
+            Freq <strong>{data.frequency_per_hour}/hr</strong>
+          </span>
         </div>
       </div>
 
