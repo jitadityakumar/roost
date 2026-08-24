@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from app.db.connection import get_connection
 
-MAX_BASELINES = 3
+MAX_BASELINES = 4
 
 
 def _now_iso() -> str:

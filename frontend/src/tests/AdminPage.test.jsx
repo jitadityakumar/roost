@@ -189,12 +189,13 @@ describe("AdminPage", () => {
     await waitFor(() => expect(api.crimeBaselines.remove).toHaveBeenCalledWith(1));
   });
 
-  it("hides the add-baseline form once 3 baselines exist", async () => {
+  it("hides the add-baseline form once 4 baselines exist", async () => {
     api.standards.list.mockResolvedValue([]);
     api.crimeBaselines.list.mockResolvedValue([
       { id: 1, label: "A", postcode: "ZZ1 1AA" },
       { id: 2, label: "B", postcode: "ZZ3 3CC" },
       { id: 3, label: "C", postcode: "ZZ4 4DD" },
+      { id: 4, label: "D", postcode: "ZZ2 2BB" },
     ]);
     renderAdmin();
     await waitFor(() => expect(screen.getByText("A — ZZ1 1AA")).toBeInTheDocument());

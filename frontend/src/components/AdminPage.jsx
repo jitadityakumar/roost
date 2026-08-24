@@ -38,7 +38,7 @@ function describeRule(rule) {
   return `${label} ${symbol} ${rule.value}`;
 }
 
-const MAX_BASELINES = 3;
+const MAX_BASELINES = 4;
 
 const DAY_OPTIONS = [
   { value: 0, label: "Monday" },
