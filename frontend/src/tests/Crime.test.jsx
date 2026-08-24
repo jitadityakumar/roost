@@ -48,9 +48,10 @@ describe("Crime", () => {
     await waitFor(() => expect(screen.getByText(/Add a baseline in Admin/)).toBeInTheDocument());
   });
 
-  it("shows a ratio badge per baseline in the collapsed view", async () => {
+  it("shows a ratio per baseline bar, plus the property's own row", async () => {
     api.crime.mockResolvedValue({
       unavailable: null,
+      postcode: "AA1 1AA",
       baselines: [
         { id: 1, label: "Home", postcode: "ZZ1 1AA", error: null, comparison: makeComparison(2.0) },
         { id: 2, label: "Old flat", postcode: "ZZ3 3CC", error: null, comparison: makeComparison(0.8) },
@@ -58,9 +59,36 @@ describe("Crime", () => {
     });
     render(<Crime listingId={1} ready={true} />);
     await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
-    expect(screen.getByText("2.0x")).toBeInTheDocument();
+    expect(screen.getByText("2.0×")).toBeInTheDocument();
     expect(screen.getByText("ZZ3 3CC")).toBeInTheDocument();
-    expect(screen.getByText("0.8x")).toBeInTheDocument();
+    expect(screen.getByText("0.8×")).toBeInTheDocument();
+    expect(screen.getByText("This property")).toBeInTheDocument();
+    expect(screen.getByText("AA1 1AA")).toBeInTheDocument();
+    expect(screen.getByText("1.0×")).toBeInTheDocument();
+  });
+
+  it("distinguishes 'new' from 'n/a' for a baseline with a zero score", async () => {
+    const zeroBaselineNewComparison = {
+      ...makeComparison(null),
+      candidate_score: 4.8,
+      baseline_score: 0,
+    };
+    const zeroBaselineNaComparison = {
+      ...makeComparison(null),
+      candidate_score: 0,
+      baseline_score: 0,
+    };
+    api.crime.mockResolvedValue({
+      unavailable: null,
+      baselines: [
+        { id: 1, label: "New area", postcode: "ZZ1 1AA", error: null, comparison: zeroBaselineNewComparison },
+        { id: 2, label: "Quiet area", postcode: "ZZ3 3CC", error: null, comparison: zeroBaselineNaComparison },
+      ],
+    });
+    render(<Crime listingId={1} ready={true} />);
+    await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
+    expect(screen.getByText("new")).toBeInTheDocument();
+    expect(screen.getByText("n/a")).toBeInTheDocument();
   });
 
   it("shows a per-baseline error without failing the whole section", async () => {
@@ -86,11 +114,11 @@ describe("Crime", () => {
     await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
     expect(screen.queryByText("burglary")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Show categories" }));
+    await user.click(screen.getByRole("button", { name: "Show details" }));
     expect(screen.getByText("burglary")).toBeInTheDocument();
     expect(screen.getByText("3 (2.0x)")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Hide categories" }));
+    await user.click(screen.getByRole("button", { name: "Hide details" }));
     expect(screen.queryByText("burglary")).not.toBeInTheDocument();
   });
 
@@ -123,7 +151,7 @@ describe("Crime", () => {
     render(<Crime listingId={1} ready={true} />);
 
     await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Show categories" }));
+    await user.click(screen.getByRole("button", { name: "Show details" }));
 
     expect(screen.getByText("public-order")).toBeInTheDocument();
     const row = screen.getByText("public-order").closest("tr");

@@ -9,36 +9,84 @@ function ratioLabel(ratio, candidateIsPositive) {
   return `${ratio.toFixed(1)}x`;
 }
 
-function ratioBadgeClass(ratio) {
-  if (ratio === null) return "badge-crime-neutral";
-  if (ratio <= 1.1) return "badge-crime-good";
-  if (ratio <= 1.5) return "badge-crime-warn";
-  return "badge-crime-bad";
+function barFillClass(ratio, isProperty) {
+  if (isProperty) return "crime-bar-fill-property";
+  if (ratio === null) return "crime-bar-fill-neutral";
+  if (ratio <= 1.1) return "crime-bar-fill-good";
+  if (ratio <= 1.5) return "crime-bar-fill-warn";
+  return "crime-bar-fill-bad";
 }
 
-function BaselineCircle({ baseline }) {
-  if (baseline.error) {
-    return (
-      <div
-        className="crime-baseline-circle badge-crime-neutral"
-        title={`Couldn't load: ${baseline.error}`}
-        aria-label={`${baseline.label}: couldn't load, ${baseline.error}`}
-      >
-        <span className="crime-baseline-postcode">{baseline.postcode}</span>
-        <span className="crime-baseline-ratio">Error</span>
-      </div>
-    );
-  }
-  const ratio = baseline.comparison.score_ratio;
-  const label = ratioLabel(ratio, baseline.comparison.candidate_score > 0);
+function CrimeBarChart({ baselines, propertyPostcode }) {
+  const ok = baselines.filter((b) => b.comparison);
+  const errored = baselines.filter((b) => b.error);
+
+  const rows = ok.length
+    ? [
+        {
+          key: "property",
+          label: "This property",
+          postcode: propertyPostcode ?? null,
+          score: ok[0].comparison.candidate_score,
+          candidateScore: ok[0].comparison.candidate_score,
+          ratio: 1,
+          isProperty: true,
+        },
+        ...ok.map((b) => ({
+          key: b.id,
+          label: b.label,
+          postcode: b.postcode,
+          score: b.comparison.baseline_score,
+          candidateScore: b.comparison.candidate_score,
+          ratio: b.comparison.score_ratio,
+          isProperty: false,
+        })),
+      ].sort((a, b) => b.score - a.score)
+    : [];
+
+  // Pad the scale a little past the largest score so the longest bar
+  // doesn't touch the row's right edge.
+  const maxScore = Math.max(0, ...rows.map((r) => r.score));
+  const scale = maxScore > 0 ? maxScore * 1.15 : 1;
+
   return (
-    <div
-      className={`crime-baseline-circle ${ratioBadgeClass(ratio)}`}
-      title={baseline.label}
-      aria-label={`${baseline.label}: ${label}`}
-    >
-      <span className="crime-baseline-postcode">{baseline.postcode}</span>
-      <span className="crime-baseline-ratio">{label}</span>
+    <div className="crime-bar-chart">
+      {rows.map((row) => {
+        const ratioText =
+          row.ratio === null ? ratioLabel(null, row.candidateScore > 0) : `${row.ratio.toFixed(1)}×`;
+        const tooltip = row.postcode
+          ? `${row.label} (${row.postcode}) — score ${row.score.toFixed(1)}, ${ratioText}`
+          : `${row.label} — score ${row.score.toFixed(1)}, ${ratioText}`;
+        return (
+          <div key={row.key} className="crime-bar-row" title={tooltip}>
+            <div className="crime-bar-label">
+              <span className="crime-bar-label-name">{row.label}</span>
+              {row.postcode && <span className="crime-bar-postcode">{row.postcode}</span>}
+            </div>
+            <div className="crime-bar-track">
+              <div
+                className={`crime-bar-fill ${barFillClass(row.ratio, row.isProperty)}`}
+                style={{ width: `${(row.score / scale) * 100}%` }}
+              />
+            </div>
+            <span className="crime-bar-ratio">{ratioText}</span>
+          </div>
+        );
+      })}
+      {errored.map((b) => (
+        <div
+          key={b.id}
+          className="crime-bar-row"
+          title={`Couldn't load: ${b.error}`}
+          aria-label={`${b.label}: couldn't load, ${b.error}`}
+        >
+          <div className="crime-bar-label">
+            <span className="crime-bar-label-name">{b.label}</span>
+            <span className="crime-bar-postcode">{b.postcode}</span>
+          </div>
+          <span className="crime-bar-error-text">Couldn't load</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -123,13 +171,9 @@ export default function Crime({ listingId, ready }) {
 
   return (
     <div className="crime-section">
-      <div className="crime-baseline-circles">
-        {data.baselines.map((baseline) => (
-          <BaselineCircle key={baseline.id} baseline={baseline} />
-        ))}
-      </div>
-      <button className="edit-btn" onClick={() => setExpanded((e) => !e)}>
-        {expanded ? "Hide categories" : "Show categories"}
+      <CrimeBarChart baselines={data.baselines} propertyPostcode={data.postcode} />
+      <button className="crime-details-toggle" onClick={() => setExpanded((e) => !e)}>
+        {expanded ? "Hide details" : "Show details"}
       </button>
       {expanded && <CategoryTable baselines={data.baselines} />}
     </div>

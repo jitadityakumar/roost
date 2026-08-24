@@ -19,8 +19,6 @@ def list_baselines():
 
 @router.post("", status_code=201)
 def create_baseline(body: CreateBaselineRequest):
-    if len(store.list_baselines()) >= store.MAX_BASELINES:
-        raise HTTPException(status_code=422, detail=f"only {store.MAX_BASELINES} baselines are allowed")
     try:
         service.get_or_refresh_stats(body.postcode)
     except CrimeApiError as e:

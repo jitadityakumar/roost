@@ -1,5 +1,3 @@
-import pytest
-
 from app.crime import store
 
 
@@ -10,13 +8,13 @@ def test_create_and_list_baseline():
     assert store.list_baselines() == [baseline]
 
 
-def test_create_baseline_rejects_a_fifth():
+def test_create_baseline_allows_more_than_four():
     store.create_baseline("A", "ZZ1 1AA")
     store.create_baseline("B", "ZZ3 3CC")
     store.create_baseline("C", "ZZ4 4DD")
     store.create_baseline("D", "ZZ2 2BB")
-    with pytest.raises(ValueError, match="only 4 baselines"):
-        store.create_baseline("E", "ZZ5 5EE")
+    store.create_baseline("E", "ZZ5 5EE")
+    assert len(store.list_baselines()) == 5
 
 
 def test_delete_baseline():

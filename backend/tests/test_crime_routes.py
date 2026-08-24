@@ -36,15 +36,14 @@ def test_create_baseline_422_on_geocode_failure(client, monkeypatch):
     assert client.get("/api/crime/baselines").json() == []
 
 
-def test_create_baseline_422_when_already_four(client, monkeypatch):
+def test_create_baseline_allows_more_than_four(client, monkeypatch):
     from app.routes import crime_baselines as route
 
     monkeypatch.setattr(route.service, "get_or_refresh_stats", lambda pc: {"category_counts": {}})
-    for label, pc in [("A", "ZZ1 1AA"), ("B", "ZZ3 3CC"), ("C", "ZZ4 4DD"), ("D", "ZZ2 2BB")]:
+    labels = [("A", "ZZ1 1AA"), ("B", "ZZ3 3CC"), ("C", "ZZ4 4DD"), ("D", "ZZ2 2BB"), ("E", "ZZ5 5EE")]
+    for label, pc in labels:
         assert client.post("/api/crime/baselines", json={"label": label, "postcode": pc}).status_code == 201
-    resp = client.post("/api/crime/baselines", json={"label": "E", "postcode": "ZZ5 5EE"})
-    assert resp.status_code == 422
-    assert len(client.get("/api/crime/baselines").json()) == 4
+    assert len(client.get("/api/crime/baselines").json()) == 5
 
 
 def test_delete_baseline(client, monkeypatch):

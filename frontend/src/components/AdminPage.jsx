@@ -38,8 +38,6 @@ function describeRule(rule) {
   return `${label} ${symbol} ${rule.value}`;
 }
 
-const MAX_BASELINES = 4;
-
 const DAY_OPTIONS = [
   { value: 0, label: "Monday" },
   { value: 1, label: "Tuesday" },
@@ -727,8 +725,8 @@ export default function AdminPage() {
         <div className={`admin-panel ${activePanel === "crime" ? "" : "admin-panel-hidden"}`}>
           <h2>Crime baselines</h2>
           <p className="hint">
-            Up to {MAX_BASELINES} postcodes (e.g. your current home) to compare a listing's crime
-            stats against on the listing detail page.
+            Postcodes (e.g. your current home) to compare a listing's crime stats against on the
+            listing detail page.
           </p>
 
           {baselineError && <p className="error">{baselineError}</p>}
@@ -757,25 +755,23 @@ export default function AdminPage() {
             </ul>
           )}
 
-          {baselines.length < MAX_BASELINES && (
-            <form className="admin-add-rule" onSubmit={handleAddBaseline}>
-              <input
-                type="text"
-                value={baselineLabel}
-                onChange={(e) => setBaselineLabel(e.target.value)}
-                placeholder="Label (e.g. Home)"
-              />
-              <input
-                type="text"
-                value={baselinePostcode}
-                onChange={(e) => setBaselinePostcode(e.target.value)}
-                placeholder="Postcode"
-              />
-              <button className="status-toggle-btn" type="submit">
-                Add baseline
-              </button>
-            </form>
-          )}
+          <form className="admin-add-rule" onSubmit={handleAddBaseline}>
+            <input
+              type="text"
+              value={baselineLabel}
+              onChange={(e) => setBaselineLabel(e.target.value)}
+              placeholder="Label (e.g. Home)"
+            />
+            <input
+              type="text"
+              value={baselinePostcode}
+              onChange={(e) => setBaselinePostcode(e.target.value)}
+              placeholder="Postcode"
+            />
+            <button className="status-toggle-btn" type="submit">
+              Add baseline
+            </button>
+          </form>
         </div>
 
         <div className={`admin-panel ${activePanel === "destinations" ? "" : "admin-panel-hidden"}`}>

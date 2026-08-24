@@ -189,17 +189,18 @@ describe("AdminPage", () => {
     await waitFor(() => expect(api.crimeBaselines.remove).toHaveBeenCalledWith(1));
   });
 
-  it("hides the add-baseline form once 4 baselines exist", async () => {
+  it("keeps the add-baseline form available with more than 4 baselines", async () => {
     api.standards.list.mockResolvedValue([]);
     api.crimeBaselines.list.mockResolvedValue([
       { id: 1, label: "A", postcode: "ZZ1 1AA" },
       { id: 2, label: "B", postcode: "ZZ3 3CC" },
       { id: 3, label: "C", postcode: "ZZ4 4DD" },
       { id: 4, label: "D", postcode: "ZZ2 2BB" },
+      { id: 5, label: "E", postcode: "ZZ5 5EE" },
     ]);
     renderAdmin();
     await waitFor(() => expect(screen.getByText("A — ZZ1 1AA")).toBeInTheDocument());
-    expect(screen.queryByPlaceholderText("Postcode")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Postcode")).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no frequent destinations", async () => {
