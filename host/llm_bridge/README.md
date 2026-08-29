@@ -7,8 +7,8 @@ See [issue #73](https://github.com/jitadityakumar/roost/issues/73): the
 container's old `~/.claude` mount was read-only, so a token refresh
 triggered inside the container could never be persisted back to the host,
 causing llm-lane jobs to fail permanently during any token-expiry window.
-This bridge runs as a normal host process (`User=jkumar`, not root) with
-ordinary read-write access to `~/.claude`, so refresh just works.
+This bridge runs as a normal (non-root) host user with ordinary read-write
+access to `~/.claude`, so refresh just works.
 
 This is a **second, independent Python project** living inside the Roost
 repo — its own venv and `requirements.txt`, not a package under
@@ -61,10 +61,10 @@ sudo systemctl enable --now roost-llm-bridge
 sudo systemctl status roost-llm-bridge
 ```
 
-`roost-llm-bridge.service` uses `User=jkumar` and pulls its env from
-`host/llm_bridge/.env` via `EnvironmentFile=` — edit the placeholder paths
-in the unit file to match your actual clone location before installing, and
-make sure `ROOST_LLM_BRIDGE_CLAUDE_BIN` is set to an absolute path there
+`roost-llm-bridge.service` pulls its env from `host/llm_bridge/.env` via
+`EnvironmentFile=` — edit the placeholder `User=`/path values in the unit
+file to match your actual host user and clone location before installing,
+and make sure `ROOST_LLM_BRIDGE_CLAUDE_BIN` is set to an absolute path there
 (see above — this bites silently otherwise, since a manual run from an
 interactive shell won't reproduce the PATH difference).
 

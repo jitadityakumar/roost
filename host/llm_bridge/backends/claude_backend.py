@@ -1,7 +1,7 @@
 """Wraps `claude -p`, host-resident. This is today's only backend -- moved
 almost verbatim from the container's old `app/jobs/llm_client.py::
 run_claude_prompt` (see that file's git history), with LlmCallError renamed
-to BackendError. Runs with the invoking user's (jkumar's) normal read-write
+to BackendError. Runs with the invoking host user's normal read-write
 `~/.claude`, so token refresh Just Works here -- no special handling needed,
 which is the entire point of issue #73's host-side bridge.
 """
