@@ -1,114 +1,190 @@
 import json
-import subprocess
+import urllib.error
+import urllib.request
 
 import pytest
 
 from app.jobs import llm_client
 
 
-def test_run_claude_prompt_returns_stdout_on_success(monkeypatch):
-    def fake_run(argv, capture_output, text, timeout):
-        assert argv == ["claude", "-p", "hello", "--model", "haiku"]
-        return subprocess.CompletedProcess(argv, 0, stdout='{"a": 1}', stderr="")
+class _FakeResponse:
+    """Minimal stand-in for the context-manager object urllib.request.urlopen
+    returns on success."""
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    assert llm_client.run_claude_prompt("hello", "haiku", 10) == '{"a": 1}'
+    def __init__(self, body: bytes, status: int = 200):
+        self._body = body
+        self.status = status
 
+    def read(self):
+        return self._body
 
-def test_run_claude_prompt_passes_allowed_tools_when_allow_read(monkeypatch):
-    def fake_run(argv, capture_output, text, timeout):
-        assert argv == ["claude", "-p", "hello", "--model", "haiku", "--allowedTools", "Read"]
-        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+    def __enter__(self):
+        return self
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    llm_client.run_claude_prompt("hello", "haiku", 10, allow_read=True)
-
-
-def test_run_claude_prompt_passes_disallowed_tools_when_deny_all(monkeypatch):
-    def fake_run(argv, capture_output, text, timeout):
-        assert argv == ["claude", "-p", "hello", "--model", "haiku", "--disallowedTools", "*"]
-        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    llm_client.run_claude_prompt("hello", "haiku", 10, disallow_all_tools=True)
+    def __exit__(self, *args):
+        return False
 
 
-def test_run_claude_prompt_passes_output_format_and_schema_when_json_schema_given(monkeypatch):
+def _envelope_stdout(payload="{}"):
+    return payload
+
+
+@pytest.fixture(autouse=True)
+def bridge_base(monkeypatch):
+    monkeypatch.setattr(llm_client, "LLM_BRIDGE_BASE", "http://bridge.local:8094")
+
+
+def test_run_claude_prompt_posts_to_bridge_and_returns_stdout(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["body"] = json.loads(req.data)
+        captured["timeout"] = timeout
+        return _FakeResponse(json.dumps({"stdout": '{"a": 1}'}).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    result = llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+
+    assert result == '{"a": 1}'
+    assert captured["url"] == "http://bridge.local:8094/v1/llm/text_extract"
+    assert captured["timeout"] == 20  # timeout_s + 10s margin
+    assert captured["body"] == {
+        "prompt": "hello",
+        "model": "haiku",
+        "timeout_s": 10,
+        "allow_read": False,
+        "disallow_all_tools": False,
+        "json_schema": None,
+        "image_base64": None,
+        "image_suffix": None,
+    }
+
+
+def test_run_claude_prompt_sends_allow_read_and_disallow_all_tools(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data)
+        return _FakeResponse(json.dumps({"stdout": "{}"}).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    llm_client.run_claude_prompt("epc_vision", "hello", "haiku", 10, allow_read=True, disallow_all_tools=True)
+
+    assert captured["body"]["allow_read"] is True
+    assert captured["body"]["disallow_all_tools"] is True
+
+
+def test_run_claude_prompt_sends_json_schema(monkeypatch):
     schema = {"type": "object", "properties": {"a": {"type": ["integer", "null"]}}}
+    captured = {}
 
-    def fake_run(argv, capture_output, text, timeout):
-        assert argv == [
-            "claude",
-            "-p",
-            "hello",
-            "--model",
-            "haiku",
-            "--output-format",
-            "json",
-            "--json-schema",
-            json.dumps(schema),
-        ]
-        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data)
+        return _FakeResponse(json.dumps({"stdout": "{}"}).encode("utf-8"))
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    llm_client.run_claude_prompt("hello", "haiku", 10, json_schema=schema)
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10, json_schema=schema)
+
+    assert captured["body"]["json_schema"] == schema
 
 
-def test_run_claude_prompt_uses_structured_output_allowlist_when_deny_all_and_schema_combined(monkeypatch):
-    # This is the exact combination text_extract uses. `--disallowedTools
-    # "*"` would also deny the CLI's own internal StructuredOutput tool
-    # (confirmed empirically against the real CLI — the model calls
-    # StructuredOutput, gets denied twice, then gives up with is_error
-    # false but no usable structured_output or parseable result). Must use
-    # `--allowedTools StructuredOutput` instead, which still implicitly
-    # denies every other tool.
-    schema = {"type": "object", "properties": {"a": {"type": ["integer", "null"]}}}
+def test_run_claude_prompt_encodes_image_bytes_and_suffix(monkeypatch):
+    import base64
 
-    def fake_run(argv, capture_output, text, timeout):
-        assert argv == [
-            "claude",
-            "-p",
-            "hello",
-            "--model",
-            "haiku",
-            "--allowedTools",
-            "StructuredOutput",
-            "--output-format",
-            "json",
-            "--json-schema",
-            json.dumps(schema),
-        ]
-        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+    captured = {}
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    llm_client.run_claude_prompt("hello", "haiku", 10, json_schema=schema, disallow_all_tools=True)
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data)
+        return _FakeResponse(json.dumps({"stdout": "{}"}).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    llm_client.run_claude_prompt(
+        "floor_area_vision",
+        "hello <<ATTACHED_IMAGE>>",
+        "haiku",
+        90,
+        allow_read=True,
+        image_bytes=b"raw-bytes",
+        image_suffix=".jpg",
+    )
+
+    assert captured["body"]["image_base64"] == base64.b64encode(b"raw-bytes").decode("ascii")
+    assert captured["body"]["image_suffix"] == ".jpg"
 
 
-def test_run_claude_prompt_raises_on_nonzero_exit(monkeypatch):
-    def fake_run(argv, capture_output, text, timeout):
-        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="boom")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(llm_client.LlmCallError, match="boom"):
-        llm_client.run_claude_prompt("hello", "haiku", 10)
+def test_run_claude_prompt_raises_permanent_when_bridge_base_unset(monkeypatch):
+    monkeypatch.setattr(llm_client, "LLM_BRIDGE_BASE", None)
+    with pytest.raises(llm_client.LlmCallError) as exc_info:
+        llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+    assert exc_info.value.permanent is True
 
 
-def test_run_claude_prompt_logs_full_stderr_on_nonzero_exit(monkeypatch, caplog):
-    # The DB-facing error message is truncated to 500 chars; the whole point
-    # of also logging is that a real failure (e.g. an auth error from the
-    # mounted ~/.claude session) needs to be diagnosable from `docker logs`
-    # without needing to reproduce it interactively.
-    long_stderr = "auth error: " + ("x" * 600)
+def test_run_claude_prompt_propagates_permanent_flag_from_http_error_body(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        error_body = json.dumps({"error": "unknown job_type", "permanent": True}).encode("utf-8")
+        raise urllib.error.HTTPError(req.full_url, 400, "Bad Request", {}, __import__("io").BytesIO(error_body))
 
-    def fake_run(argv, capture_output, text, timeout):
-        return subprocess.CompletedProcess(argv, 1, stdout="", stderr=long_stderr)
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(llm_client.LlmCallError) as exc_info:
+        llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+    assert exc_info.value.permanent is True
+    assert "unknown job_type" in str(exc_info.value)
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    with caplog.at_level("WARNING"):
-        with pytest.raises(llm_client.LlmCallError):
-            llm_client.run_claude_prompt("hello", "haiku", 10)
 
-    assert long_stderr in caplog.text
+def test_run_claude_prompt_defaults_permanent_false_on_transient_http_error(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        error_body = json.dumps({"error": "claude -p exited 1", "permanent": False}).encode("utf-8")
+        raise urllib.error.HTTPError(req.full_url, 502, "Bad Gateway", {}, __import__("io").BytesIO(error_body))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(llm_client.LlmCallError) as exc_info:
+        llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+    assert exc_info.value.permanent is False
+
+
+def test_run_claude_prompt_http_error_with_unparseable_body_defaults_permanent_false(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        raise urllib.error.HTTPError(
+            req.full_url, 500, "Internal Server Error", {}, __import__("io").BytesIO(b"not json")
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(llm_client.LlmCallError) as exc_info:
+        llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+    assert exc_info.value.permanent is False
+
+
+def test_run_claude_prompt_raises_transient_on_url_error(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(llm_client.LlmCallError) as exc_info:
+        llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+    assert exc_info.value.permanent is False
+    assert "bridge unreachable" in str(exc_info.value)
+
+
+def test_bridge_available_true_on_200(monkeypatch):
+    def fake_urlopen(url, timeout=None):
+        return _FakeResponse(json.dumps({"ok": True}).encode("utf-8"), status=200)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert llm_client.bridge_available() is True
+
+
+def test_bridge_available_false_on_unreachable(monkeypatch):
+    def fake_urlopen(url, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert llm_client.bridge_available() is False
+
+
+def test_bridge_available_false_when_base_unset(monkeypatch):
+    monkeypatch.setattr(llm_client, "LLM_BRIDGE_BASE", None)
+    assert llm_client.bridge_available() is False
 
 
 def test_extract_json_block_logs_full_raw_output_on_failure(caplog):
@@ -118,33 +194,6 @@ def test_extract_json_block_logs_full_raw_output_on_failure(caplog):
             llm_client.extract_json_block(long_output)
 
     assert long_output in caplog.text
-
-
-def test_cli_available_reflects_path(monkeypatch):
-    monkeypatch.setattr(llm_client.shutil, "which", lambda name: None)
-    assert llm_client.cli_available() is False
-
-    monkeypatch.setattr(llm_client.shutil, "which", lambda name: "/usr/local/bin/claude")
-    assert llm_client.cli_available() is True
-
-
-def test_run_claude_prompt_raises_on_timeout(monkeypatch):
-    def fake_run(argv, capture_output, text, timeout):
-        raise subprocess.TimeoutExpired(argv, timeout)
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(llm_client.LlmCallError, match="timed out"):
-        llm_client.run_claude_prompt("hello", "haiku", 10)
-
-
-def test_run_claude_prompt_raises_permanent_error_when_cli_missing(monkeypatch):
-    def fake_run(argv, capture_output, text, timeout):
-        raise FileNotFoundError("no such file: claude")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(llm_client.LlmCallError) as exc_info:
-        llm_client.run_claude_prompt("hello", "haiku", 10)
-    assert exc_info.value.permanent is True
 
 
 def test_extract_json_block_parses_bare_object():
@@ -330,28 +379,3 @@ def test_parse_structured_output_falls_back_when_structured_output_not_a_dict():
     # the same as absent, falling back to parsing the result field.
     envelope = _envelope(structured_output=[1, 2, 3], result='{"a": 1}')
     assert llm_client.parse_structured_output(json.dumps(envelope)) == {"a": 1}
-
-
-def test_run_claude_prompt_combines_allow_read_and_json_schema(monkeypatch):
-    # The actual shape the two vision handlers use — allow_read=True and
-    # json_schema together in one call.
-    schema = {"type": "object", "properties": {"a": {"type": ["integer", "null"]}}}
-
-    def fake_run(argv, capture_output, text, timeout):
-        assert argv == [
-            "claude",
-            "-p",
-            "hello",
-            "--model",
-            "haiku",
-            "--allowedTools",
-            "Read",
-            "--output-format",
-            "json",
-            "--json-schema",
-            json.dumps(schema),
-        ]
-        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    llm_client.run_claude_prompt("hello", "haiku", 10, allow_read=True, json_schema=schema)

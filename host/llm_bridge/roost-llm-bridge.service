@@ -1,0 +1,23 @@
+[Unit]
+Description=Roost LLM bridge (host-side helper; currently backed by claude -p)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jkumar
+# WorkingDirectory is the parent of the llm_bridge/ package directory, not
+# llm_bridge/ itself -- `python -m llm_bridge` needs "llm_bridge" to be an
+# importable top-level package name found on sys.path, and `-m` prepends the
+# *current working directory* to sys.path. If cwd were llm_bridge/ itself
+# (which has no further llm_bridge/ subdirectory), the module name lookup
+# would fail. Adjust the placeholder path below to this host's actual clone
+# location.
+WorkingDirectory=/home/jkumar/github/roost/host
+EnvironmentFile=/home/jkumar/github/roost/host/llm_bridge/.env
+ExecStart=/home/jkumar/github/roost/host/llm_bridge/.venv/bin/python -m llm_bridge
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

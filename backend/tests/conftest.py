@@ -163,32 +163,48 @@ def media_dir(tmp_path, monkeypatch):
 
 @pytest.fixture
 def mock_claude_cli(monkeypatch):
-    """Stub handlers.run_claude_prompt so tests never shell out to the real
-    `claude` CLI. `responses` is a list the test pushes raw stdout strings
-    onto before calling a handler, consumed in call order (each handler
-    makes exactly one call) — avoids matching on prompt text, since prompt
-    wording is expected to change (see llm_prompts.py). Handlers now always
-    pass `json_schema` and run the result through
-    llm_client.parse_structured_output, so queued responses must be a
-    `--output-format json` envelope (see test_llm_handlers.py's
-    `_queue_response` helper), not a bare JSON object. `calls` records every
-    invocation's args for assertions."""
+    """Stub handlers.run_claude_prompt so tests never make a real HTTP call
+    to the LLM bridge (issue #73 — the bridge is what actually shells out to
+    the `claude` CLI now, not this container; see host/llm_bridge/).
+    `responses` is a list the test pushes raw stdout strings onto before
+    calling a handler, consumed in call order (each handler makes exactly
+    one call) — avoids matching on prompt text, since prompt wording is
+    expected to change (see llm_prompts.py). Handlers now always pass
+    `json_schema` and run the result through llm_client.parse_structured_
+    output, so queued responses must be a `--output-format json` envelope
+    (see test_llm_handlers.py's `_queue_response` helper), not a bare JSON
+    object. `calls` records every invocation's args for assertions. Fixture
+    name kept as `mock_claude_cli` (not renamed to e.g. `mock_llm_bridge`)
+    to minimize the diff against existing test call sites — it's still
+    mocking the same logical thing (getting an LLM response into a
+    handler), just for a different reason now."""
     from app.jobs import handlers
 
     calls = []
     responses = []
 
     def fake_run_claude_prompt(
-        prompt, model, timeout_s, allow_read=False, json_schema=None, disallow_all_tools=False
+        job_type,
+        prompt,
+        model,
+        timeout_s,
+        allow_read=False,
+        json_schema=None,
+        disallow_all_tools=False,
+        image_bytes=None,
+        image_suffix=None,
     ):
         calls.append(
             {
+                "job_type": job_type,
                 "prompt": prompt,
                 "model": model,
                 "timeout_s": timeout_s,
                 "allow_read": allow_read,
                 "json_schema": json_schema,
                 "disallow_all_tools": disallow_all_tools,
+                "image_bytes": image_bytes,
+                "image_suffix": image_suffix,
             }
         )
         if not responses:

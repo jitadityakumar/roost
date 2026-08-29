@@ -1,20 +1,28 @@
-"""Wraps shelling out to the `claude` CLI (Claude Code, non-interactive mode)
-for the three llm-lane job types. This is the only place that knows the CLI's
-argv shape, how to get structured data back out of its free-form stdout, and
-how to coerce that data into the types the `listings` columns expect — every
-handler calls run_claude_prompt + parse_structured_output and gets back a
-dict of already-typed values.
+"""Talks to the host-side LLM bridge (host/llm_bridge/, issue #73) for the
+three llm-lane job types, and unpacks the structured data back out of its
+response into the types the `listings` columns expect — every handler calls
+run_claude_prompt + parse_structured_output and gets back a dict of
+already-typed values.
+
+The bridge, not this file, is what actually shells out to `claude -p` now —
+moved host-resident so token refresh always has read-write access to
+`~/.claude` (the container's own `~/.claude` mount was read-only, which is
+why llm-lane jobs used to fail permanently during a token-expiry window; see
+issue #73). This file only speaks HTTP to it.
 
 Model choice is per-job-type (not global) so one job type can be bumped to a
 stronger model without paying for it on the others — see JOB_TYPE_MODELS.
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
-import shutil
-import subprocess
+import urllib.error
+import urllib.request
+
+from app.config import LLM_BRIDGE_BASE
 
 logger = logging.getLogger("roost.llm_client")
 
@@ -39,24 +47,34 @@ class LlmCallError(RuntimeError):
     in stdout. Handlers let this propagate — the worker pool's existing
     exception handling (queue.fail_job) already retries/backs off.
 
-    `permanent=True` (currently only set when the `claude` binary itself is
-    missing) tells the worker pool to skip the retry budget entirely — a
-    missing binary can't be fixed by retrying the same job 3 times, only by
-    fixing the container, so retrying just delays a container operator
-    noticing (same reasoning worker.py already applies to an unregistered
-    job_type)."""
+    `permanent=True` (e.g. the bridge reports a permanent failure, or
+    `ROOST_LLM_BRIDGE_BASE` isn't configured at all) tells the worker pool
+    to skip the retry budget entirely — retrying can't fix a config problem
+    or a bridge-reported permanent failure, only a human can, so retrying
+    just delays a container operator noticing (same reasoning worker.py
+    already applies to an unregistered job_type)."""
 
     def __init__(self, message: str, permanent: bool = False):
         super().__init__(message)
         self.permanent = permanent
 
 
-def cli_available() -> bool:
-    """Cheap PATH check, called once at worker-pool startup (see worker.py)
-    so a missing/misconfigured CLI shows up in `docker logs` immediately at
-    boot, rather than only after the first listing gets refreshed and its
-    first llm job fails."""
-    return shutil.which("claude") is not None
+def bridge_available() -> bool:
+    """Calls the bridge's GET /healthz, called once at worker-pool startup
+    (see worker.py) so a missing/misconfigured/unreachable bridge shows up
+    in `docker logs` immediately at boot, rather than only after the first
+    listing gets refreshed and its first llm job fails. Mirrors the old
+    cli_available()'s boot-time-check tolerance — a bridge that's down
+    should log loudly at boot, not crash the container, so any failure to
+    reach it (missing config, connection refused, timeout) returns False
+    rather than raising."""
+    if not LLM_BRIDGE_BASE:
+        return False
+    try:
+        with urllib.request.urlopen(f"{LLM_BRIDGE_BASE}/healthz", timeout=5) as resp:
+            return resp.status == 200
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return False
 
 
 # Kept generous (not the ~500 chars that goes into a job's last_error column,
@@ -70,25 +88,38 @@ _LOG_TRUNCATE_CHARS = 4000
 
 
 def run_claude_prompt(
+    job_type: str,
     prompt: str,
     model: str,
     timeout_s: int,
     allow_read: bool = False,
     json_schema: dict | None = None,
     disallow_all_tools: bool = False,
+    image_bytes: bytes | None = None,
+    image_suffix: str | None = None,
 ) -> str:
-    """Invoke `claude -p <prompt> --model <model>` non-interactively and
-    return raw stdout. `allow_read` grants the Read tool (only needed by the
-    vision jobs, which point it at an image path embedded in the prompt) —
-    text_extract has nothing to read and gets no tool access, since its
-    prompt embeds attacker-influenced text (a Rightmove listing description)
-    and there's no reason to hand that a filesystem-reading tool.
+    """POST to the host-side LLM bridge's `/v1/llm/<job_type>` and return its
+    raw `stdout` field (matching what a local `claude -p` call used to
+    return directly, before issue #73 moved the actual CLI invocation
+    host-side) — everything downstream (parse_structured_output etc.) is
+    unchanged.
+
+    `job_type` picks both the bridge route and (bridge-side) which backend
+    config to use for this call — always one of "text_extract",
+    "floor_area_vision", "epc_vision".
+
+    `allow_read` grants the Read tool (only needed by the vision jobs, which
+    point it at an image path embedded in the prompt via the sentinel — see
+    llm_prompts.ATTACHED_IMAGE_SENTINEL) — text_extract has nothing to read
+    and gets no tool access, since its prompt embeds attacker-influenced
+    text (a Rightmove listing description) and there's no reason to hand
+    that a filesystem-reading tool.
 
     `json_schema`, when given, adds `--output-format json --json-schema
-    <schema>` so the CLI validates the model's output against the schema at
-    the source (see parse_structured_output for how the resulting envelope
-    is unpacked) instead of relying solely on prompt wording + tolerant
-    parsing.
+    <schema>` bridge-side so the CLI validates the model's output against
+    the schema at the source (see parse_structured_output for how the
+    resulting envelope is unpacked) instead of relying solely on prompt
+    wording + tolerant parsing.
 
     `disallow_all_tools` denies all tool access. Omitting `--allowedTools
     Read` alone does NOT block file reads — confirmed empirically that the
@@ -97,54 +128,59 @@ def run_claude_prompt(
     allowed. Used by text_extract, whose prompt embeds attacker-influenced
     text and has no legitimate reason to touch the filesystem at all.
 
-    When `json_schema` is also given, this is implemented as `--allowedTools
-    StructuredOutput` rather than `--disallowedTools "*"`. Confirmed
-    empirically that `--disallowedTools "*"` also denies the CLI's own
-    internal `StructuredOutput` tool — the mechanism `--json-schema` output
-    actually goes through — which breaks schema output entirely (the model
-    calls StructuredOutput, gets denied twice, then gives up with no usable
-    result). `--allowedTools <name>` is an allowlist, so naming only
-    StructuredOutput still implicitly denies everything else (Bash, Read,
-    etc.) — confirmed empirically it still blocks a prompt-injected `cat`
-    attempt, same as `--disallowedTools "*"` did."""
-    argv = ["claude", "-p", prompt, "--model", model]
-    if allow_read:
-        argv += ["--allowedTools", "Read"]
-    if disallow_all_tools:
-        if json_schema is not None:
-            argv += ["--allowedTools", "StructuredOutput"]
-        else:
-            argv += ["--disallowedTools", "*"]
-    if json_schema is not None:
-        argv += ["--output-format", "json", "--json-schema", json.dumps(json_schema)]
-    try:
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s)
-    except subprocess.TimeoutExpired as e:
-        logger.warning("claude -p (model=%s) timed out after %ds", model, timeout_s)
-        raise LlmCallError(f"claude -p timed out after {timeout_s}s") from e
-    except FileNotFoundError as e:
-        logger.error(
-            "claude CLI not found on PATH — check the Dockerfile installed it and it's "
-            "actually on this container's PATH"
-        )
+    `image_bytes`/`image_suffix`: the vision handlers pass the actual image
+    file's bytes and its on-disk suffix (e.g. ".jpg") explicitly — the
+    bridge base64-decodes them into its own temp file and substitutes that
+    path for the sentinel in the prompt before invoking its backend. Sent as
+    base64 in the JSON body (not a file path) so this still works even if
+    the container and the bridge never share a filesystem/mount."""
+    if not LLM_BRIDGE_BASE:
         raise LlmCallError(
-            "claude CLI not found on PATH — see Dockerfile / README 'Running with Docker'",
+            "ROOST_LLM_BRIDGE_BASE is not set -- the LLM bridge's address must be "
+            "configured via environment variable, see CLAUDE.md",
             permanent=True,
-        ) from e
-    if result.returncode != 0:
-        # Deliberately logged in full (not just the truncated message that
-        # ends up in the DB) — an auth failure from the mounted ~/.claude
-        # session is exactly the kind of thing whose real explanation is a
-        # sentence or two in stderr that a 500-char truncation could cut off.
-        logger.warning(
-            "claude -p (model=%s) exited %d\nstderr: %s\nstdout: %s",
-            model,
-            result.returncode,
-            result.stderr.strip()[:_LOG_TRUNCATE_CHARS],
-            result.stdout.strip()[:_LOG_TRUNCATE_CHARS],
         )
-        raise LlmCallError(f"claude -p exited {result.returncode}: {result.stderr.strip()[:500]}")
-    return result.stdout
+
+    body = {
+        "prompt": prompt,
+        "model": model,
+        "timeout_s": timeout_s,
+        "allow_read": allow_read,
+        "disallow_all_tools": disallow_all_tools,
+        "json_schema": json_schema,
+        "image_base64": base64.b64encode(image_bytes).decode("ascii") if image_bytes is not None else None,
+        "image_suffix": image_suffix,
+    }
+    url = f"{LLM_BRIDGE_BASE}/v1/llm/{job_type}"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    # The bridge already enforces timeout_s for the backend subprocess call
+    # itself; this HTTP-level timeout just needs a margin so it doesn't fire
+    # first and race the bridge's own timeout handling.
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s + 10) as resp:
+            response_body = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        # HTTPError is raised for any non-2xx response -- it is not a
+        # response object you can just check .status on. Must be caught
+        # before the generic URLError below (HTTPError is a subclass of it).
+        try:
+            error_body = json.loads(e.read())
+            message = error_body.get("error", str(e))
+            permanent = bool(error_body.get("permanent"))
+        except (ValueError, json.JSONDecodeError):
+            message, permanent = str(e), False
+        logger.warning("LLM bridge request failed (job_type=%s): %s", job_type, message)
+        raise LlmCallError(f"bridge request failed: {message}", permanent=permanent) from e
+    except (urllib.error.URLError, TimeoutError) as e:
+        logger.warning("LLM bridge unreachable (job_type=%s): %s", job_type, e)
+        raise LlmCallError(f"bridge unreachable: {e}", permanent=False) from e
+
+    return response_body["stdout"]
 
 
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)

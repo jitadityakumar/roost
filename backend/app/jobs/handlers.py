@@ -3,15 +3,18 @@ takes the full job row (dict) and either returns normally (job marked done)
 or raises (job marked failed / requeued, see queue.fail_job).
 
 'text_extract', 'floor_area_vision', 'epc_vision' (Phase 3, the llm lane)
-read from `claude -p` via llm_client.run_claude_prompt — imported by name
-(not as `llm_client.run_claude_prompt` at call sites) so tests can
-monkeypatch `handlers.run_claude_prompt` directly, matching how the
-Rightmove functions below are imported and mocked.
+call the host-side LLM bridge via llm_client.run_claude_prompt (issue #73 —
+the actual `claude -p` invocation now happens host-resident, not in this
+container; see host/llm_bridge/) — imported by name (not as
+`llm_client.run_claude_prompt` at call sites) so tests can monkeypatch
+`handlers.run_claude_prompt` directly, matching how the Rightmove functions
+below are imported and mocked.
 """
 from __future__ import annotations
 
 import json
 import logging
+import pathlib
 from datetime import datetime, timezone
 
 from app.commute import walk_store
@@ -370,6 +373,7 @@ def handle_text_extract(job: dict) -> None:
 
     prompt = llm_prompts.TEXT_EXTRACT_PROMPT.format(description=description, key_features=key_features_text)
     raw = run_claude_prompt(
+        "text_extract",
         prompt,
         JOB_TYPE_MODELS["text_extract"],
         TEXT_EXTRACT_TIMEOUT_S,
@@ -430,13 +434,15 @@ def handle_floor_area_vision(job: dict) -> None:
     if listing.get("floor_area_sqft_source") == "rightmove":
         return  # a structured/text source already won; nothing for this job to do
 
-    prompt = llm_prompts.FLOOR_AREA_VISION_PROMPT.format(image_path=image_path)
     raw = run_claude_prompt(
-        prompt,
+        "floor_area_vision",
+        llm_prompts.FLOOR_AREA_VISION_PROMPT,
         JOB_TYPE_MODELS["floor_area_vision"],
         VISION_TIMEOUT_S,
         allow_read=True,
         json_schema=llm_prompts.FLOOR_AREA_VISION_SCHEMA,
+        image_bytes=pathlib.Path(image_path).read_bytes(),
+        image_suffix=pathlib.Path(image_path).suffix,
     )
     parsed = parse_structured_output(raw)
 
@@ -460,13 +466,15 @@ def handle_epc_vision(job: dict) -> None:
     if listing.get("epc_source") == "rightmove":
         return  # a structured/text source already won; nothing for this job to do
 
-    prompt = llm_prompts.EPC_VISION_PROMPT.format(image_path=image_path)
     raw = run_claude_prompt(
-        prompt,
+        "epc_vision",
+        llm_prompts.EPC_VISION_PROMPT,
         JOB_TYPE_MODELS["epc_vision"],
         VISION_TIMEOUT_S,
         allow_read=True,
         json_schema=llm_prompts.EPC_VISION_SCHEMA,
+        image_bytes=pathlib.Path(image_path).read_bytes(),
+        image_suffix=pathlib.Path(image_path).suffix,
     )
     parsed = parse_structured_output(raw)
 

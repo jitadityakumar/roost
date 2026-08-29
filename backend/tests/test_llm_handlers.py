@@ -63,9 +63,11 @@ def test_handle_text_extract_writes_all_fields(listing_id, mock_claude_cli):
     assert listing["chain_free_source"] == "llm"
     assert listing["cash_only"] == 0
     assert listing["cash_only_source"] == "llm"
+    assert mock_claude_cli["calls"][0]["job_type"] == "text_extract"
     assert mock_claude_cli["calls"][0]["allow_read"] is False
     assert mock_claude_cli["calls"][0]["disallow_all_tools"] is True
     assert mock_claude_cli["calls"][0]["json_schema"] == llm_prompts.TEXT_EXTRACT_SCHEMA
+    assert mock_claude_cli["calls"][0]["image_bytes"] is None
 
 
 def test_handle_text_extract_only_writes_non_null_fields(listing_id, mock_claude_cli):
@@ -203,7 +205,8 @@ def test_handle_text_extract_raises_on_unparseable_response(listing_id, mock_cla
 def test_handle_floor_area_vision_uses_sqft_directly(listing_id, media_dir, mock_claude_cli):
     d = os.path.join(media_dir, str(listing_id), "floorplans")
     os.makedirs(d)
-    open(os.path.join(d, "01.jpeg"), "w").close()
+    with open(os.path.join(d, "01.jpeg"), "wb") as f:
+        f.write(b"fake-jpeg-bytes")
     _queue_response(mock_claude_cli, {"floor_area_sqm": None, "floor_area_sqft": 850})
 
     handlers.handle_floor_area_vision(_job(listing_id))
@@ -211,8 +214,16 @@ def test_handle_floor_area_vision_uses_sqft_directly(listing_id, media_dir, mock
     listing = store.get_listing(listing_id)
     assert listing["floor_area_sqft"] == 850
     assert listing["floor_area_sqft_source"] == "llm"
-    assert mock_claude_cli["calls"][0]["allow_read"] is True
-    assert mock_claude_cli["calls"][0]["json_schema"] == llm_prompts.FLOOR_AREA_VISION_SCHEMA
+    call = mock_claude_cli["calls"][0]
+    assert call["job_type"] == "floor_area_vision"
+    assert call["allow_read"] is True
+    assert call["json_schema"] == llm_prompts.FLOOR_AREA_VISION_SCHEMA
+    # Sentinel substitution happens bridge-side, not in the container — the
+    # prompt the handler builds legitimately still contains the literal
+    # sentinel at this layer.
+    assert llm_prompts.ATTACHED_IMAGE_SENTINEL in call["prompt"]
+    assert call["image_bytes"] == b"fake-jpeg-bytes"
+    assert call["image_suffix"] == ".jpeg"
 
 
 def test_handle_floor_area_vision_converts_sqm_to_sqft(listing_id, media_dir, mock_claude_cli):
@@ -239,7 +250,8 @@ def test_handle_floor_area_vision_raises_without_image(listing_id, media_dir):
 def test_handle_epc_vision_writes_both_fields(listing_id, media_dir, mock_claude_cli):
     d = os.path.join(media_dir, str(listing_id), "epc")
     os.makedirs(d)
-    open(os.path.join(d, "01.jpeg"), "w").close()
+    with open(os.path.join(d, "01.jpeg"), "wb") as f:
+        f.write(b"fake-jpeg-bytes")
     _queue_response(mock_claude_cli, {"epc_current_score": 73, "epc_potential_score": 82})
 
     handlers.handle_epc_vision(_job(listing_id))
@@ -248,7 +260,11 @@ def test_handle_epc_vision_writes_both_fields(listing_id, media_dir, mock_claude
     assert listing["epc_current"] == "C (73)"
     assert listing["epc_potential"] == "B (82)"
     assert listing["epc_source"] == "llm"
-    assert mock_claude_cli["calls"][0]["json_schema"] == llm_prompts.EPC_VISION_SCHEMA
+    call = mock_claude_cli["calls"][0]
+    assert call["job_type"] == "epc_vision"
+    assert call["json_schema"] == llm_prompts.EPC_VISION_SCHEMA
+    assert call["image_bytes"] == b"fake-jpeg-bytes"
+    assert call["image_suffix"] == ".jpeg"
 
 
 def test_handle_epc_vision_computes_band_from_score_not_model_letter(listing_id, media_dir, mock_claude_cli):

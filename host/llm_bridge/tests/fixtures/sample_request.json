@@ -1,0 +1,10 @@
+{
+  "prompt": "hello",
+  "model": "haiku",
+  "timeout_s": 60,
+  "allow_read": false,
+  "disallow_all_tools": true,
+  "json_schema": {"type": "object", "properties": {"a": {"type": ["integer", "null"]}}},
+  "image_base64": null,
+  "image_suffix": null
+}
