@@ -7,10 +7,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Roost tracks house listings you're considering buying. You submit a Rightmove
 URL; the backend extracts structured data (price, beds/baths, tenure,
 stations, broadband) and tracks it over time as an ongoing shortlist, not a
-one-off bookmark. Phase 1 (current state): local-only, no auth, no LLM
-enrichment worker (Phase 3, done), and a commute-time join against a
-sibling `london-commuter-stations` service (Phase 2, done). Mortgage-
-affordability join is still a UI stub, deferred.
+one-off bookmark. Local-only, no auth, single SQLite file, single Docker
+container.
+
+Beyond the core scrape-and-track flow, every other feature is an optional
+join against an external dependency, and every one of them fails soft (the
+feature reports unavailable / is skipped — nothing else breaks) when its
+dependency is missing: LLM-enriched fields (needs the `claude` CLI + an
+authenticated session, "Phase 3" in commit history), a commute-time join
+against a sibling `london-commuter-stations` service ("Phase 2"), a
+mortgage-affordability join against a sibling `mortgage-calculator` service,
+TfL-based nearest-station walking distance and frequent-destination journey
+times (needs a free `TFL_API_KEY`), a home-vs-listing commute comparison
+(needs home lat/lon env vars), and crime-rate/council-tax lookups against
+two free public APIs (postcodes.io, data.police.uk). See README.md's
+Requirements section for the full table of what each needs and what happens
+if it's absent — that table is written for someone (human or agent) setting
+this up fresh and deciding what to configure.
 
 ## Commands
 
@@ -22,6 +35,18 @@ uvicorn app.main:app --reload          # dev server, http://localhost:8000
 python3 -m app.db.migrate              # run pending migrations standalone
 python3 -m app.backup                  # snapshot DB + media to ../backups/
 ```
+
+Testing (from repo root):
+```
+scripts/test.sh   # backend pytest (backend/tests/) + frontend vitest (frontend/src/tests/)
+scripts/e2e.sh    # Playwright suite (e2e/) against a throwaway Docker container
+```
+`scripts/test.sh` installs `backend/requirements-dev.txt` (pytest, httpx —
+separate from `requirements.txt`, dev/test only) into `backend/.venv`
+automatically. Both backend and frontend suites run entirely against
+fixtures/mocks, not the real Rightmove/TfL/commute/mortgage/crime
+dependencies. `scripts/e2e.sh` is slower and needs Docker; run it before a
+release, not on every change.
 
 Frontend (from `frontend/`):
 ```
@@ -59,9 +84,12 @@ python -m llm_bridge      # dev/manual run, http://localhost:8094
 ```
 See `host/llm_bridge/README.md` for the systemd unit install steps.
 
-There is no automated test suite yet — verification so far has been manual
+See "Testing" above for the automated suites (`scripts/test.sh`,
+`scripts/e2e.sh`). Beyond those, some verification is still manual
 end-to-end runs against real Rightmove listings and a running Docker
-container.
+container — in particular, anything that depends on live third-party
+response shapes (Rightmove's page structure, TfL/commute/mortgage API
+responses) rather than logic the fixtures already cover.
 
 ## Architecture
 
@@ -312,6 +340,82 @@ from the old CRS-based meaning); `arrival_name` (migration `0019`) holds
 the last counted leg's `commonName` -- needed so a postcode-type
 destination's resolved arrival station has something to display
 (`FrequentDestinations.jsx`'s `{origin_name} -> {arrival_name}` line).
+
+**Home-vs-listing commute comparison, keyed by destination alone.**
+`home_journeys` (migration `0020`) stores one row per `frequent_destinations`
+row — not per `(listing, destination)` like `destination_journeys` — because
+home is a single fixed origin (`ROOST_HOME_LAT`/`ROOST_HOME_LON`) shared
+across every listing's comparison, not something listing-specific.
+`compute.py`'s `compute_for_destination` recomputes it on every call, same
+function used for the per-listing backfill, so a `PATCH` to a destination's
+day/time/`tfl_identifier` is picked up correctly — the admin UI just never
+exposes editing those fields today (delete + recreate only), so in practice
+it only ever runs once per destination's lifetime. Only the fields needed
+for a live duration diff are stored (no operator/origin_name/arrival_name/
+times) — the home journey itself is never rendered, only diffed against a
+listing's own stored `duration_minutes` at read time
+(`routes/destination_journeys.py`). Skipped entirely if the home lat/lon
+env vars are unset.
+
+**Journey scan pools, for a "why this journey was picked" details page**
+(issue #59). `journey_scan_pools` (migration `0021`,
+`app/destinations/journey_store.py`) stores the raw candidate journey pool
+TfL returned during the windowed scan behind each `destination_journeys`
+row — `listing_id` is `NOT NULL`; home journeys are explicitly out of scope
+here, there's no home-origin variant of this table the way there is for
+`destination_journeys`/`home_journeys`. Overwritten per scan (`UNIQUE
+(listing_id, destination_id)`), not an append-only history — same
+delete-then-reinsert precedent as `destination_journeys` itself.
+`GET /api/journey-details/{pool_id}` (`routes/journey_details.py`) serves it
+for the frontend's details page.
+
+**Standards rules are advisory-only and never write back to `listings`.**
+`app/standards/` (`standards_rules` table, migration `0007`) lets the admin
+define simple threshold rules — a field, an operator
+(`lt`/`lte`/`gt`/`gte`/`eq`/`neq`), and a value stored as text and cast per
+the field's real type at eval time (`fields.py`) — evaluated against a
+listing on the detail page (`evaluate.py`) to flag properties that don't
+meet the user's own baseline criteria (e.g. "floor area < 700 sqft"). No
+external dependency; purely a DB-configured comparison against fields
+already on the listing.
+
+**Crime-rate comparison, backed by two free public APIs.**
+`app/crime/` (`crime_baselines` + `crime_stats_cache` tables, migration
+`0008`) lets the admin configure baseline postcodes (e.g. current home) via
+`POST /api/crime/baselines`, then `GET /api/listings/{id}/crime`
+(`routes/crime.py`) compares a listing's postcode against them.
+`app/crime/client.py` calls `api.postcodes.io` (geocoding a postcode to
+lat/lng, and separately — shared with the council-tax feature below —
+resolving a postcode's local authority + GSS code) and
+`data.police.uk`'s `crimes-street` endpoints (ported from a standalone
+`crime-rate-tracker` script). Neither API takes a key; both are fixed public
+hosts, not deployer-configured like the commute/mortgage sibling services,
+and a postcode only ever feeds a query param, never a URL, so there's no
+SSRF concern here (same reasoning as `url_utils.py`'s allowlist not
+applying). `crimes-street` only accepts one month per request (no
+date-range param), so a full 12-month fetch is ~13 calls per postcode
+(1 geocode + 12 months); `data.police.uk` allows 15 req/s sustained / burst
+30 and returns 429 over that, so every call is throttled with a fixed delay
+plus exponential backoff on 429 (`_throttled_get`). Results are cached in
+`crime_stats_cache` keyed by normalized postcode
+(`app/crime/service.py::get_or_refresh_stats`, refreshed only when the
+cached row is stale) so a listing-detail page load doesn't re-run the full
+fetch every time. `scripts/crime-backfill.sh` warms the cache for an entire
+existing shortlist plus baselines in one pass.
+
+**Council tax band estimate, sharing the crime feature's postcode client.**
+`app/counciltax/` + `council_tax_rates` table (migrations `0022`/`0023`,
+issue #60) resolves a listing's local authority (`admin_district`,
+`admin_district_gss` columns on `listings`) via the same
+`app/crime/client.py::lookup_postcode` used for crime baselines — that
+function isn't scoped to the crime feature specifically, it's a shared
+postcodes.io wrapper. `council_tax_rates` is keyed by GSS code (stable
+across a council rename; `council_name` is display-only, never joined on)
+and holds per-band (A-H) rates the admin maintains via
+`PUT /api/council-tax/{gss_code}` — there's no automatic rate source, this
+table is hand-populated. No FK/CHECK constraints on the table deliberately,
+so a future rate-table tweak never needs the rebuild-and-swap dance other
+migrations in this repo have hit.
 
 ## Working in this repo
 
