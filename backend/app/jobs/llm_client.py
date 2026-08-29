@@ -16,6 +16,7 @@ stronger model without paying for it on the others — see JOB_TYPE_MODELS.
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import logging
 import re
@@ -71,9 +72,16 @@ def bridge_available() -> bool:
     if not LLM_BRIDGE_BASE:
         return False
     try:
-        with urllib.request.urlopen(f"{LLM_BRIDGE_BASE}/healthz", timeout=5) as resp:
+        with urllib.request.urlopen(f"{LLM_BRIDGE_BASE.rstrip('/')}/healthz", timeout=5) as resp:
             return resp.status == 200
-    except (urllib.error.URLError, TimeoutError, ValueError):
+    # urlopen doesn't wrap every failure in URLError -- something listening
+    # on the port that isn't actually the bridge (e.g. mid-restart, or a
+    # stale process) can raise a raw http.client exception
+    # (RemoteDisconnected, BadStatusLine) or OSError from getresponse(),
+    # which would otherwise propagate past this check and crash the
+    # FastAPI lifespan at boot -- exactly what this function's docstring
+    # promises not to do.
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError, http.client.HTTPException):
         return False
 
 
@@ -151,7 +159,13 @@ def run_claude_prompt(
         "image_base64": base64.b64encode(image_bytes).decode("ascii") if image_bytes is not None else None,
         "image_suffix": image_suffix,
     }
-    url = f"{LLM_BRIDGE_BASE}/v1/llm/{job_type}"
+    # .rstrip("/") -- a trailing slash on ROOST_LLM_BRIDGE_BASE (an easy
+    # config typo) would otherwise produce a double-slash request path that
+    # 404s at the bridge; the bridge itself now returns a proper
+    # {"error","permanent"} shape even for that case (see
+    # host/llm_bridge/app.py's StarletteHTTPException handler), but avoiding
+    # the malformed URL in the first place is cheaper than relying on that.
+    url = f"{LLM_BRIDGE_BASE.rstrip('/')}/v1/llm/{job_type}"
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -163,22 +177,40 @@ def run_claude_prompt(
     # first and race the bridge's own timeout handling.
     try:
         with urllib.request.urlopen(req, timeout=timeout_s + 10) as resp:
-            response_body = json.loads(resp.read())
+            raw_response = resp.read()
+        response_body = json.loads(raw_response)
+    except json.JSONDecodeError as e:
+        # A 200 with a non-JSON body is a bridge contract violation, not a
+        # network failure -- doesn't fit either except clause below.
+        raise LlmCallError(f"bridge returned a non-JSON 200 response: {raw_response[:500]!r}") from e
     except urllib.error.HTTPError as e:
         # HTTPError is raised for any non-2xx response -- it is not a
         # response object you can just check .status on. Must be caught
         # before the generic URLError below (HTTPError is a subclass of it).
         try:
             error_body = json.loads(e.read())
-            message = error_body.get("error", str(e))
+            message = str(error_body.get("error", str(e)))[:500]
             permanent = bool(error_body.get("permanent"))
         except (ValueError, json.JSONDecodeError):
             message, permanent = str(e), False
         logger.warning("LLM bridge request failed (job_type=%s): %s", job_type, message)
         raise LlmCallError(f"bridge request failed: {message}", permanent=permanent) from e
-    except (urllib.error.URLError, TimeoutError) as e:
+    except (urllib.error.URLError, TimeoutError, http.client.HTTPException) as e:
         logger.warning("LLM bridge unreachable (job_type=%s): %s", job_type, e)
         raise LlmCallError(f"bridge unreachable: {e}", permanent=False) from e
+
+    # A 200 response is still only a *contract*, not a guarantee -- a bridge
+    # version mismatch or a bug there could return a 200 with an unexpected
+    # shape. Treat that the same as any other bad response rather than
+    # letting a raw KeyError/TypeError escape and bypass the `permanent`
+    # machinery every other failure path here goes through.
+    if not isinstance(response_body, dict) or not isinstance(response_body.get("stdout"), str):
+        logger.warning(
+            "LLM bridge returned a 200 with an unexpected body shape (job_type=%s): %s",
+            job_type,
+            str(response_body)[:500],
+        )
+        raise LlmCallError(f"bridge returned an unexpected response shape: {str(response_body)[:500]!r}")
 
     return response_body["stdout"]
 

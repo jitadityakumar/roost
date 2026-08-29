@@ -142,3 +142,107 @@ def test_sample_request_fixture_accepted_as_is(client, fake_backend):
         body = json.load(f)
     resp = client.post("/v1/llm/text_extract", json=body)
     assert resp.status_code == 200
+
+
+def test_unknown_route_returns_bridge_error_shape_not_fastapi_default(client, fake_backend):
+    # A trailing slash on ROOST_LLM_BRIDGE_BASE (container-side) produces a
+    # double-slash request path here -- without a StarletteHTTPException
+    # handler, FastAPI's default 404 {"detail": "Not Found"} would leak
+    # through, the container's error parser wouldn't find "error"/
+    # "permanent" in it, and it would default to permanent=False -- an
+    # unreachable-forever misconfiguration retried indefinitely.
+    resp = client.get("/not-a-real-route")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert set(body.keys()) == {"error", "permanent"}
+    assert body["permanent"] is True
+
+
+def test_wrong_method_returns_bridge_error_shape(client, fake_backend):
+    resp = client.get("/v1/llm/text_extract")
+    assert resp.status_code == 405
+    body = resp.json()
+    assert set(body.keys()) == {"error", "permanent"}
+    assert body["permanent"] is True
+
+
+def test_run_llm_image_suffix_rejects_path_traversal(client, fake_backend):
+    resp = client.post(
+        "/v1/llm/floor_area_vision",
+        json=_body(
+            prompt=f"see {ATTACHED_IMAGE_SENTINEL}", image_base64="aGVsbG8=", image_suffix="/../../tmp/evil"
+        ),
+    )
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["permanent"] is True
+    assert fake_backend.calls == []
+
+
+def test_run_llm_image_suffix_rejects_non_extension_values(client, fake_backend):
+    for bad_suffix in ["", "jpg", "..jpg", "a" * 20]:
+        resp = client.post(
+            "/v1/llm/floor_area_vision",
+            json=_body(prompt=f"see {ATTACHED_IMAGE_SENTINEL}", image_base64="aGVsbG8=", image_suffix=bad_suffix),
+        )
+        assert resp.status_code == 400, bad_suffix
+        assert resp.json()["permanent"] is True
+
+
+def test_run_llm_oversized_image_rejected_before_backend_call(client, fake_backend):
+    import base64
+
+    oversized = base64.b64encode(b"x" * (app_module.MAX_IMAGE_BYTES + 1)).decode("ascii")
+    resp = client.post(
+        "/v1/llm/floor_area_vision",
+        json=_body(prompt=f"see {ATTACHED_IMAGE_SENTINEL}", image_base64=oversized, image_suffix=".jpg"),
+    )
+    assert resp.status_code == 400
+    assert resp.json()["permanent"] is True
+    assert fake_backend.calls == []
+
+
+def test_run_llm_malformed_base64_rejected(client, fake_backend):
+    resp = client.post(
+        "/v1/llm/floor_area_vision",
+        json=_body(prompt=f"see {ATTACHED_IMAGE_SENTINEL}", image_base64="not valid base64!!", image_suffix=".jpg"),
+    )
+    assert resp.status_code == 400
+    assert resp.json()["permanent"] is True
+    assert fake_backend.calls == []
+
+
+def test_run_llm_temp_file_cleaned_up_when_backend_raises(client, fake_backend):
+    seen_path = {}
+
+    def boom(**kwargs):
+        seen_path["path"] = kwargs["image_path"]
+        raise BackendError("claude exited 1", permanent=False)
+
+    fake_backend._run_fn = boom
+    resp = client.post(
+        "/v1/llm/floor_area_vision",
+        json=_body(prompt=f"see {ATTACHED_IMAGE_SENTINEL}", image_base64="aGVsbG8=", image_suffix=".jpg"),
+    )
+    assert resp.status_code == 502
+    assert not os.path.exists(seen_path["path"])
+
+
+def test_unhandled_exception_returns_bridge_error_shape(fake_backend):
+    # raise_server_exceptions=False: the default TestClient re-raises a
+    # handler's unhandled exception into the test itself (useful for
+    # catching bugs during development) rather than exercising the
+    # production behavior this test is actually checking -- that a real
+    # deployment's ASGI server gets back a normal {"error","permanent"}
+    # response, not a crashed connection.
+    no_raise_client = TestClient(app_module.app, raise_server_exceptions=False)
+
+    def boom(**kwargs):
+        raise RuntimeError("something genuinely unexpected")
+
+    fake_backend._run_fn = boom
+    resp = no_raise_client.post("/v1/llm/text_extract", json=_body())
+    assert resp.status_code == 500
+    body = resp.json()
+    assert set(body.keys()) == {"error", "permanent"}
+    assert body["permanent"] is False

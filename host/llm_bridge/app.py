@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 import tempfile
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from llm_bridge.backends import REGISTRY, BackendError
 from llm_bridge.config import ATTACHED_IMAGE_SENTINEL, BACKENDS_BY_JOB_TYPE, MAX_IMAGE_BYTES
@@ -54,6 +56,21 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
     # must not crash on an unrecognized shape. A malformed request body is a
     # Roost/bridge contract violation, not a transient condition.
     return _error_response(400, str(exc), True)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    # FastAPI/Starlette's own 404 (unknown path) and 405 (wrong method) responses
+    # go through this handler, not the generic Exception one below or
+    # RequestValidationError -- without this, they'd leak the default
+    # {"detail": "..."}-shaped body. Concretely: a misconfigured
+    # ROOST_LLM_BRIDGE_BASE with a trailing slash produces a double-slash
+    # request path that 404s here; without this handler the container's error
+    # parser can't find "error"/"permanent" in the body, defaults to
+    # permanent=False, and retries a request that can never succeed. A 404/405
+    # here is itself a permanent condition (retrying the identical request
+    # can't fix a wrong path/method), so `permanent=True`.
+    return _error_response(exc.status_code, str(exc.detail), True)
 
 
 @app.exception_handler(Exception)
@@ -146,11 +163,29 @@ def run_llm(job_type: str, body: LlmRequest):
         )
     if has_image and not body.image_suffix:
         return _error_response(400, "image_base64 given but image_suffix missing", True)
+    # image_suffix reaches tempfile.NamedTemporaryFile(suffix=...) below --
+    # a value like "/../../tmp/evil" would still be blocked by the OS
+    # (ENOENT/ENOTDIR, since the base temp dir component it's appended to
+    # doesn't exist along that path), but it hits the generic exception
+    # handler and comes back as a 500 with permanent=False, so the
+    # container retries a request that can never succeed, and the raw OS
+    # error (a real host filesystem path) gets echoed back to the caller.
+    # Restrict to a plain file extension up front instead.
+    if has_image and not re.fullmatch(r"\.[A-Za-z0-9]{1,8}", body.image_suffix):
+        return _error_response(400, "image_suffix must be a simple file extension, e.g. '.jpg'", True)
 
     image_path = None
     tmp_file = None
     try:
         if has_image:
+            # Reject on encoded length before the more expensive b64decode
+            # allocates a second full copy -- this is a no-auth service
+            # reachable by any container on the host, so an oversized body
+            # should be rejected as cheaply as possible rather than fully
+            # decoded first. Base64 expands ~4/3, so this is a conservative
+            # upper bound on the decoded size, not an exact one.
+            if len(body.image_base64) > MAX_IMAGE_BYTES * 4 // 3 + 4:
+                return _error_response(400, "image_base64 exceeds the maximum allowed size", True)
             try:
                 image_bytes = base64.b64decode(body.image_base64, validate=True)
             except Exception as e:

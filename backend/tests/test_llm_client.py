@@ -182,6 +182,56 @@ def test_bridge_available_false_on_unreachable(monkeypatch):
     assert llm_client.bridge_available() is False
 
 
+def test_bridge_available_false_on_http_client_exception(monkeypatch):
+    # urlopen doesn't wrap every failure in URLError -- something listening
+    # on the configured port that isn't actually the bridge (e.g. mid
+    # restart, or a stale unrelated process) can raise a raw
+    # http.client exception from getresponse() instead. Must not crash the
+    # FastAPI lifespan at boot -- same "log loudly, don't raise" contract
+    # as any other unreachable-bridge case.
+    import http.client
+
+    def fake_urlopen(url, timeout=None):
+        raise http.client.RemoteDisconnected("Remote end closed connection")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert llm_client.bridge_available() is False
+
+
+def test_run_claude_prompt_raises_transient_on_http_client_exception(monkeypatch):
+    import http.client
+
+    def fake_urlopen(req, timeout=None):
+        raise http.client.BadStatusLine("garbage")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(llm_client.LlmCallError) as exc_info:
+        llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+    assert exc_info.value.permanent is False
+
+
+def test_run_claude_prompt_raises_on_non_json_200_body(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        return _FakeResponse(b"not json at all")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(llm_client.LlmCallError, match="non-JSON"):
+        llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+
+
+def test_run_claude_prompt_raises_on_200_missing_stdout_field(monkeypatch):
+    # A 200 is only a contract, not a guarantee -- a bridge version mismatch
+    # or bug there could omit "stdout". Must not raise a raw KeyError that
+    # bypasses the permanent-flag machinery every other failure path here
+    # goes through.
+    def fake_urlopen(req, timeout=None):
+        return _FakeResponse(json.dumps({"unexpected": "shape"}).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(llm_client.LlmCallError, match="unexpected response shape"):
+        llm_client.run_claude_prompt("text_extract", "hello", "haiku", 10)
+
+
 def test_bridge_available_false_when_base_unset(monkeypatch):
     monkeypatch.setattr(llm_client, "LLM_BRIDGE_BASE", None)
     assert llm_client.bridge_available() is False
