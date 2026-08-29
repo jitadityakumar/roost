@@ -59,19 +59,30 @@ Docker (from repo root):
 ```
 docker build -t roost .
 docker run -p 8000:8000 -v $(pwd)/data:/data \
-  -v ~/.claude:/root/.claude:ro \
-  -v ~/.claude.json:/root/.claude.json:ro \
+  --add-host=host.docker.internal:host-gateway \
   --env-file .env \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
 `.env` (gitignored, not tracked in this repo) holds the host-specific
-`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `TFL_API_KEY`, and
-optional `ROOST_HOME_LAT`/`ROOST_HOME_LON` (home-vs-listing journey
-duration comparison, app/destinations/compute.py -- deliberately env-only,
-never DB-stored, so a real home address never lands in the public repo or
-a DB dump; the comparison is just skipped if unset) vars -- deliberately
-passed via `--env-file` rather than inline `-e`/python-dotenv, since inline
-flags leave the key visible in shell history / `ps aux`.
+`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `TFL_API_KEY`,
+`ROOST_LLM_BRIDGE_BASE` (the host-side LLM bridge's address, e.g.
+`http://host.docker.internal:8094` -- see "Architecture" below and
+`host/llm_bridge/`), and optional `ROOST_HOME_LAT`/`ROOST_HOME_LON`
+(home-vs-listing journey duration comparison, app/destinations/compute.py
+-- deliberately env-only, never DB-stored, so a real home address never
+lands in the public repo or a DB dump; the comparison is just skipped if
+unset) vars -- deliberately passed via `--env-file` rather than inline
+`-e`/python-dotenv, since inline flags leave the key visible in shell
+history / `ps aux`.
+
+Host-side LLM bridge (from `host/llm_bridge/`, a second independent
+Python project -- own venv, not part of the container build):
+```
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m llm_bridge      # dev/manual run, http://localhost:8094
+```
+See `host/llm_bridge/README.md` for the systemd unit install steps.
 
 See "Testing" above for the automated suites (`scripts/test.sh`,
 `scripts/e2e.sh`). Beyond those, some verification is still manual
@@ -99,34 +110,53 @@ Job claiming uses `BEGIN IMMEDIATE` for atomicity across the two writers
 lane filter in its query, so it already covers stale `llm`-lane leases too;
 don't add a second reclaim loop to `LlmLaneWorkerPool`).
 
-**The `llm`-lane worker shells out to the `claude` CLI**
-(`app/jobs/llm_client.py`), not a hosted API — `claude -p --model <model>
---output-format json --json-schema <schema>`, non-interactive, with
-`--allowedTools Read` granted only to the two vision handlers (they need to
-read an image path). `text_extract`'s prompt embeds a Rightmove listing
-description — untrusted text with no reason to carry filesystem access — so
-it also gets tool access denied; omitting `--allowedTools Read` alone does
-NOT block file reads (the CLI has a hardcoded, always-on set of read-only
-Bash commands like `cat`/`head` that bypass tool permissions entirely —
-confirmed empirically and via https://code.claude.com/docs/en/permissions).
-The deny is `--allowedTools StructuredOutput`, not `--disallowedTools "*"` —
-confirmed empirically that `--disallowedTools "*"` also denies the CLI's own
-internal `StructuredOutput` tool (how `--json-schema` output is actually
-delivered), breaking schema output entirely. `--allowedTools <name>` is an
-allowlist, so naming only `StructuredOutput` still implicitly denies
-everything else. `--json-schema` makes the CLI
-validate the model's JSON output against a schema at the source
-(`llm_prompts.py`'s `*_SCHEMA` constants); the response envelope's
-`structured_output` field (preferred) or its `result` field (fallback, still
-code-fenced) is unpacked by `llm_client.parse_structured_output`. The
-container needs the `claude` CLI installed
-(see `Dockerfile`) and an authenticated session — mounted read-only from the
-host's `~/.claude` at `-v ~/.claude:/root/.claude:ro` (see `README.md`)
-rather than a separate `ANTHROPIC_API_KEY`. That mount is read-only, so a
-token refresh the CLI would normally persist back to `~/.claude` can't be
-written inside the container — if `llm`-lane jobs start failing with an auth
-error after the container's been running a while, this is the first thing to
-check.
+**The `llm`-lane worker calls a host-side HTTP bridge, not a local CLI or a
+hosted API** (issue #73). `app/jobs/llm_client.py`'s `run_claude_prompt`
+POSTs to `{ROOST_LLM_BRIDGE_BASE}/v1/llm/<job_type>`; the bridge
+(`host/llm_bridge/`, a second, host-resident deployable living alongside the
+container, own venv/entrypoint, autostarted via a systemd unit) is what
+actually runs `claude -p --model <model> --output-format json --json-schema
+<schema>`, non-interactive, with `--allowedTools Read` granted only for the
+two vision handlers (they need to read an image path) — `text_extract`'s
+prompt embeds a Rightmove listing description — untrusted text with no
+reason to carry filesystem access — so it gets tool access denied instead;
+omitting `--allowedTools Read` alone does NOT block file reads (the CLI has
+a hardcoded, always-on set of read-only Bash commands like `cat`/`head` that
+bypass tool permissions entirely — confirmed empirically and via
+https://code.claude.com/docs/en/permissions). The deny is `--allowedTools
+StructuredOutput`, not `--disallowedTools "*"` — confirmed empirically that
+`--disallowedTools "*"` also denies the CLI's own internal
+`StructuredOutput` tool (how `--json-schema` output is actually delivered),
+breaking schema output entirely. `--allowedTools <name>` is an allowlist, so
+naming only `StructuredOutput` still implicitly denies everything else.
+`--json-schema` makes the CLI validate the model's JSON output against a
+schema at the source (`llm_prompts.py`'s `*_SCHEMA` constants); the response
+envelope's `structured_output` field (preferred) or its `result` field
+(fallback, still code-fenced) is unpacked by
+`llm_client.parse_structured_output`, unchanged from before this moved
+host-side — only the transport (HTTP to the bridge, not a local subprocess)
+changed.
+
+Vision jobs send the image as base64 bytes in the request body (not a file
+path — the container and the bridge aren't assumed to share a filesystem).
+The prompt sent to the bridge embeds a fixed sentinel,
+`llm_prompts.ATTACHED_IMAGE_SENTINEL` (`"<<ATTACHED_IMAGE>>"`), where the
+image path used to go; the bridge string-replaces it with its own temp
+file's path before invoking `claude -p`. The bridge has zero knowledge of
+`llm_prompts.py`'s other template variables or Roost's prompt content by
+design — this sentinel is duplicated (not imported) in
+`host/llm_bridge/config.py`, with a test on each side asserting the literal
+value so a one-sided edit fails its own suite.
+
+The bridge runs as the host user (not root) with normal read-write access
+to `~/.claude`, so token refresh Just Works there — this is what actually
+fixes issue #73's failure mode (the container's old `~/.claude:ro` mount
+meant a refreshed token could never be persisted back to the host). The
+container no longer touches `~/.claude` at all. See `host/llm_bridge/`'s own
+files for the bridge's HTTP surface, backend-interface pattern, and
+systemd unit; `host/llm_bridge/README.md` for manual install steps (a
+host-level operation, not part of this repo's `docker build`/`docker run`
+flow).
 
 **Every Refresh re-runs all three `llm`-lane jobs, by default.**
 `llm_enqueue.should_enqueue`'s `has_pending_job` guard only blocks a

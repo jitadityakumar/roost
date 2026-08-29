@@ -15,6 +15,12 @@ COMMUTE_API_BASE = os.environ.get("ROOST_COMMUTE_API_BASE")
 # Same reasoning as COMMUTE_API_BASE -- see app/mortgage/client.py.
 MORTGAGE_API_BASE = os.environ.get("ROOST_MORTGAGE_API_BASE")
 
+# Same reasoning as COMMUTE_API_BASE/MORTGAGE_API_BASE -- see
+# app/jobs/llm_client.py and host/llm_bridge/ (issue #73). Address of the
+# host-resident LLM bridge the llm-lane jobs now call instead of shelling
+# out to `claude -p` locally.
+LLM_BRIDGE_BASE = os.environ.get("ROOST_LLM_BRIDGE_BASE")
+
 # TfL's free Unified API key -- see app/commute/tfl_client.py. No in-repo
 # default; a missing key means walk distances/frequent-destination journeys
 # just aren't computed (caught and logged per-call, not fatal).

@@ -24,8 +24,8 @@ feature is skipped/hidden rather than the app breaking (see
 [Requirements](#requirements) below):
 
 - LLM-enriched fields (lease years, service charge, council tax band,
-  chain-free, cash-only, floor area/EPC read off images) — needs the `claude`
-  CLI + an authenticated session.
+  chain-free, cash-only, floor area/EPC read off images) — needs a running
+  host-side LLM bridge with an authenticated `claude` session.
 - Commute times to configured termini — needs a running
   `london-commuter-stations` sibling service.
 - Mortgage-affordability estimate — needs a running `mortgage-calculator`
@@ -53,7 +53,7 @@ variables — see `backend/app/config.py`.
 
 | Feature | Requirement | Env var | If missing |
 |---|---|---|---|
-| LLM enrichment | `claude` CLI installed + an authenticated session (`claude login`) | — (session mounted from `~/.claude` and `~/.claude.json`, no API key) | `llm`-lane jobs fail with a clear error per job; scraped fields still work |
+| LLM enrichment | A running host-side LLM bridge (`host/llm_bridge/`, own venv/systemd unit) with an authenticated `claude login` session | `ROOST_LLM_BRIDGE_BASE` | `llm`-lane jobs fail with a clear error per job; scraped fields still work |
 | Commute times | A running `london-commuter-stations` instance | `ROOST_COMMUTE_API_BASE` | `GET .../commute` raises a `CommuteApiError`; UI shows it as unavailable |
 | Mortgage estimate | A running `mortgage-calculator` instance | `ROOST_MORTGAGE_API_BASE` | `GET .../mortgage` returns `{"result": null, "error": "..."}` |
 | Station walk distance + frequent destinations | A free TfL Unified API key ([register here](https://api-portal.tfl.gov.uk/)) | `TFL_API_KEY` | Per-station/journey computation is skipped and logged, not fatal; falls back to Rightmove's straight-line distance where applicable |
@@ -126,8 +126,7 @@ tears the container down. Requires Docker. Slower and more involved than
 docker build -t roost .
 docker run -d --name roost --restart unless-stopped \
   -p 8099:8000 -v $(pwd)/data:/data \
-  -v ~/.claude:/root/.claude:ro \
-  -v ~/.claude.json:/root/.claude.json:ro \
+  --add-host=host.docker.internal:host-gateway \
   --env-file .env \
   --log-opt max-size=10m --log-opt max-file=3 roost
 ```
@@ -147,24 +146,25 @@ failures could otherwise accumulate an ever-growing log file on the host.
 [Requirements](#requirements) table above gets configured — a `.env` file
 (gitignored, not tracked in this repo) holding whichever of
 `ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `TFL_API_KEY`,
-`ROOST_HOME_LAT`/`ROOST_HOME_LON` you want enabled. Any left unset just
-means that one feature is unavailable — the app runs fine without any of
-them. `--env-file` is used deliberately instead of inline `-e`/python-dotenv,
-since inline flags leave the value visible in shell history / `ps aux`.
+`ROOST_LLM_BRIDGE_BASE`, `ROOST_HOME_LAT`/`ROOST_HOME_LON` you want enabled.
+Any left unset just means that one feature is unavailable — the app runs
+fine without any of them. `--env-file` is used deliberately instead of
+inline `-e`/python-dotenv, since inline flags leave the value visible in
+shell history / `ps aux`.
 
-The `-v ~/.claude:/root/.claude:ro` and `-v ~/.claude.json:/root/.claude.json:ro`
-mounts give the LLM enrichment worker read-only access to the host's
-existing `claude login` session (the second file is separate, home-root
-onboarding/trust state the CLI also expects), so no separate API key needs
-to be provisioned or stored in the container. If you don't want LLM
-enrichment, omit both mounts — those jobs will just fail with a clear
-"claude CLI not found"/auth error and every other feature is unaffected.
-Known tradeoff of the `:ro` mounts: the CLI can't persist a refreshed OAuth
-token back to the host, so if `llm`-lane jobs start failing with an auth
-error after the container's been running a long time, re-running
-`claude login` on the host (which the container will pick up on its next
-call, since the mount is live) is the fix. The `/data` volume holds the
-SQLite database and downloaded media so they survive container restarts.
+LLM enrichment now calls a separate, host-resident LLM bridge
+(`host/llm_bridge/`) over HTTP instead of shelling out to the `claude` CLI
+inside the container — the bridge is what holds the `claude login` session,
+not this container, which no longer touches `~/.claude` at all.
+`--add-host=host.docker.internal:host-gateway` plus
+`ROOST_LLM_BRIDGE_BASE=http://host.docker.internal:8094` in `.env` is how
+the container reaches it. See `host/llm_bridge/README.md` for setting the
+bridge up (its own venv + optional systemd unit — a separate, host-level
+install step, not part of this `docker build`/`docker run` flow). If you
+don't want LLM enrichment, omit `ROOST_LLM_BRIDGE_BASE` and don't run the
+bridge — those jobs will just fail with a clear "bridge unreachable" error
+and every other feature is unaffected. The `/data` volume holds the SQLite
+database and downloaded media so they survive container restarts.
 
 ## Data
 

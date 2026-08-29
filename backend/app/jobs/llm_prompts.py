@@ -4,6 +4,25 @@ decision log in context.md) — kept in their own module so they're easy to
 find and edit without touching handler logic.
 """
 
+# Placeholder for the vision prompts' image reference, replaced by the
+# host-side bridge (host/llm_bridge/config.py's own copy of this same
+# literal string) with a real temp file path just before invoking its
+# backend — see issue #73. The bridge has zero knowledge of this module; it
+# only knows to find-and-replace this one fixed string.
+#
+# Deliberately NOT brace-delimited (e.g. "{{ATTACHED_IMAGE}}"): if this
+# prompt string ever passes through str.format() for an unrelated
+# placeholder, "{{"/"}}" collapses to a literal single "{"/"}" per Python's
+# escaping rules, and the bridge's literal match would then never fire — the
+# image would be silently never substituted. A sentinel with no {} survives
+# .format() unchanged regardless of what else touches the string.
+#
+# Must byte-for-byte match host/llm_bridge/config.py's ATTACHED_IMAGE_SENTINEL
+# — duplicated on purpose, not shared via import (the bridge must never
+# depend on backend/app/). Both sides have a test asserting the literal
+# value, so a one-sided edit fails its own suite.
+ATTACHED_IMAGE_SENTINEL = "<<ATTACHED_IMAGE>>"
+
 TEXT_EXTRACT_PROMPT = """Below is the free-text description and key-features bullet list from a UK property listing (HTML tags included as-is). Extract the following fields, using both the description and the key features — some listings only state a fact (e.g. "Chain Free") in the key features bullets, not in the description text:
 
 1. "lease_years_remaining": integer years remaining on the lease, or null if freehold / not mentioned.
@@ -20,13 +39,13 @@ Key features:
 Description:
 {description}"""
 
-FLOOR_AREA_VISION_PROMPT = """This is a UK property floorplan image at {image_path}. Read the image and find the total floor area as printed on it.
+FLOOR_AREA_VISION_PROMPT = """This is a UK property floorplan image at <<ATTACHED_IMAGE>>. Read the image and find the total floor area as printed on it.
 
-Reply with ONLY a JSON object, no other text before or after it: {{"floor_area_sqm": <number or null>, "floor_area_sqft": <number or null>}}. Populate whichever unit(s) are printed on the image; if only one unit is shown, leave the other null (the caller will convert). If no total floor area figure is printed anywhere on the image, return {{"floor_area_sqm": null, "floor_area_sqft": null}}."""
+Reply with ONLY a JSON object, no other text before or after it: {"floor_area_sqm": <number or null>, "floor_area_sqft": <number or null>}. Populate whichever unit(s) are printed on the image; if only one unit is shown, leave the other null (the caller will convert). If no total floor area figure is printed anywhere on the image, return {"floor_area_sqm": null, "floor_area_sqft": null}."""
 
-EPC_VISION_PROMPT = """This is a UK Energy Performance Certificate (EPC) graphic image at {image_path}. Read the image and find the current and potential energy efficiency score.
+EPC_VISION_PROMPT = """This is a UK Energy Performance Certificate (EPC) graphic image at <<ATTACHED_IMAGE>>. Read the image and find the current and potential energy efficiency score.
 
-Reply with ONLY a JSON object, no other text before or after it: {{"epc_current_score": <integer 1-100 or null>, "epc_potential_score": <integer 1-100 or null>}}, e.g. {{"epc_current_score": 73, "epc_potential_score": 80}}. Use null for either value if it isn't legible or present on the image. Read the score number carefully off the marker position on the coloured bar. Only report the number — the letter band is derived from it separately, do not include a letter in your answer."""
+Reply with ONLY a JSON object, no other text before or after it: {"epc_current_score": <integer 1-100 or null>, "epc_potential_score": <integer 1-100 or null>}, e.g. {"epc_current_score": 73, "epc_potential_score": 80}. Use null for either value if it isn't legible or present on the image. Read the score number carefully off the marker position on the coloured bar. Only report the number — the letter band is derived from it separately, do not include a letter in your answer."""
 
 # JSON schemas passed to `claude -p --output-format json --json-schema ...`
 # (see llm_client.run_claude_prompt/parse_structured_output). Prompt wording
