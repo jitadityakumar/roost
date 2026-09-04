@@ -303,7 +303,7 @@ def compute_station_walk_distances(
             logger.info("no TfL mode mapping for station %r, types=%r -- skipping", name, entry.get("types"))
             continue
 
-        stop_point_id = resolve_stop_point(
+        resolved = resolve_stop_point(
             name,
             mode,
             latitude,
@@ -311,11 +311,14 @@ def compute_station_walk_distances(
             _distance_miles_for_entry(entry),
             search_modes=search_modes,
         )
+        stop_point_id = resolved["id"] if resolved else None
         row = {
             "station_index": index,
             "rightmove_name": name,
             "mode": mode,
             "stop_point_id": stop_point_id,
+            "lat": resolved["lat"] if resolved else None,
+            "lon": resolved["lon"] if resolved else None,
             "distance_meters": None,
             "duration_seconds": None,
         }

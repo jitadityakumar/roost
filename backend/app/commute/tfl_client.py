@@ -156,10 +156,15 @@ def resolve_stop_point(
     listing_lon: float,
     rightmove_distance_miles: float | None,
     search_modes: str | None = None,
-) -> str | None:
-    """Resolve a Rightmove station name to a TfL StopPoint id, or None if it
+) -> dict | None:
+    """Resolve a Rightmove station name to a TfL StopPoint, or None if it
     can't be resolved (never raises -- a station TfL can't resolve
-    shouldn't fail the whole scrape job).
+    shouldn't fail the whole scrape job). Returns {"id", "lat", "lon"} --
+    lat/lon are the resolved StopPoint's own coordinates (issue #76: needed
+    at write time so a Google Maps walking link can be built later without
+    re-resolving live), and can themselves be None in the rare hub-tiebreak
+    fallback path (see _resolve_hub_child) where a matching child StopPoint
+    was found but its own lat/lon were missing from TfL's response.
 
     Scores each `/StopPoint/Search` candidate by
     abs(haversine(listing, candidate) - rightmove_distance_miles) and picks
@@ -218,7 +223,7 @@ def resolve_stop_point(
 
     if stop_id.startswith("HUB"):
         return _resolve_hub_child(stop_id, mode, listing_lat, listing_lon, search_modes=search_modes)
-    return stop_id
+    return {"id": stop_id, "lat": best["lat"], "lon": best["lon"]}
 
 
 def _hub_children(hub_id: str, modes: str) -> list[dict]:
@@ -244,7 +249,7 @@ def _hub_children(hub_id: str, modes: str) -> list[dict]:
 
 def _resolve_hub_child(
     hub_id: str, mode: str, listing_lat: float, listing_lon: float, search_modes: str | None = None
-) -> str | None:
+) -> dict | None:
     """Single-child resolution for resolve_stop_point's walk-distance use
     case, where "closest to the listing" is meaningful because the listing
     genuinely is near the station. Accepts the same widened `search_modes`
@@ -267,8 +272,12 @@ def _resolve_hub_child(
     matching = _hub_children(hub_id, search_modes or mode)
     if not matching:
         return None
+
+    def as_result(c: dict) -> dict:
+        return {"id": c["id"], "lat": c.get("lat"), "lon": c.get("lon")}
+
     if len(matching) == 1:
-        return matching[0]["id"]
+        return as_result(matching[0])
 
     # Not yet confirmed what the right tiebreak is here -- hasn't come up in
     # testing. Fall back to closest-lat/lon and log it as worth a second
@@ -278,12 +287,12 @@ def _resolve_hub_child(
     )
     with_latlon = [c for c in matching if c.get("lat") is not None and c.get("lon") is not None]
     if not with_latlon:
-        return matching[0]["id"]
+        return as_result(matching[0])
     try:
         closest = min(with_latlon, key=lambda c: _haversine_miles(listing_lat, listing_lon, c["lat"], c["lon"]))
-        return closest["id"]
+        return as_result(closest)
     except (KeyError, TypeError, ValueError):
-        return matching[0]["id"]
+        return as_result(matching[0])
 
 
 def compute_walk_distance(origin_lat: float, origin_lon: float, stop_point_id: str) -> dict:

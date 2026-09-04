@@ -71,11 +71,21 @@ export default function NearestStations({ stations }) {
             </span>
             <span className="station-name">{s.name}</span>
             <span className="station-distance-wrap">
-              {hasWalkData && (
-                <span className={`station-walk-duration ${walkDurationClass(walkMinutes)}`}>
-                  {formatWalkMeters(s.walk_distance_meters)} · {walkMinutes} min walk
-                </span>
-              )}
+              {hasWalkData &&
+                (s.walk_maps_url ? (
+                  <a
+                    className={`station-walk-duration ${walkDurationClass(walkMinutes)}`}
+                    href={s.walk_maps_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {formatWalkMeters(s.walk_distance_meters)} · {walkMinutes} min walk ↗
+                  </a>
+                ) : (
+                  <span className={`station-walk-duration ${walkDurationClass(walkMinutes)}`}>
+                    {formatWalkMeters(s.walk_distance_meters)} · {walkMinutes} min walk
+                  </span>
+                ))}
               <span
                 className="station-distance"
                 title="As the crow flies (Rightmove data)"

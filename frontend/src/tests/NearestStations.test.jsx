@@ -76,6 +76,50 @@ describe("NearestStations", () => {
     expect(screen.getByText("845m · 12 min walk")).toBeInTheDocument();
   });
 
+  it("renders the walk duration as a Google Maps link when walk_maps_url is present", () => {
+    // Issue #76 -- same link format as the Commute section's walk_maps_url.
+    render(
+      <NearestStations
+        stations={[
+          {
+            name: "Sampleton",
+            distance: 0.3,
+            types: ["LONDON_UNDERGROUND"],
+            walk_distance_meters: 845,
+            walk_duration_seconds: 720,
+            walk_maps_url: "https://www.google.com/maps/dir/?api=1&origin=1,2&destination=3,4&travelmode=walking",
+          },
+        ]}
+      />
+    );
+
+    const link = screen.getByText("845m · 12 min walk ↗").closest("a");
+    expect(link).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/dir/?api=1&origin=1,2&destination=3,4&travelmode=walking"
+    );
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("renders the walk duration as plain text (no link) when walk_maps_url is absent", () => {
+    render(
+      <NearestStations
+        stations={[
+          {
+            name: "Sampleton",
+            distance: 0.3,
+            types: ["NATIONAL_TRAIN"],
+            walk_distance_meters: 845,
+            walk_duration_seconds: 720,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("845m · 12 min walk")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("omits walking distance and time when not stored, keeping the raw distance", () => {
     render(<NearestStations stations={[{ name: "Sampleton", distance: 0.3, types: ["NATIONAL_TRAIN"] }]} />);
 

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.commute.client import CommuteApiError, fetch_station_termini
+from app.commute.maps_url import maps_walking_url
 from app.commute.stations import latlong_for_crs, resolve_crs_codes
 from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.listings import store
@@ -24,13 +25,6 @@ def _worth_showing_commute(station: dict, walk: dict | None) -> bool:
         return walk["duration_seconds"] <= COMMUTE_MAX_WALK_SECONDS
     distance = station.get("distance")
     return distance is not None and distance <= COMMUTE_FALLBACK_MAX_MILES
-
-
-def _maps_walking_url(origin_lat: float, origin_lon: float, dest_lat: float, dest_lon: float) -> str:
-    return (
-        f"https://www.google.com/maps/dir/?api=1&origin={origin_lat},{origin_lon}"
-        f"&destination={dest_lat},{dest_lon}&travelmode=walking"
-    )
 
 
 @router.get("/{listing_id}/commute")
@@ -66,7 +60,7 @@ def get_commute(listing_id: int):
         if origin_lat is not None and origin_lon is not None:
             dest_latlong = latlong_for_crs(station["crs"])
             if dest_latlong is not None:
-                result["walk_maps_url"] = _maps_walking_url(origin_lat, origin_lon, *dest_latlong)
+                result["walk_maps_url"] = maps_walking_url(origin_lat, origin_lon, *dest_latlong)
 
         stations.append(result)
     return {"stations": stations}

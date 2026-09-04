@@ -17,16 +17,17 @@ from app.db.connection import get_connection
 
 def replace_walk_distances(listing_id: int, rows: list[dict]) -> None:
     """rows: [{"station_index": int, "rightmove_name": str,
-    "mode": str | None, "stop_point_id": str | None,
-    "distance_meters": int | None, "duration_seconds": int | None}]."""
+    "mode": str | None, "stop_point_id": str | None, "lat": float | None,
+    "lon": float | None, "distance_meters": int | None,
+    "duration_seconds": int | None}]."""
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
         conn.execute("DELETE FROM station_walk_distances WHERE listing_id = ?", (listing_id,))
         conn.executemany(
             "INSERT INTO station_walk_distances "
-            "(listing_id, station_index, rightmove_name, mode, stop_point_id, "
-            "distance_meters, duration_seconds, computed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(listing_id, station_index, rightmove_name, mode, stop_point_id, lat, lon, "
+            "distance_meters, duration_seconds, computed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     listing_id,
@@ -34,6 +35,8 @@ def replace_walk_distances(listing_id: int, rows: list[dict]) -> None:
                     r["rightmove_name"],
                     r.get("mode"),
                     r.get("stop_point_id"),
+                    r.get("lat"),
+                    r.get("lon"),
                     r["distance_meters"],
                     r["duration_seconds"],
                     now,
@@ -48,11 +51,12 @@ def replace_walk_distances(listing_id: int, rows: list[dict]) -> None:
 
 def get_walk_distances(listing_id: int) -> dict[int, dict]:
     """Returns {station_index: {"rightmove_name", "mode", "stop_point_id",
-    "distance_meters", "duration_seconds"}}."""
+    "lat", "lon", "distance_meters", "duration_seconds"}}."""
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT station_index, rightmove_name, mode, stop_point_id, distance_meters, duration_seconds "
+            "SELECT station_index, rightmove_name, mode, stop_point_id, lat, lon, "
+            "distance_meters, duration_seconds "
             "FROM station_walk_distances WHERE listing_id = ?",
             (listing_id,),
         ).fetchall()
@@ -61,6 +65,8 @@ def get_walk_distances(listing_id: int) -> dict[int, dict]:
                 "rightmove_name": r["rightmove_name"],
                 "mode": r["mode"],
                 "stop_point_id": r["stop_point_id"],
+                "lat": r["lat"],
+                "lon": r["lon"],
                 "distance_meters": r["distance_meters"],
                 "duration_seconds": r["duration_seconds"],
             }
