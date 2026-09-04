@@ -277,7 +277,9 @@ def test_handle_rightmove_extract_raises_for_unknown_listing():
 def test_handle_rightmove_extract_stores_walk_distances_for_resolved_stations(listing_id, monkeypatch):
     from app.commute import walk_store
 
-    monkeypatch.setattr(handlers, "resolve_stop_point", lambda *a, **k: "910GCLPHMJC")
+    monkeypatch.setattr(
+        handlers, "resolve_stop_point", lambda *a, **k: {"id": "910GCLPHMJC", "lat": 51.46, "lon": -0.17}
+    )
     monkeypatch.setattr(
         handlers, "compute_walk_distance", lambda *a: {"distance_meters": 500, "duration_seconds": 360}
     )
@@ -291,6 +293,8 @@ def test_handle_rightmove_extract_stores_walk_distances_for_resolved_stations(li
             "rightmove_name": "Sampleton",
             "mode": "national-rail",
             "stop_point_id": "910GCLPHMJC",
+            "lat": 51.46,
+            "lon": -0.17,
             "distance_meters": 500,
             "duration_seconds": 360,
         }
@@ -332,6 +336,8 @@ def test_handle_rightmove_extract_stores_row_with_null_distance_when_tfl_cannot_
             "rightmove_name": "Sampleton",
             "mode": "national-rail",
             "stop_point_id": None,
+            "lat": None,
+            "lon": None,
             "distance_meters": None,
             "duration_seconds": None,
         }
@@ -342,7 +348,9 @@ def test_handle_rightmove_extract_swallows_tfl_api_failure(listing_id, monkeypat
     from app.commute import walk_store
     from app.commute.tfl_client import TflApiError
 
-    monkeypatch.setattr(handlers, "resolve_stop_point", lambda *a, **k: "910GCLPHMJC")
+    monkeypatch.setattr(
+        handlers, "resolve_stop_point", lambda *a, **k: {"id": "910GCLPHMJC", "lat": 51.46, "lon": -0.17}
+    )
 
     def boom(*a):
         raise TflApiError("no key")
@@ -357,6 +365,8 @@ def test_handle_rightmove_extract_swallows_tfl_api_failure(listing_id, monkeypat
             "rightmove_name": "Sampleton",
             "mode": "national-rail",
             "stop_point_id": "910GCLPHMJC",
+            "lat": 51.46,
+            "lon": -0.17,
             "distance_meters": None,
             "duration_seconds": None,
         }
@@ -406,7 +416,7 @@ def test_handle_rightmove_extract_computes_walk_distance_for_every_mode(
     def fake_resolve_stop_point(name, mode, lat, lon, distance_miles, search_modes=None):
         seen_modes.append(mode)
         seen_search_modes.append(search_modes)
-        return "some-stop-point-id"
+        return {"id": "some-stop-point-id", "lat": 51.5, "lon": -0.12}
 
     monkeypatch.setattr(handlers, "resolve_stop_point", fake_resolve_stop_point)
     monkeypatch.setattr(
@@ -422,6 +432,8 @@ def test_handle_rightmove_extract_computes_walk_distance_for_every_mode(
             "rightmove_name": "Somewhere",
             "mode": tfl_mode,
             "stop_point_id": "some-stop-point-id",
+            "lat": 51.5,
+            "lon": -0.12,
             "distance_meters": 500,
             "duration_seconds": 360,
         }

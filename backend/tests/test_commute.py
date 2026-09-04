@@ -6,12 +6,23 @@ from app.commute.stations import resolve_crs_codes
 from app.listings import store
 
 
-def _walk_row(station_index, rightmove_name, distance_meters, duration_seconds, mode="national-rail", stop_point_id="910GTEST"):
+def _walk_row(
+    station_index,
+    rightmove_name,
+    distance_meters,
+    duration_seconds,
+    mode="national-rail",
+    stop_point_id="910GTEST",
+    lat=51.4,
+    lon=-0.1,
+):
     return {
         "station_index": station_index,
         "rightmove_name": rightmove_name,
         "mode": mode,
         "stop_point_id": stop_point_id,
+        "lat": lat,
+        "lon": lon,
         "distance_meters": distance_meters,
         "duration_seconds": duration_seconds,
     }
@@ -411,7 +422,7 @@ def test_resolve_stop_point_scores_by_gap_to_rightmove_distance(monkeypatch):
     }
     monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse(payload))
     result = tfl_client.resolve_stop_point("Streatham Station", "national-rail", listing_lat, listing_lon, 0.656)
-    assert result == "910GSTREATM"
+    assert result == {"id": "910GSTREATM", "lat": 51.40951, "lon": -0.10}
 
 
 def test_resolve_stop_point_search_modes_widens_the_search_query(monkeypatch):
@@ -438,7 +449,7 @@ def test_resolve_stop_point_search_modes_widens_the_search_query(monkeypatch):
         0.84,
         search_modes="national-rail,elizabeth-line",
     )
-    assert result == "910GCHDWLHT"
+    assert result == {"id": "910GCHDWLHT", "lat": 51.568, "lon": 0.129}
     assert "modes=national-rail,elizabeth-line" in seen_urls[0]
 
 
@@ -454,7 +465,7 @@ def test_resolve_stop_point_falls_back_to_closest_when_no_rightmove_distance(mon
     }
     monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: _FakeResponse(payload))
     result = tfl_client.resolve_stop_point("Somewhere", "national-rail", 51.0, -0.0, None)
-    assert result == "near"
+    assert result == {"id": "near", "lat": 51.001, "lon": -0.001}
 
 
 def test_resolve_stop_point_returns_none_when_no_candidates(monkeypatch):
@@ -482,7 +493,7 @@ def test_resolve_stop_point_drills_into_hub_children_for_target_mode(monkeypatch
     ]
     monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: responses.pop(0))
     result = tfl_client.resolve_stop_point("Stratford Station", "national-rail", 51.54, -0.0, 0.1)
-    assert result == "910GSTFD"
+    assert result == {"id": "910GSTFD", "lat": None, "lon": None}
 
 
 def test_resolve_stop_point_falls_back_to_closest_hub_child_on_ambiguous_mode_match(monkeypatch):
@@ -502,7 +513,7 @@ def test_resolve_stop_point_falls_back_to_closest_hub_child_on_ambiguous_mode_ma
     ]
     monkeypatch.setattr(tfl_client, "urlopen", lambda req, timeout: responses.pop(0))
     result = tfl_client.resolve_stop_point("Stratford Station", "national-rail", 51.54, -0.0, 0.1)
-    assert result == "near-dup"
+    assert result == {"id": "near-dup", "lat": 51.541, "lon": -0.001}
 
 
 def test_resolve_stop_point_hub_child_uses_search_modes_not_just_mode(monkeypatch):
@@ -528,7 +539,7 @@ def test_resolve_stop_point_hub_child_uses_search_modes_not_just_mode(monkeypatc
         0.84,
         search_modes="national-rail,elizabeth-line",
     )
-    assert result == "910GCHDWLHT"
+    assert result == {"id": "910GCHDWLHT", "lat": None, "lon": None}
 
 
 # --- walk_store --------------------------------------------------------
@@ -542,6 +553,8 @@ def test_replace_walk_distances_deletes_and_reinserts(client, listing_id):
             "rightmove_name": "Clapham Junction Station",
             "mode": "national-rail",
             "stop_point_id": "910GTEST",
+            "lat": 51.4,
+            "lon": -0.1,
             "distance_meters": 500,
             "duration_seconds": 360,
         }
@@ -553,6 +566,8 @@ def test_replace_walk_distances_deletes_and_reinserts(client, listing_id):
             "rightmove_name": "Waterloo Station",
             "mode": "national-rail",
             "stop_point_id": "910GWATRLMN",
+            "lat": 51.4,
+            "lon": -0.1,
             "distance_meters": 800,
             "duration_seconds": 600,
         }

@@ -444,6 +444,88 @@ def test_walk_refresh_returns_fresh_walk_data_in_response(client, monkeypatch):
     assert nearest[0]["walk_duration_seconds"] == 360
 
 
+def test_get_listing_attaches_walk_maps_url_from_stored_station_latlon(client):
+    # Issue #76: Nearest Stations gets a Google Maps walking link for every
+    # mode a row has lat/lon for, not just national-rail (that's the
+    # existing Commute-section-only link). Tube here specifically, since
+    # tube/tram/DLR/overground have no CRS and never got a link before.
+    import json
+
+    from app.commute import walk_store
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(
+        1,
+        {
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Clapham North", "distance": 0.3, "types": ["LONDON_UNDERGROUND"]}]
+            ),
+        },
+    )
+    walk_store.replace_walk_distances(
+        1,
+        [
+            {
+                "station_index": 0,
+                "rightmove_name": "Clapham North",
+                "mode": "tube",
+                "stop_point_id": "940GZZLUCPN",
+                "lat": 51.4649,
+                "lon": -0.1299,
+                "distance_meters": 400,
+                "duration_seconds": 300,
+            }
+        ],
+    )
+
+    resp = client.get("/api/listings/1")
+    assert resp.status_code == 200
+    nearest = resp.json()["nearest_stations_raw"]
+    assert nearest[0]["walk_maps_url"] == (
+        "https://www.google.com/maps/dir/?api=1&origin=51.5,-0.1"
+        "&destination=51.4649,-0.1299&travelmode=walking"
+    )
+
+
+def test_get_listing_walk_maps_url_is_none_when_row_predates_latlon_column(client):
+    # A row computed before migration 0024 (lat/lon added) has lat=lon=None
+    # until its next recompute -- must degrade to no link, not a crash.
+    import json
+
+    from app.commute import walk_store
+
+    store.create_stub_listing(1, VALID_URL)
+    store.apply_extracted_fields(
+        1,
+        {
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "nearest_stations_raw": json.dumps(
+                [{"name": "Clapham Junction Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]}]
+            ),
+        },
+    )
+    walk_store.replace_walk_distances(
+        1,
+        [
+            {
+                "station_index": 0,
+                "rightmove_name": "Clapham Junction Station",
+                "mode": "national-rail",
+                "stop_point_id": "910GCLPHMJC",
+                "distance_meters": 500,
+                "duration_seconds": 360,
+            }
+        ],
+    )
+
+    resp = client.get("/api/listings/1")
+    assert resp.status_code == 200
+    assert resp.json()["nearest_stations_raw"][0]["walk_maps_url"] is None
+
+
 def test_get_listing_computes_min_walk_minutes_from_stored_walk_durations(client):
     import json
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import MEDIA_DIR
+from app.commute.maps_url import maps_walking_url
 from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.counciltax import store as counciltax_store
 from app.crime.client import lookup_postcode
@@ -41,15 +42,28 @@ def _attach_walk_data(listing_id: int, out: dict) -> None:
     get_listing's min_walk_minutes standards field reads the already-guarded
     walk_duration_seconds values this loop attaches, rather than querying
     station_walk_distances again directly -- reading the raw table would
-    bypass this same stale-row guard."""
+    bypass this same stale-row guard.
+
+    Also attaches walk_maps_url (issue #76) from the row's stored lat/lon --
+    unlike Commute's CRS-only version, this covers every mode/index the row
+    has coordinates for, not just national-rail. A row computed before
+    migration 0024 (lat/lon added) has lat=lon=None until its next recompute
+    (walk-refresh or a fresh scrape), so walk_maps_url just stays None for it
+    -- same self-healing precedent as any other stored-but-not-yet-
+    backfilled field in this repo."""
     nearest = out.get("nearest_stations_raw")
     if not isinstance(nearest, list) or not nearest:
         return
+    origin_lat, origin_lon = out.get("latitude"), out.get("longitude")
     walk_distances = get_walk_distances(listing_id)
     for index, entry in enumerate(nearest):
         walk = lookup_walk(walk_distances, index, entry.get("name", ""))
         entry["walk_distance_meters"] = walk["distance_meters"] if walk else None
         entry["walk_duration_seconds"] = walk["duration_seconds"] if walk else None
+        entry["walk_maps_url"] = None
+        if walk and walk.get("lat") is not None and walk.get("lon") is not None:
+            if origin_lat is not None and origin_lon is not None:
+                entry["walk_maps_url"] = maps_walking_url(origin_lat, origin_lon, walk["lat"], walk["lon"])
 
 
 def _serialize_with_pipeline_status(listing: dict) -> dict:
