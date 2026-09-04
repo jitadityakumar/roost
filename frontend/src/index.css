@@ -494,7 +494,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 
 .media-category h4 { text-transform: capitalize; margin-bottom: 0.4rem; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
-.media-grid img { width: 100%; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; }
+.media-grid img { width: 100%; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; background: #fff; }
 
 .photo-carousel { margin-bottom: 1rem; }
 .photo-carousel-main {
@@ -557,6 +557,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   max-width: 92vw;
   max-height: 92vh;
   object-fit: contain;
+  background: #fff;
 }
 .lightbox-close {
   position: absolute;
