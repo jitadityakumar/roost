@@ -181,7 +181,16 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 
 .detail-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
 .detail-header h2 { margin: 0; }
-.detail-actions { display: flex; gap: 0.5rem; align-items: center; }
+.detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  /* Keeps this pinned to the right even when a long address wraps
+     .detail-header onto two lines -- justify-content: space-between only
+     works with 2+ items sharing a line, so a lone wrapped-down item falls
+     back to flex-start (left) without this. */
+  margin-left: auto;
+}
 
 .status-line {
   display: flex;
