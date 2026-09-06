@@ -25,7 +25,12 @@ def get_crime(listing_id: int):
 
     baselines = []
     for baseline in store.list_baselines():
-        entry = {"id": baseline["id"], "label": baseline["label"], "postcode": baseline["postcode"]}
+        entry = {
+            "id": baseline["id"],
+            "label": baseline["label"],
+            "postcode": baseline["postcode"],
+            "is_reference": bool(baseline["is_reference"]),
+        }
         try:
             baseline_stats = service.get_or_refresh_stats(baseline["postcode"])
             entry["comparison"] = score.compare(

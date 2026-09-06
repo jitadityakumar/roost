@@ -436,6 +436,7 @@ export default function AdminPage() {
   const [baselineError, setBaselineError] = useState(null);
   const [baselineLabel, setBaselineLabel] = useState("");
   const [baselinePostcode, setBaselinePostcode] = useState("");
+  const [editingBaselineId, setEditingBaselineId] = useState(null);
 
   const [destinations, setDestinations] = useState([]);
   const [destinationError, setDestinationError] = useState(null);
@@ -571,7 +572,7 @@ export default function AdminPage() {
     await load();
   }
 
-  async function handleAddBaseline(e) {
+  async function handleAddOrUpdateBaseline(e) {
     e.preventDefault();
     setBaselineError(null);
     if (!baselineLabel.trim() || !baselinePostcode.trim()) {
@@ -579,7 +580,13 @@ export default function AdminPage() {
       return;
     }
     try {
-      await api.crimeBaselines.create({ label: baselineLabel.trim(), postcode: baselinePostcode.trim() });
+      const body = { label: baselineLabel.trim(), postcode: baselinePostcode.trim() };
+      if (editingBaselineId === null) {
+        await api.crimeBaselines.create(body);
+      } else {
+        await api.crimeBaselines.update(editingBaselineId, body);
+        setEditingBaselineId(null);
+      }
       setBaselineLabel("");
       setBaselinePostcode("");
       await loadBaselines();
@@ -588,8 +595,32 @@ export default function AdminPage() {
     }
   }
 
+  function handleEditBaseline(baseline) {
+    setBaselineError(null);
+    setEditingBaselineId(baseline.id);
+    setBaselineLabel(baseline.label);
+    setBaselinePostcode(baseline.postcode);
+  }
+
+  function handleCancelEditBaseline() {
+    setBaselineError(null);
+    setEditingBaselineId(null);
+    setBaselineLabel("");
+    setBaselinePostcode("");
+  }
+
   async function handleDeleteBaseline(baseline) {
+    if (editingBaselineId === baseline.id) handleCancelEditBaseline();
     await api.crimeBaselines.remove(baseline.id);
+    await loadBaselines();
+  }
+
+  async function handleSetReferenceBaseline(baseline) {
+    if (baseline.is_reference) {
+      await api.crimeBaselines.clearReference();
+    } else {
+      await api.crimeBaselines.setReference(baseline.id);
+    }
     await loadBaselines();
   }
 
@@ -726,7 +757,8 @@ export default function AdminPage() {
           <h2>Crime baselines</h2>
           <p className="hint">
             Postcodes (e.g. your current home) to compare a listing's crime stats against on the
-            listing detail page.
+            listing detail page. Mark one as the base to always show it at 1.0x on the chart, with
+            the listing and every other baseline shown relative to it.
           </p>
 
           {baselineError && <p className="error">{baselineError}</p>}
@@ -739,8 +771,24 @@ export default function AdminPage() {
                 <li key={baseline.id} className="admin-rule-row">
                   <span className="admin-rule-text">
                     {baseline.label} — {baseline.postcode}
+                    {baseline.is_reference && <span className="baseline-badge"> ★ Base</span>}
                   </span>
                   <span className="admin-rule-actions">
+                    <button
+                      className="status-toggle-btn"
+                      onClick={() => handleSetReferenceBaseline(baseline)}
+                      title={baseline.is_reference ? "Unset as base" : "Set as base"}
+                    >
+                      {baseline.is_reference ? "Unset base" : "Set as base"}
+                    </button>
+                    <button
+                      className="icon-btn"
+                      onClick={() => handleEditBaseline(baseline)}
+                      title="Edit"
+                      aria-label="Edit baseline"
+                    >
+                      ✎
+                    </button>
                     <button
                       className="icon-btn danger"
                       onClick={() => handleDeleteBaseline(baseline)}
@@ -755,7 +803,7 @@ export default function AdminPage() {
             </ul>
           )}
 
-          <form className="admin-add-rule" onSubmit={handleAddBaseline}>
+          <form className="admin-add-rule" onSubmit={handleAddOrUpdateBaseline}>
             <input
               type="text"
               value={baselineLabel}
@@ -769,8 +817,13 @@ export default function AdminPage() {
               placeholder="Postcode"
             />
             <button className="status-toggle-btn" type="submit">
-              Add baseline
+              {editingBaselineId === null ? "Add baseline" : "Save baseline"}
             </button>
+            {editingBaselineId !== null && (
+              <button type="button" className="icon-btn" onClick={handleCancelEditBaseline}>
+                Cancel
+              </button>
+            )}
           </form>
         </div>
 

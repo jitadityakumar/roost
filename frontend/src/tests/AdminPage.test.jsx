@@ -16,7 +16,10 @@ vi.mock("../api.js", () => ({
     crimeBaselines: {
       list: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
       remove: vi.fn(),
+      setReference: vi.fn(),
+      clearReference: vi.fn(),
     },
     destinations: {
       list: vi.fn(),
@@ -187,6 +190,56 @@ describe("AdminPage", () => {
     await user.click(screen.getByLabelText("Delete baseline"));
 
     await waitFor(() => expect(api.crimeBaselines.remove).toHaveBeenCalledWith(1));
+  });
+
+  it("edits a crime baseline via the same form", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.crimeBaselines.list.mockResolvedValue([{ id: 1, label: "Home", postcode: "ZZ1 1AA", is_reference: false }]);
+    api.crimeBaselines.update.mockResolvedValue({ id: 1, label: "Barnes", postcode: "SW13 0AA", is_reference: false });
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByLabelText("Edit baseline")).toBeInTheDocument());
+    await user.click(screen.getByLabelText("Edit baseline"));
+
+    expect(screen.getByPlaceholderText("Label (e.g. Home)")).toHaveValue("Home");
+    expect(screen.getByPlaceholderText("Postcode")).toHaveValue("ZZ1 1AA");
+
+    await user.clear(screen.getByPlaceholderText("Label (e.g. Home)"));
+    await user.type(screen.getByPlaceholderText("Label (e.g. Home)"), "Barnes");
+    await user.clear(screen.getByPlaceholderText("Postcode"));
+    await user.type(screen.getByPlaceholderText("Postcode"), "SW13 0AA");
+    await user.click(screen.getByRole("button", { name: "Save baseline" }));
+
+    await waitFor(() =>
+      expect(api.crimeBaselines.update).toHaveBeenCalledWith(1, { label: "Barnes", postcode: "SW13 0AA" })
+    );
+  });
+
+  it("marks a baseline as the reference and shows a badge for it", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.crimeBaselines.list.mockResolvedValue([{ id: 1, label: "Home", postcode: "ZZ1 1AA", is_reference: false }]);
+    api.crimeBaselines.setReference.mockResolvedValue({ id: 1, label: "Home", postcode: "ZZ1 1AA", is_reference: true });
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Set as base" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Set as base" }));
+
+    await waitFor(() => expect(api.crimeBaselines.setReference).toHaveBeenCalledWith(1));
+  });
+
+  it("unsets the reference baseline", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.crimeBaselines.list.mockResolvedValue([{ id: 1, label: "Home", postcode: "ZZ1 1AA", is_reference: true }]);
+    api.crimeBaselines.clearReference.mockResolvedValue(null);
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await waitFor(() => expect(screen.getByText(/★ Base/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Unset base" }));
+
+    await waitFor(() => expect(api.crimeBaselines.clearReference).toHaveBeenCalled());
   });
 
   it("keeps the add-baseline form available with more than 4 baselines", async () => {
