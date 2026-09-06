@@ -112,12 +112,23 @@ class CreateListingRequest(BaseModel):
     url: str
 
 
-VALID_USER_STATUSES = ("triage", "approved", "rejected")
+VALID_USER_STATUSES = ("triage", "approved", "rejected", "viewing", "contacted")
+
+# Declarative required-fields-on-entry map (issue #82) -- a future status
+# needing extra input on entry is a config change here, not new branching in
+# patch_listing. Every value currently entered here also needs a
+# store.STATUS_COMMENT_TYPE entry, since "comment" is the only field this
+# maps onto today.
+STATUS_REQUIRED_FIELDS = {
+    "rejected": ["comment", "initials"],
+    "viewing": ["comment", "initials"],
+    "contacted": ["comment", "initials"],
+}
 
 
 class PatchListingRequest(BaseModel):
     user_status: str | None = None
-    rejection_reason: str | None = None
+    comment: str | None = None
     initials: str | None = None
     fields: dict | None = None
 
@@ -289,15 +300,19 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
     if body.user_status is not None:
         if body.user_status not in VALID_USER_STATUSES:
             raise HTTPException(status_code=422, detail="invalid user_status")
-        if body.user_status == "rejected":
-            if not body.rejection_reason or not body.rejection_reason.strip():
-                raise HTTPException(status_code=422, detail="rejection_reason is required when rejecting")
-            if not body.initials or not body.initials.strip():
-                raise HTTPException(status_code=422, detail="initials is required when rejecting")
+        required = STATUS_REQUIRED_FIELDS.get(body.user_status, [])
+        values = {"comment": body.comment, "initials": body.initials}
+        missing = [f for f in required if not (values.get(f) or "").strip()]
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{' and '.join(missing)} required when moving to {body.user_status}",
+            )
+        if "comment" in required:
             store.set_user_status(
                 listing_id,
                 body.user_status,
-                rejection_reason=body.rejection_reason.strip(),
+                comment=body.comment.strip(),
                 initials=body.initials.strip(),
             )
         else:
