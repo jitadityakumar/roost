@@ -250,13 +250,21 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.5rem 0.6rem;
+  padding: 0.5rem 0.6rem 0.5rem 0.5rem;
+  border-left: 4px solid transparent;
   border-radius: 6px;
   font-size: 0.88rem;
   cursor: pointer;
   color: var(--fg);
 }
 .status-menu button:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+/* Same color mapping as .status-dot/.home-option -- issue #82's status
+   menu gets the same at-a-glance color coding used everywhere else. */
+.status-menu button.status-triage { border-left-color: var(--muted); }
+.status-menu button.status-approved { border-left-color: var(--accent); }
+.status-menu button.status-rejected { border-left-color: var(--danger); }
+.status-menu button.status-viewing { border-left-color: var(--edit-color); }
+.status-menu button.status-contacted { border-left-color: var(--warn); }
 .status-menu .req {
   font-size: 0.68rem;
   text-transform: uppercase;

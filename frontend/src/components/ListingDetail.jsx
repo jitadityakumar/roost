@@ -190,7 +190,7 @@ export default function ListingDetail() {
             {statusMenuOpen && (
               <div className="status-menu">
                 {USER_STATUSES.filter((s) => s !== listing.user_status).map((s) => (
-                  <button key={s} onClick={() => requestStatusChange(s)}>
+                  <button key={s} className={`status-${s}`} onClick={() => requestStatusChange(s)}>
                     <span>{USER_STATUS_LABEL[s]}</span>
                     {STATUS_COMMENT_VERB[s] && <span className="req">comment</span>}
                   </button>
