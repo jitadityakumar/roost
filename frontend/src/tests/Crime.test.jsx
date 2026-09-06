@@ -184,6 +184,47 @@ describe("Crime", () => {
     expect(propertyRow).toHaveTextContent("2.0×");
   });
 
+  it("falls back to listing-as-base when the reference baseline itself errored", async () => {
+    api.crime.mockResolvedValue({
+      unavailable: null,
+      postcode: "AA1 1AA",
+      baselines: [
+        { id: 1, label: "Home", postcode: "ZZ1 1AA", error: "boom", is_reference: true, comparison: null },
+        { id: 2, label: "Old flat", postcode: "ZZ3 3CC", error: null, is_reference: false, comparison: makeComparison(0.8) },
+      ],
+    });
+    render(<Crime listingId={1} ready={true} />);
+    await waitFor(() => expect(screen.getByText("ZZ3 3CC")).toBeInTheDocument());
+
+    const oldFlatRow = screen.getByText("Old flat").closest(".crime-bar-row");
+    expect(oldFlatRow).toHaveTextContent("0.8×");
+    const propertyRow = screen.getByText("This property").closest(".crime-bar-row");
+    expect(propertyRow).toHaveTextContent("1.0×");
+  });
+
+  it("labels rows as 'new' or 'n/a' against a zero-score reference baseline", async () => {
+    // Reference (Barnes) has a zero score. Old flat has some crime (score >
+    // 0), so it's "new" against a crime-free reference. The listing itself
+    // also has zero, so it reads "n/a" (nothing to compare, both zero).
+    const barnesComparison = { ...makeComparison(null), candidate_score: 0, baseline_score: 0 };
+    const oldFlatComparison = { ...makeComparison(null), candidate_score: 0, baseline_score: 3.5 };
+    api.crime.mockResolvedValue({
+      unavailable: null,
+      postcode: "AA1 1AA",
+      baselines: [
+        { id: 1, label: "Barnes", postcode: "SW13 0AA", error: null, is_reference: true, comparison: barnesComparison },
+        { id: 2, label: "Old flat", postcode: "ZZ3 3CC", error: null, is_reference: false, comparison: oldFlatComparison },
+      ],
+    });
+    render(<Crime listingId={1} ready={true} />);
+    await waitFor(() => expect(screen.getByText("SW13 0AA")).toBeInTheDocument());
+
+    const oldFlatRow = screen.getByText("Old flat").closest(".crime-bar-row");
+    expect(oldFlatRow).toHaveTextContent("new");
+    const propertyRow = screen.getByText("This property").closest(".crime-bar-row");
+    expect(propertyRow).toHaveTextContent("n/a");
+  });
+
   it("shows a section-level error when the request itself fails", async () => {
     api.crime.mockRejectedValue(new Error("network down"));
     render(<Crime listingId={1} ready={true} />);

@@ -9,9 +9,9 @@ function ratioLabel(ratio, candidateIsPositive) {
   return `${ratio.toFixed(1)}x`;
 }
 
-function barFillClass(ratio, isProperty) {
+function barFillClass(ratio, isProperty, isNew) {
   if (isProperty) return "crime-bar-fill-property";
-  if (ratio === null) return "crime-bar-fill-neutral";
+  if (ratio === null) return isNew ? "crime-bar-fill-bad" : "crime-bar-fill-neutral";
   if (ratio <= 1.1) return "crime-bar-fill-good";
   if (ratio <= 1.5) return "crime-bar-fill-warn";
   return "crime-bar-fill-bad";
@@ -40,7 +40,11 @@ function CrimeBarChart({ baselines, propertyPostcode }) {
           label: "This property",
           postcode: propertyPostcode ?? null,
           score: ok[0].comparison.candidate_score,
-          candidateScore: ok[0].comparison.candidate_score,
+          // "New" means positive against a zero comparator -- the comparator
+          // is the reference baseline's score once one is set, otherwise
+          // (old behavior) this row's own score is always the comparator's
+          // candidate, so it's never "new" against itself.
+          isNew: referenceScore === null ? false : ok[0].comparison.candidate_score > 0,
           ratio:
             referenceScore === null
               ? 1
@@ -52,7 +56,10 @@ function CrimeBarChart({ baselines, propertyPostcode }) {
           label: b.label,
           postcode: b.postcode,
           score: b.comparison.baseline_score,
-          candidateScore: b.comparison.candidate_score,
+          isNew:
+            referenceScore === null
+              ? b.comparison.candidate_score > 0
+              : b.comparison.baseline_score > 0,
           ratio:
             referenceScore === null
               ? b.comparison.score_ratio
@@ -72,8 +79,7 @@ function CrimeBarChart({ baselines, propertyPostcode }) {
   return (
     <div className="crime-bar-chart">
       {rows.map((row) => {
-        const ratioText =
-          row.ratio === null ? ratioLabel(null, row.candidateScore > 0) : `${row.ratio.toFixed(1)}×`;
+        const ratioText = row.ratio === null ? ratioLabel(null, row.isNew) : `${row.ratio.toFixed(1)}×`;
         const tooltip = row.postcode
           ? `${row.label} (${row.postcode}) — score ${row.score.toFixed(1)}, ${ratioText}`
           : `${row.label} — score ${row.score.toFixed(1)}, ${ratioText}`;
@@ -85,7 +91,7 @@ function CrimeBarChart({ baselines, propertyPostcode }) {
             </div>
             <div className="crime-bar-track">
               <div
-                className={`crime-bar-fill ${barFillClass(row.ratio, row.isProperty)}`}
+                className={`crime-bar-fill ${barFillClass(row.ratio, row.isProperty, row.isNew)}`}
                 style={{ width: `${(row.score / scale) * 100}%` }}
               />
             </div>

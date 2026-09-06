@@ -79,6 +79,20 @@ def test_update_baseline(client, monkeypatch):
     assert client.get("/api/crime/baselines").json() == [body]
 
 
+def test_update_baseline_preserves_reference_flag(client, monkeypatch):
+    from app.routes import crime_baselines as route
+
+    monkeypatch.setattr(route.service, "get_or_refresh_stats", lambda pc: {"category_counts": {}})
+    created = client.post("/api/crime/baselines", json={"label": "Home", "postcode": "ZZ1 1AA"}).json()
+    client.post(f"/api/crime/baselines/{created['id']}/reference")
+
+    resp = client.patch(
+        f"/api/crime/baselines/{created['id']}", json={"label": "Barnes", "postcode": "SW13 0AA"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_reference"] == 1
+
+
 def test_update_baseline_404_for_unknown_id(client, monkeypatch):
     from app.routes import crime_baselines as route
 
@@ -126,6 +140,20 @@ def test_set_reference_baseline_clears_previous(client, monkeypatch):
 def test_set_reference_baseline_404_for_unknown_id(client):
     resp = client.post("/api/crime/baselines/999/reference")
     assert resp.status_code == 404
+
+
+def test_set_reference_baseline_bad_id_does_not_clobber_existing_reference(client, monkeypatch):
+    from app.routes import crime_baselines as route
+
+    monkeypatch.setattr(route.service, "get_or_refresh_stats", lambda pc: {"category_counts": {}})
+    a = client.post("/api/crime/baselines", json={"label": "A", "postcode": "ZZ1 1AA"}).json()
+    client.post(f"/api/crime/baselines/{a['id']}/reference")
+
+    resp = client.post("/api/crime/baselines/999/reference")
+    assert resp.status_code == 404
+
+    baselines = client.get("/api/crime/baselines").json()
+    assert baselines[0]["is_reference"] == 1
 
 
 def test_clear_reference_baseline(client, monkeypatch):

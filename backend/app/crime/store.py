@@ -63,14 +63,17 @@ def delete_baseline(baseline_id: int) -> None:
 
 
 def set_reference_baseline(baseline_id: int) -> dict | None:
-    """Marks one baseline as the reference, clearing the flag on any other."""
+    """Marks one baseline as the reference, clearing the flag on any other.
+    Checks the target exists before touching anything, so a bad id doesn't
+    clobber whichever baseline was already the reference."""
     conn = get_connection()
     try:
-        conn.execute("UPDATE crime_baselines SET is_reference = 0")
         cur = conn.execute("UPDATE crime_baselines SET is_reference = 1 WHERE id = ?", (baseline_id,))
-        conn.commit()
         if cur.rowcount == 0:
+            conn.rollback()
             return None
+        conn.execute("UPDATE crime_baselines SET is_reference = 0 WHERE id != ?", (baseline_id,))
+        conn.commit()
         row = conn.execute("SELECT * FROM crime_baselines WHERE id = ?", (baseline_id,)).fetchone()
         return dict(row)
     finally:
