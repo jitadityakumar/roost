@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { USER_STATUSES, USER_STATUS_LABEL } from "../userStatus.js";
+import { HOME_MENU_ORDER, USER_STATUS_LABEL } from "../userStatus.js";
 
 export default function Home() {
   return (
@@ -7,9 +7,9 @@ export default function Home() {
       <Link className="home-option" to="/add">
         Add property
       </Link>
-      {USER_STATUSES.map((status) => (
+      {HOME_MENU_ORDER.map((status) => (
         <Link key={status} className="home-option" to={`/${status}`}>
-          View {USER_STATUS_LABEL[status].toLowerCase()}
+          {USER_STATUS_LABEL[status]}
         </Link>
       ))}
       <Link className="home-option" to="/admin">

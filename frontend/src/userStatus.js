@@ -12,6 +12,11 @@ export const USER_STATUS_LABEL = {
 
 export const USER_STATUSES = Object.keys(USER_STATUS_LABEL);
 
+// Home page's nav order/wording is its own concern, deliberately separate
+// from USER_STATUSES (which drives route generation and the status-change
+// menu, where a different order is more natural) -- user-requested layout.
+export const HOME_MENU_ORDER = ["viewing", "contacted", "approved", "triage", "rejected"];
+
 // Statuses whose entry requires a mandatory comment (+ initials) -- mirrors
 // backend/app/routes/listings.py's STATUS_REQUIRED_FIELDS. The verb fills
 // in the comment box's label, e.g. "Reason for rejecting".
