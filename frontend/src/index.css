@@ -172,6 +172,15 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 }
 .home-option:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 
+/* Same color mapping as .status-dot/.comment-dot -- a left-edge highlight
+   so each status link is recognizable at a glance, matching the colored
+   dots already used elsewhere for the same statuses. */
+.home-option.status-triage { border-left: 4px solid var(--muted); }
+.home-option.status-approved { border-left: 4px solid var(--accent); }
+.home-option.status-rejected { border-left: 4px solid var(--danger); }
+.home-option.status-viewing { border-left: 4px solid var(--edit-color); }
+.home-option.status-contacted { border-left: 4px solid var(--warn); }
+
 .add-page { max-width: 480px; margin: 0 auto; }
 .add-page .hint { color: var(--muted); font-size: 0.9rem; }
 .added-list { list-style: none; padding: 0; margin-top: 1.5rem; }

@@ -8,7 +8,7 @@ export default function Home() {
         Add property
       </Link>
       {HOME_MENU_ORDER.map((status) => (
-        <Link key={status} className="home-option" to={`/${status}`}>
+        <Link key={status} className={`home-option status-${status}`} to={`/${status}`}>
           {USER_STATUS_LABEL[status]}
         </Link>
       ))}
