@@ -10,8 +10,12 @@ import Commute from "./Commute.jsx";
 import Mortgage from "./Mortgage.jsx";
 import Crime from "./Crime.jsx";
 import FrequentDestinations from "./FrequentDestinations.jsx";
+import Comments from "./Comments.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 import { USER_STATUS_LABEL } from "../userStatus.js";
+import { getCookie, setCookie } from "../cookie.js";
+
+const INITIALS_COOKIE = "roost_comment_initials";
 
 function formatBroadband(listing) {
   if (!listing.broadband_top_speed) return "—";
@@ -74,9 +78,8 @@ export default function ListingDetail() {
   const [editMode, setEditMode] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [rejectInitials, setRejectInitials] = useState("");
   const [rejectError, setRejectError] = useState(null);
-  const [commentModalOpen, setCommentModalOpen] = useState(false);
-  const [commentDraft, setCommentDraft] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -107,29 +110,24 @@ export default function ListingDetail() {
 
   function openReject() {
     setRejectReason("");
+    setRejectInitials(getCookie(INITIALS_COOKIE) || "");
     setRejectError(null);
     setRejecting(true);
   }
 
   async function confirmReject() {
-    if (!rejectReason.trim()) {
-      setRejectError("A reason is required.");
+    if (!rejectReason.trim() || !rejectInitials.trim()) {
+      setRejectError("A reason and initials are required.");
       return;
     }
-    const updated = await api.patch(id, { user_status: "rejected", rejection_reason: rejectReason.trim() });
+    const updated = await api.patch(id, {
+      user_status: "rejected",
+      rejection_reason: rejectReason.trim(),
+      initials: rejectInitials.trim(),
+    });
+    setCookie(INITIALS_COOKIE, rejectInitials.trim(), 365);
     setListing(updated);
     setRejecting(false);
-  }
-
-  function openCommentModal() {
-    setCommentDraft(listing.comment || "");
-    setCommentModalOpen(true);
-  }
-
-  async function handleSaveComment() {
-    const updated = await api.patch(id, { comment: commentDraft });
-    setListing(updated);
-    setCommentModalOpen(false);
   }
 
   async function handleRefresh() {
@@ -196,6 +194,8 @@ export default function ListingDetail() {
             rows={3}
             autoFocus
           />
+          <label htmlFor="reject-initials">Initials</label>
+          <input id="reject-initials" value={rejectInitials} onChange={(e) => setRejectInitials(e.target.value)} />
           {rejectError && <p className="error">{rejectError}</p>}
           <div className="reject-box-actions">
             <button className="status-toggle-btn warn" onClick={confirmReject}>
@@ -206,13 +206,6 @@ export default function ListingDetail() {
             </button>
           </div>
         </div>
-      )}
-
-      {listing.user_status === "rejected" && listing.rejection_reason && (
-        <p className="rejection-reason">Rejection reason: {listing.rejection_reason}</p>
-      )}
-      {listing.user_status !== "rejected" && listing.rejection_reason && (
-        <p className="rejection-reason muted">Last rejection reason: {listing.rejection_reason}</p>
       )}
 
       {listing.standards_violations?.length > 0 && (
@@ -251,6 +244,8 @@ export default function ListingDetail() {
             : PIPELINE_STATUS_LABEL[listing.pipeline_status] || listing.pipeline_status}
         </p>
       )}
+
+      <Comments listing={listing} onUpdate={setListing} />
 
       <section className="fields">
         {FIELDS.map((f) => (
@@ -345,16 +340,6 @@ export default function ListingDetail() {
         <Crime listingId={id} ready={listing.extraction_status === "done"} />
       </section>
 
-      <section className="comment-section">
-        <h3>Comment</h3>
-        <p className={`comment-text ${listing.comment ? "" : "muted"}`}>
-          {listing.comment || "No comment yet."}
-        </p>
-        <button className="status-toggle-btn" onClick={openCommentModal}>
-          {listing.comment ? "Update comment" : "Add comment"}
-        </button>
-      </section>
-
       <section className="jobs-section">
         <h3>Jobs</h3>
         <table className="jobs-table">
@@ -380,28 +365,6 @@ export default function ListingDetail() {
           </tbody>
         </table>
       </section>
-
-      {commentModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <h3>{listing.comment ? "Update comment" : "Add comment"}</h3>
-            <textarea
-              value={commentDraft}
-              onChange={(e) => setCommentDraft(e.target.value)}
-              rows={5}
-              autoFocus
-            />
-            <div className="modal-actions">
-              <button className="status-toggle-btn" onClick={handleSaveComment}>
-                Save
-              </button>
-              <button className="status-toggle-btn secondary" onClick={() => setCommentModalOpen(false)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

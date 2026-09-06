@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from app.comments import store as comments_store
 from app.db.connection import get_connection
 
 # Every multi-source field's companion `_source` column. A manual edit to
@@ -180,39 +181,38 @@ def apply_manual_edit(listing_id: int, fields: dict) -> dict:
         conn.close()
 
 
-def set_user_status(listing_id: int, user_status: str, rejection_reason: str | None = None) -> None:
+def set_user_status(
+    listing_id: int, user_status: str, rejection_reason: str | None = None, initials: str | None = None
+) -> None:
     """rejection_reason is only written when provided (i.e. the caller is
-    actually setting user_status to 'rejected'). Moving away from 'rejected'
-    later leaves the column untouched -- the reason is kept as history
-    rather than cleared, so it's still visible if the listing is rejected
-    again or the past reason is worth revisiting."""
-    conn = get_connection()
-    try:
-        if rejection_reason is not None:
-            conn.execute(
-                "UPDATE listings SET user_status = ?, rejection_reason = ?, updated_at = ? WHERE id = ?",
-                (user_status, rejection_reason, _now_iso(), listing_id),
-            )
-        else:
-            conn.execute(
-                "UPDATE listings SET user_status = ?, updated_at = ? WHERE id = ?",
-                (user_status, _now_iso(), listing_id),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+    actually setting user_status to 'rejected') -- as a new comments row
+    (comment_type='rejection'), not a column write. Moving away from
+    'rejected' later leaves that row untouched -- the reason is kept as
+    history rather than cleared, so it's still visible if the listing is
+    rejected again or the past reason is worth revisiting; re-rejecting
+    appends a second rejection-typed row rather than overwriting the first,
+    same end-user-visible "history preserved" behavior as the old column,
+    different mechanism.
 
-
-def set_comment(listing_id: int, comment: str | None) -> None:
+    Not atomic: the user_status UPDATE and the comments INSERT are two
+    statements on two separate connections (comments_store.create_comment
+    opens its own) -- a crash between them would leave user_status=
+    'rejected' with no matching rejection comment. Same risk profile as
+    every other cross-table write in this module (e.g. delete_listing's six
+    sequential deletes), not worth a shared transaction for a single-user
+    hobby app.
+    """
     conn = get_connection()
     try:
         conn.execute(
-            "UPDATE listings SET comment = ?, updated_at = ? WHERE id = ?",
-            (comment, _now_iso(), listing_id),
+            "UPDATE listings SET user_status = ?, updated_at = ? WHERE id = ?",
+            (user_status, _now_iso(), listing_id),
         )
         conn.commit()
     finally:
         conn.close()
+    if rejection_reason is not None:
+        comments_store.create_comment(listing_id, "rejection", rejection_reason, initials)
 
 
 def set_extraction_status(listing_id: int, status: str, error: str | None = None) -> None:
@@ -269,6 +269,9 @@ def delete_listing(listing_id: int) -> None:
         conn.execute("DELETE FROM station_walk_distances WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM destination_journeys WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM journey_scan_pools WHERE listing_id = ?", (listing_id,))
+        # comments (0025) is also a NOT NULL, non-cascading FK on
+        # listings(id) -- same failure mode as the tables above.
+        conn.execute("DELETE FROM comments WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM listings WHERE id = ?", (listing_id,))
         conn.commit()
     finally:

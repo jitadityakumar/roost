@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.config import MEDIA_DIR
 from app.commute.maps_url import maps_walking_url
 from app.commute.walk_store import get_walk_distances, lookup_walk
+from app.comments import store as comments_store
 from app.counciltax import store as counciltax_store
 from app.crime.client import lookup_postcode
 from app.jobs import llm_enqueue, queue
@@ -77,6 +78,7 @@ def _serialize_with_pipeline_status(listing: dict) -> dict:
     out["council_tax_monthly_est"] = counciltax_store.monthly_estimate(
         listing.get("admin_district_gss"), listing.get("council_tax_band")
     )
+    out["comments"] = comments_store.list_comments(listing["id"])
     return out
 
 
@@ -116,8 +118,18 @@ VALID_USER_STATUSES = ("triage", "approved", "rejected")
 class PatchListingRequest(BaseModel):
     user_status: str | None = None
     rejection_reason: str | None = None
-    comment: str | None = None
+    initials: str | None = None
     fields: dict | None = None
+
+
+class CreateCommentRequest(BaseModel):
+    text: str
+    initials: str
+
+
+class UpdateCommentRequest(BaseModel):
+    text: str
+    initials: str
 
 
 @router.post("", status_code=201)
@@ -280,12 +292,16 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
         if body.user_status == "rejected":
             if not body.rejection_reason or not body.rejection_reason.strip():
                 raise HTTPException(status_code=422, detail="rejection_reason is required when rejecting")
-            store.set_user_status(listing_id, body.user_status, rejection_reason=body.rejection_reason.strip())
+            if not body.initials or not body.initials.strip():
+                raise HTTPException(status_code=422, detail="initials is required when rejecting")
+            store.set_user_status(
+                listing_id,
+                body.user_status,
+                rejection_reason=body.rejection_reason.strip(),
+                initials=body.initials.strip(),
+            )
         else:
             store.set_user_status(listing_id, body.user_status)
-
-    if body.comment is not None:
-        store.set_comment(listing_id, body.comment.strip() or None)
 
     if body.fields:
         unknown = set(body.fields) - EDITABLE_FIELDS
@@ -328,6 +344,59 @@ def delete_listing(listing_id: int):
     store.delete_listing(listing_id)
     media_dir = f"{MEDIA_DIR}/{listing_id}"
     shutil.rmtree(media_dir, ignore_errors=True)
+
+
+def _get_owned_comment(listing_id: int, comment_id: int) -> dict:
+    """404s on a missing comment id or one that belongs to a different
+    listing -- treated the same (not-found, not 403) since there's no auth
+    system to make a 403 meaningful in this single-user app; the routes are
+    nested under /listings/{id}/comments/{comment_id} so this must be
+    checked explicitly, it's not implied by the URL shape alone."""
+    comment = comments_store.get_comment(comment_id)
+    if comment is None or comment["listing_id"] != listing_id:
+        raise HTTPException(status_code=404, detail="comment not found")
+    return comment
+
+
+@router.post("/{listing_id}/comments")
+def create_comment(listing_id: int, body: CreateCommentRequest):
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise HTTPException(status_code=404, detail="listing not found")
+    text = body.text.strip()
+    initials = body.initials.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="text is required")
+    if not initials:
+        raise HTTPException(status_code=422, detail="initials is required")
+    comments_store.create_comment(listing_id, "general", text, initials)
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
+
+
+@router.patch("/{listing_id}/comments/{comment_id}")
+def update_comment(listing_id: int, comment_id: int, body: UpdateCommentRequest):
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise HTTPException(status_code=404, detail="listing not found")
+    _get_owned_comment(listing_id, comment_id)
+    text = body.text.strip()
+    initials = body.initials.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="text is required")
+    if not initials:
+        raise HTTPException(status_code=422, detail="initials is required")
+    comments_store.update_comment(comment_id, text, initials)
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
+
+
+@router.delete("/{listing_id}/comments/{comment_id}")
+def delete_comment(listing_id: int, comment_id: int):
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise HTTPException(status_code=404, detail="listing not found")
+    _get_owned_comment(listing_id, comment_id)
+    comments_store.delete_comment(comment_id)
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 
 @router.get("/{listing_id}/jobs")

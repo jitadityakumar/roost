@@ -159,25 +159,43 @@ def test_patch_listing_rejects_with_blank_reason(client):
     assert resp.status_code == 422
 
 
+def test_patch_listing_rejects_with_blank_initials(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch(
+        "/api/listings/1",
+        json={"user_status": "rejected", "rejection_reason": "Too small", "initials": "  "},
+    )
+    assert resp.status_code == 422
+
+
 def test_patch_listing_rejects_with_reason_stores_it(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch(
-        "/api/listings/1", json={"user_status": "rejected", "rejection_reason": "Too small"}
+        "/api/listings/1",
+        json={"user_status": "rejected", "rejection_reason": "Too small", "initials": "JK"},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["user_status"] == "rejected"
-    assert body["rejection_reason"] == "Too small"
+    rejection_comments = [c for c in body["comments"] if c["comment_type"] == "rejection"]
+    assert len(rejection_comments) == 1
+    assert rejection_comments[0]["text"] == "Too small"
+    assert rejection_comments[0]["initials"] == "JK"
 
 
 def test_patch_listing_approving_after_rejection_keeps_reason_as_history(client):
     store.create_stub_listing(1, VALID_URL)
-    client.patch("/api/listings/1", json={"user_status": "rejected", "rejection_reason": "Too small"})
+    client.patch(
+        "/api/listings/1",
+        json={"user_status": "rejected", "rejection_reason": "Too small", "initials": "JK"},
+    )
     resp = client.patch("/api/listings/1", json={"user_status": "approved"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["user_status"] == "approved"
-    assert body["rejection_reason"] == "Too small"
+    rejection_comments = [c for c in body["comments"] if c["comment_type"] == "rejection"]
+    assert len(rejection_comments) == 1
+    assert rejection_comments[0]["text"] == "Too small"
 
 
 def test_patch_listing_rejects_non_editable_field(client):
@@ -186,35 +204,16 @@ def test_patch_listing_rejects_non_editable_field(client):
     assert resp.status_code == 422
 
 
-def test_patch_listing_sets_comment(client):
+def test_get_listing_includes_embedded_comments(client):
     store.create_stub_listing(1, VALID_URL)
-    resp = client.patch("/api/listings/1", json={"comment": "Nice garden"})
+    client.post("/api/listings/1/comments", json={"text": "Nice garden", "initials": "JK"})
+    resp = client.get("/api/listings/1")
     assert resp.status_code == 200
-    assert resp.json()["comment"] == "Nice garden"
-
-
-def test_patch_listing_clears_comment_with_blank_string(client):
-    store.create_stub_listing(1, VALID_URL)
-    client.patch("/api/listings/1", json={"comment": "Nice garden"})
-    resp = client.patch("/api/listings/1", json={"comment": ""})
-    assert resp.status_code == 200
-    assert resp.json()["comment"] is None
-
-
-def test_patch_listing_clears_comment_with_whitespace_only(client):
-    store.create_stub_listing(1, VALID_URL)
-    client.patch("/api/listings/1", json={"comment": "Nice garden"})
-    resp = client.patch("/api/listings/1", json={"comment": "   "})
-    assert resp.status_code == 200
-    assert resp.json()["comment"] is None
-
-
-def test_patch_listing_comment_independent_of_status(client):
-    store.create_stub_listing(1, VALID_URL)
-    client.patch("/api/listings/1", json={"comment": "Nice garden"})
-    resp = client.patch("/api/listings/1", json={"user_status": "approved"})
-    assert resp.status_code == 200
-    assert resp.json()["comment"] == "Nice garden"
+    comments = resp.json()["comments"]
+    assert len(comments) == 1
+    assert comments[0]["text"] == "Nice garden"
+    assert comments[0]["initials"] == "JK"
+    assert comments[0]["comment_type"] == "general"
 
 
 def test_patch_listing_applies_manual_edit_and_marks_sticky(client):
