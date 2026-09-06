@@ -67,4 +67,11 @@ export const api = {
     update: (gss, body) => requestFrom(COUNCIL_TAX_BASE, `/${gss}`, { method: "PUT", body: JSON.stringify(body) }),
     remove: (gss) => requestFrom(COUNCIL_TAX_BASE, `/${gss}`, { method: "DELETE" }),
   },
+
+  comments: {
+    create: (listingId, body) => request(`/${listingId}/comments`, { method: "POST", body: JSON.stringify(body) }),
+    update: (listingId, commentId, body) =>
+      request(`/${listingId}/comments/${commentId}`, { method: "PATCH", body: JSON.stringify(body) }),
+    remove: (listingId, commentId) => request(`/${listingId}/comments/${commentId}`, { method: "DELETE" }),
+  },
 };
