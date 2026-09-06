@@ -52,6 +52,19 @@ def test_update_comment_422_on_blank_text(client):
     assert resp.status_code == 422
 
 
+def test_update_comment_422_on_blank_initials(client):
+    store.create_stub_listing(1, VALID_URL)
+    create_resp = client.post("/api/listings/1/comments", json={"text": "Original", "initials": "JK"})
+    comment_id = create_resp.json()["comments"][0]["id"]
+    resp = client.patch(f"/api/listings/1/comments/{comment_id}", json={"text": "Edited", "initials": " "})
+    assert resp.status_code == 422
+
+
+def test_update_comment_404_on_missing_listing(client):
+    resp = client.patch("/api/listings/999/comments/1", json={"text": "x", "initials": "JK"})
+    assert resp.status_code == 404
+
+
 def test_update_comment_404_on_unknown_comment_id(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch("/api/listings/1/comments/999", json={"text": "x", "initials": "JK"})
@@ -76,6 +89,11 @@ def test_delete_comment_happy_path(client):
     resp = client.delete(f"/api/listings/1/comments/{comment_id}")
     assert resp.status_code == 200
     assert resp.json()["comments"] == []
+
+
+def test_delete_comment_404_on_missing_listing(client):
+    resp = client.delete("/api/listings/999/comments/1")
+    assert resp.status_code == 404
 
 
 def test_delete_comment_404_on_unknown_comment_id(client):
