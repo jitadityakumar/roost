@@ -472,6 +472,13 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .admin-panel-hidden { display: none; }
 
 @media (max-width: 700px) {
+  /* Stack the status button above the house name instead of side-by-side
+     -- on a narrow screen the two competing for one row squeezed the
+     address down to almost nothing before it could wrap. */
+  .detail-header { flex-direction: column-reverse; flex-wrap: wrap; }
+  .detail-title { width: 100%; }
+  .detail-actions { align-self: flex-end; }
+
   .admin-shell { flex-direction: column; }
   .admin-nav {
     width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem;
