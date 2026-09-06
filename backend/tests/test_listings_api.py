@@ -198,6 +198,12 @@ def test_patch_listing_approving_after_rejection_keeps_reason_as_history(client)
     assert rejection_comments[0]["text"] == "Too small"
 
 
+def test_patch_listing_moves_to_viewing_without_comment_is_rejected(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch("/api/listings/1", json={"user_status": "viewing"})
+    assert resp.status_code == 422
+
+
 def test_patch_listing_moves_to_viewing_with_comment(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch(
@@ -210,6 +216,17 @@ def test_patch_listing_moves_to_viewing_with_comment(client):
     viewing_comments = [c for c in body["comments"] if c["comment_type"] == "viewing"]
     assert len(viewing_comments) == 1
     assert viewing_comments[0]["text"] == "Booked for Saturday"
+
+
+def test_status_required_fields_and_comment_type_maps_agree(client):
+    """Every status requiring a comment must have a matching
+    store.STATUS_COMMENT_TYPE entry -- store.set_user_status does an
+    unguarded dict lookup on it, so a status added to one map but not the
+    other would KeyError at request time rather than at import time."""
+    from app.routes.listings import STATUS_REQUIRED_FIELDS
+
+    comment_requiring = {status for status, fields in STATUS_REQUIRED_FIELDS.items() if "comment" in fields}
+    assert comment_requiring == set(store.STATUS_COMMENT_TYPE)
 
 
 def test_patch_listing_moves_to_contacted_without_comment_is_rejected(client):

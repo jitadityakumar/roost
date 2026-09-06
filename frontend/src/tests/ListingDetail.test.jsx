@@ -185,6 +185,21 @@ describe("ListingDetail back button", () => {
 });
 
 describe("ListingDetail status-change menu", () => {
+  it("excludes the listing's current status from the menu options", async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(baseListing({ user_status: "approved" }));
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Change status ▾" }));
+
+    const menu = screen.getByText("Triage").closest(".status-menu");
+    expect(within(menu).queryByText("Approved")).not.toBeInTheDocument();
+    expect(within(menu).getByText("Triage")).toBeInTheDocument();
+    expect(within(menu).getByText("Rejected")).toBeInTheDocument();
+    expect(within(menu).getByText("Viewing")).toBeInTheDocument();
+    expect(within(menu).getByText("Contacted")).toBeInTheDocument();
+  });
+
   it("moving to a comment-required status shows the comment box, not an immediate patch", async () => {
     const user = userEvent.setup();
     api.get.mockResolvedValue(baseListing());
