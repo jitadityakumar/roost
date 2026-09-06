@@ -46,7 +46,11 @@ export const api = {
     list: () => requestFrom(CRIME_BASELINES_BASE, ""),
     create: (body) =>
       requestFrom(CRIME_BASELINES_BASE, "", { method: "POST", body: JSON.stringify(body) }),
+    update: (id, body) =>
+      requestFrom(CRIME_BASELINES_BASE, `/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     remove: (id) => requestFrom(CRIME_BASELINES_BASE, `/${id}`, { method: "DELETE" }),
+    setReference: (id) => requestFrom(CRIME_BASELINES_BASE, `/${id}/reference`, { method: "POST" }),
+    clearReference: () => requestFrom(CRIME_BASELINES_BASE, "/reference", { method: "DELETE" }),
   },
 
   destinations: {

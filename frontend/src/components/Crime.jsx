@@ -17,9 +17,21 @@ function barFillClass(ratio, isProperty) {
   return "crime-bar-fill-bad";
 }
 
+// With a reference baseline configured (e.g. "Barnes"), every row is shown
+// relative to *its* score rather than the listing's -- the reference always
+// reads 1.0x. Falls back to the listing-as-base behavior (each baseline's
+// own score_ratio, already computed server-side as candidate/baseline) when
+// no baseline has been marked as the reference yet.
+function relativeRatio(score, referenceScore) {
+  if (referenceScore === 0) return null;
+  return score / referenceScore;
+}
+
 function CrimeBarChart({ baselines, propertyPostcode }) {
   const ok = baselines.filter((b) => b.comparison);
   const errored = baselines.filter((b) => b.error);
+  const reference = ok.find((b) => b.is_reference) ?? null;
+  const referenceScore = reference ? reference.comparison.baseline_score : null;
 
   const rows = ok.length
     ? [
@@ -29,7 +41,10 @@ function CrimeBarChart({ baselines, propertyPostcode }) {
           postcode: propertyPostcode ?? null,
           score: ok[0].comparison.candidate_score,
           candidateScore: ok[0].comparison.candidate_score,
-          ratio: 1,
+          ratio:
+            referenceScore === null
+              ? 1
+              : relativeRatio(ok[0].comparison.candidate_score, referenceScore),
           isProperty: true,
         },
         ...ok.map((b) => ({
@@ -38,7 +53,12 @@ function CrimeBarChart({ baselines, propertyPostcode }) {
           postcode: b.postcode,
           score: b.comparison.baseline_score,
           candidateScore: b.comparison.candidate_score,
-          ratio: b.comparison.score_ratio,
+          ratio:
+            referenceScore === null
+              ? b.comparison.score_ratio
+              : b.is_reference
+                ? 1
+                : relativeRatio(b.comparison.baseline_score, referenceScore),
           isProperty: false,
         })),
       ].sort((a, b) => b.score - a.score)

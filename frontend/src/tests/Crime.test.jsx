@@ -159,6 +159,31 @@ describe("Crime", () => {
     expect(row).toHaveTextContent("5 (0.0x)");
   });
 
+  it("shows ratios relative to the reference baseline instead of the listing", async () => {
+    // Home is the reference (score 2.4) -- its own row must read 1.0x, the
+    // listing (score 4.8) reads 2.0x, and Old flat (score 1.2) reads 0.5x,
+    // all relative to Home rather than to the listing.
+    const homeComparison = { ...makeComparison(2.0), candidate_score: 4.8, baseline_score: 2.4 };
+    const oldFlatComparison = { ...makeComparison(4.0), candidate_score: 4.8, baseline_score: 1.2 };
+    api.crime.mockResolvedValue({
+      unavailable: null,
+      postcode: "AA1 1AA",
+      baselines: [
+        { id: 1, label: "Home", postcode: "ZZ1 1AA", error: null, is_reference: true, comparison: homeComparison },
+        { id: 2, label: "Old flat", postcode: "ZZ3 3CC", error: null, is_reference: false, comparison: oldFlatComparison },
+      ],
+    });
+    render(<Crime listingId={1} ready={true} />);
+    await waitFor(() => expect(screen.getByText("ZZ1 1AA")).toBeInTheDocument());
+
+    const homeRow = screen.getByText("Home").closest(".crime-bar-row");
+    expect(homeRow).toHaveTextContent("1.0×");
+    const oldFlatRow = screen.getByText("Old flat").closest(".crime-bar-row");
+    expect(oldFlatRow).toHaveTextContent("0.5×");
+    const propertyRow = screen.getByText("This property").closest(".crime-bar-row");
+    expect(propertyRow).toHaveTextContent("2.0×");
+  });
+
   it("shows a section-level error when the request itself fails", async () => {
     api.crime.mockRejectedValue(new Error("network down"));
     render(<Crime listingId={1} ready={true} />);
