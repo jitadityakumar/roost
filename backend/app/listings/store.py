@@ -181,26 +181,30 @@ def apply_manual_edit(listing_id: int, fields: dict) -> dict:
         conn.close()
 
 
+# Maps a target user_status to the comment_type its mandatory-comment row
+# gets (issue #82). 'rejected' keeps the pre-existing 'rejection' type name
+# for continuity with data written before this map existed; 'viewing'/
+# 'contacted' just reuse the status name.
+STATUS_COMMENT_TYPE = {"rejected": "rejection", "viewing": "viewing", "contacted": "contacted"}
+
+
 def set_user_status(
-    listing_id: int, user_status: str, rejection_reason: str | None = None, initials: str | None = None
+    listing_id: int, user_status: str, comment: str | None = None, initials: str | None = None
 ) -> None:
-    """rejection_reason is only written when provided (i.e. the caller is
-    actually setting user_status to 'rejected') -- as a new comments row
-    (comment_type='rejection'), not a column write. Moving away from
-    'rejected' later leaves that row untouched -- the reason is kept as
-    history rather than cleared, so it's still visible if the listing is
-    rejected again or the past reason is worth revisiting; re-rejecting
-    appends a second rejection-typed row rather than overwriting the first,
-    same end-user-visible "history preserved" behavior as the old column,
-    different mechanism.
+    """comment is only written when provided (i.e. the caller is moving into
+    a status that requires one) -- as a new comments row typed via
+    STATUS_COMMENT_TYPE, not a column write. Moving away from that status
+    later leaves the row untouched -- kept as history rather than cleared,
+    so it's still visible if the listing re-enters the same status or the
+    past note is worth revisiting; re-entering appends a second row of that
+    type rather than overwriting the first.
 
     Not atomic: the user_status UPDATE and the comments INSERT are two
     statements on two separate connections (comments_store.create_comment
-    opens its own) -- a crash between them would leave user_status=
-    'rejected' with no matching rejection comment. Same risk profile as
-    every other cross-table write in this module (e.g. delete_listing's six
-    sequential deletes), not worth a shared transaction for a single-user
-    hobby app.
+    opens its own) -- a crash between them would leave user_status set with
+    no matching comment. Same risk profile as every other cross-table write
+    in this module (e.g. delete_listing's six sequential deletes), not worth
+    a shared transaction for a single-user hobby app.
     """
     conn = get_connection()
     try:
@@ -211,8 +215,8 @@ def set_user_status(
         conn.commit()
     finally:
         conn.close()
-    if rejection_reason is not None:
-        comments_store.create_comment(listing_id, "rejection", rejection_reason, initials)
+    if comment is not None:
+        comments_store.create_comment(listing_id, STATUS_COMMENT_TYPE[user_status], comment, initials)
 
 
 def set_extraction_status(listing_id: int, status: str, error: str | None = None) -> None:

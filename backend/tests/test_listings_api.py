@@ -155,7 +155,7 @@ def test_patch_listing_rejects_without_reason(client):
 
 def test_patch_listing_rejects_with_blank_reason(client):
     store.create_stub_listing(1, VALID_URL)
-    resp = client.patch("/api/listings/1", json={"user_status": "rejected", "rejection_reason": "   "})
+    resp = client.patch("/api/listings/1", json={"user_status": "rejected", "comment": "   "})
     assert resp.status_code == 422
 
 
@@ -163,7 +163,7 @@ def test_patch_listing_rejects_with_blank_initials(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch(
         "/api/listings/1",
-        json={"user_status": "rejected", "rejection_reason": "Too small", "initials": "  "},
+        json={"user_status": "rejected", "comment": "Too small", "initials": "  "},
     )
     assert resp.status_code == 422
 
@@ -172,7 +172,7 @@ def test_patch_listing_rejects_with_reason_stores_it(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch(
         "/api/listings/1",
-        json={"user_status": "rejected", "rejection_reason": "Too small", "initials": "JK"},
+        json={"user_status": "rejected", "comment": "Too small", "initials": "JK"},
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -187,7 +187,7 @@ def test_patch_listing_approving_after_rejection_keeps_reason_as_history(client)
     store.create_stub_listing(1, VALID_URL)
     client.patch(
         "/api/listings/1",
-        json={"user_status": "rejected", "rejection_reason": "Too small", "initials": "JK"},
+        json={"user_status": "rejected", "comment": "Too small", "initials": "JK"},
     )
     resp = client.patch("/api/listings/1", json={"user_status": "approved"})
     assert resp.status_code == 200
@@ -196,6 +196,40 @@ def test_patch_listing_approving_after_rejection_keeps_reason_as_history(client)
     rejection_comments = [c for c in body["comments"] if c["comment_type"] == "rejection"]
     assert len(rejection_comments) == 1
     assert rejection_comments[0]["text"] == "Too small"
+
+
+def test_patch_listing_moves_to_viewing_with_comment(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch(
+        "/api/listings/1",
+        json={"user_status": "viewing", "comment": "Booked for Saturday", "initials": "JK"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_status"] == "viewing"
+    viewing_comments = [c for c in body["comments"] if c["comment_type"] == "viewing"]
+    assert len(viewing_comments) == 1
+    assert viewing_comments[0]["text"] == "Booked for Saturday"
+
+
+def test_patch_listing_moves_to_contacted_without_comment_is_rejected(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch("/api/listings/1", json={"user_status": "contacted"})
+    assert resp.status_code == 422
+
+
+def test_patch_listing_moves_to_contacted_with_comment_stores_it(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch(
+        "/api/listings/1",
+        json={"user_status": "contacted", "comment": "Emailed the agent", "initials": "JK"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_status"] == "contacted"
+    contacted_comments = [c for c in body["comments"] if c["comment_type"] == "contacted"]
+    assert len(contacted_comments) == 1
+    assert contacted_comments[0]["text"] == "Emailed the agent"
 
 
 def test_patch_listing_rejects_non_editable_field(client):

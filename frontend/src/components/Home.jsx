@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { USER_STATUSES, USER_STATUS_LABEL } from "../userStatus.js";
 
 export default function Home() {
   return (
@@ -6,15 +7,11 @@ export default function Home() {
       <Link className="home-option" to="/add">
         Add property
       </Link>
-      <Link className="home-option" to="/triage">
-        View triage
-      </Link>
-      <Link className="home-option" to="/approved">
-        View approved
-      </Link>
-      <Link className="home-option" to="/rejected">
-        View rejected
-      </Link>
+      {USER_STATUSES.map((status) => (
+        <Link key={status} className="home-option" to={`/${status}`}>
+          View {USER_STATUS_LABEL[status].toLowerCase()}
+        </Link>
+      ))}
       <Link className="home-option" to="/admin">
         Admin
       </Link>

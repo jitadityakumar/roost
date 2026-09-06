@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import DOMPurify from "dompurify";
 import { api } from "../api.js";
@@ -12,7 +12,7 @@ import Crime from "./Crime.jsx";
 import FrequentDestinations from "./FrequentDestinations.jsx";
 import Comments from "./Comments.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
-import { USER_STATUS_LABEL } from "../userStatus.js";
+import { USER_STATUSES, USER_STATUS_LABEL, STATUS_COMMENT_VERB } from "../userStatus.js";
 import { getCookie, setCookie } from "../cookie.js";
 
 const INITIALS_COOKIE = "roost_comment_initials";
@@ -76,10 +76,12 @@ export default function ListingDetail() {
   const [media, setMedia] = useState(null);
   const [error, setError] = useState(null);
   const [editMode, setEditMode] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-  const [rejectInitials, setRejectInitials] = useState("");
-  const [rejectError, setRejectError] = useState(null);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState(null);
+  const [commentText, setCommentText] = useState("");
+  const [commentInitials, setCommentInitials] = useState("");
+  const [commentError, setCommentError] = useState(null);
+  const statusMenuRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,36 +100,49 @@ export default function ListingDetail() {
     load();
   }, [load]);
 
+  // Closes the status menu on an outside click, matching the mockup's
+  // behavior -- the menu itself has no backdrop.
+  useEffect(() => {
+    if (!statusMenuOpen) return;
+    function handleClickOutside(e) {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target)) {
+        setStatusMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [statusMenuOpen]);
+
   async function handleFieldSave(field, value) {
     const updated = await api.patch(id, { fields: { [field]: value } });
     setListing(updated);
   }
 
-  async function handleApprove() {
-    const updated = await api.patch(id, { user_status: "approved" });
-    setListing(updated);
-  }
-
-  function openReject() {
-    setRejectReason("");
-    setRejectInitials(getCookie(INITIALS_COOKIE) || "");
-    setRejectError(null);
-    setRejecting(true);
-  }
-
-  async function confirmReject() {
-    if (!rejectReason.trim() || !rejectInitials.trim()) {
-      setRejectError("A reason and initials are required.");
+  function requestStatusChange(status) {
+    setStatusMenuOpen(false);
+    if (!STATUS_COMMENT_VERB[status]) {
+      applyStatusChange(status);
       return;
     }
-    const updated = await api.patch(id, {
-      user_status: "rejected",
-      rejection_reason: rejectReason.trim(),
-      initials: rejectInitials.trim(),
-    });
-    setCookie(INITIALS_COOKIE, rejectInitials.trim(), 365);
+    setPendingStatus(status);
+    setCommentText("");
+    setCommentInitials(getCookie(INITIALS_COOKIE) || "");
+    setCommentError(null);
+  }
+
+  async function applyStatusChange(status, extra) {
+    const updated = await api.patch(id, { user_status: status, ...extra });
     setListing(updated);
-    setRejecting(false);
+  }
+
+  async function confirmStatusChange() {
+    if (!commentText.trim() || !commentInitials.trim()) {
+      setCommentError("A comment and initials are required.");
+      return;
+    }
+    await applyStatusChange(pendingStatus, { comment: commentText.trim(), initials: commentInitials.trim() });
+    setCookie(INITIALS_COOKIE, commentInitials.trim(), 365);
+    setPendingStatus(null);
   }
 
   async function handleRefresh() {
@@ -160,18 +175,29 @@ export default function ListingDetail() {
       {photoUrls.length > 0 && <PhotoCarousel images={photoUrls} />}
 
       <div className="detail-header">
-        <h2>{listing.address || listing.url}</h2>
+        <div>
+          <h2>{listing.address || listing.url}</h2>
+          <p className="status-line">
+            <span className={`status-dot ${listing.user_status}`} />
+            Status: <b>{USER_STATUS_LABEL[listing.user_status] || listing.user_status}</b>
+          </p>
+        </div>
         <div className="detail-actions">
-          {listing.user_status !== "approved" && (
-            <button className="status-toggle-btn" onClick={handleApprove}>
-              Approve
+          <div className="status-menu-wrap" ref={statusMenuRef}>
+            <button className="status-toggle-btn" onClick={() => setStatusMenuOpen((v) => !v)}>
+              Change status <span className="caret">▾</span>
             </button>
-          )}
-          {listing.user_status !== "rejected" && (
-            <button className="status-toggle-btn warn" onClick={openReject}>
-              Reject
-            </button>
-          )}
+            {statusMenuOpen && (
+              <div className="status-menu">
+                {USER_STATUSES.filter((s) => s !== listing.user_status).map((s) => (
+                  <button key={s} onClick={() => requestStatusChange(s)}>
+                    <span>{USER_STATUS_LABEL[s]}</span>
+                    {STATUS_COMMENT_VERB[s] && <span className="req">comment</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button className="icon-btn edit" onClick={() => setEditMode((v) => !v)} title="Edit" aria-label="Edit" aria-pressed={editMode}>
             ✎
           </button>
@@ -184,24 +210,30 @@ export default function ListingDetail() {
         </div>
       </div>
 
-      {rejecting && (
+      {pendingStatus && (
         <div className="reject-box">
-          <label htmlFor="reject-reason">Reason for rejecting</label>
+          <label htmlFor="status-comment">
+            {STATUS_COMMENT_VERB[pendingStatus].charAt(0).toUpperCase() + STATUS_COMMENT_VERB[pendingStatus].slice(1)}
+          </label>
           <textarea
-            id="reject-reason"
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
+            id="status-comment"
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
             rows={3}
             autoFocus
           />
-          <label htmlFor="reject-initials">Initials</label>
-          <input id="reject-initials" value={rejectInitials} onChange={(e) => setRejectInitials(e.target.value)} />
-          {rejectError && <p className="error">{rejectError}</p>}
+          <label htmlFor="status-comment-initials">Initials</label>
+          <input
+            id="status-comment-initials"
+            value={commentInitials}
+            onChange={(e) => setCommentInitials(e.target.value)}
+          />
+          {commentError && <p className="error">{commentError}</p>}
           <div className="reject-box-actions">
-            <button className="status-toggle-btn warn" onClick={confirmReject}>
-              Confirm reject
+            <button className="status-toggle-btn warn" onClick={confirmStatusChange}>
+              Confirm move
             </button>
-            <button className="status-toggle-btn secondary" onClick={() => setRejecting(false)}>
+            <button className="status-toggle-btn secondary" onClick={() => setPendingStatus(null)}>
               Cancel
             </button>
           </div>

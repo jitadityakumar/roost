@@ -164,7 +164,8 @@ describe("ListingDetail back button", () => {
     renderDetailWithDestinations({ pathname: "/listings/1", state: { from: "triage" } });
 
     const backBtn = await screen.findByRole("button", { name: "← Back to Triage" });
-    await user.click(await screen.findByRole("button", { name: "Approve" }));
+    await user.click(await screen.findByRole("button", { name: "Change status ▾" }));
+    await user.click(await screen.findByRole("button", { name: "Approved" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith("1", { user_status: "approved" }));
 
     // Origin list is remembered even though the listing's own status just changed.
@@ -180,5 +181,55 @@ describe("ListingDetail back button", () => {
 
     const backBtn = await screen.findByRole("button", { name: "← Back to Approved" });
     expect(backBtn).toBeInTheDocument();
+  });
+});
+
+describe("ListingDetail status-change menu", () => {
+  it("moving to a comment-required status shows the comment box, not an immediate patch", async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(baseListing());
+    renderDetail();
+    api.patch.mockClear();
+
+    await user.click(await screen.findByRole("button", { name: "Change status ▾" }));
+    await user.click(await screen.findByRole("button", { name: /^Rejected/ }));
+
+    expect(screen.getByLabelText("Reason for rejecting")).toBeInTheDocument();
+    expect(api.patch).not.toHaveBeenCalled();
+  });
+
+  it("blocks confirming a comment-required move without both a comment and initials", async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(baseListing());
+    renderDetail();
+    api.patch.mockClear();
+
+    await user.click(await screen.findByRole("button", { name: "Change status ▾" }));
+    await user.click(await screen.findByRole("button", { name: /^Viewing/ }));
+    await user.click(screen.getByRole("button", { name: "Confirm move" }));
+
+    expect(screen.getByText("A comment and initials are required.")).toBeInTheDocument();
+    expect(api.patch).not.toHaveBeenCalled();
+  });
+
+  it("submits comment and initials when confirming a move to Contacted", async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(baseListing());
+    api.patch.mockResolvedValue(baseListing({ user_status: "contacted" }));
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Change status ▾" }));
+    await user.click(await screen.findByRole("button", { name: /^Contacted/ }));
+    await user.type(screen.getByLabelText("Note on contacting the agent"), "Emailed the agent");
+    await user.type(screen.getByLabelText("Initials"), "JK");
+    await user.click(screen.getByRole("button", { name: "Confirm move" }));
+
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith("1", {
+        user_status: "contacted",
+        comment: "Emailed the agent",
+        initials: "JK",
+      })
+    );
   });
 });
