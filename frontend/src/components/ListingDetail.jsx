@@ -175,7 +175,7 @@ export default function ListingDetail() {
       {photoUrls.length > 0 && <PhotoCarousel images={photoUrls} />}
 
       <div className="detail-header">
-        <div>
+        <div className="detail-title">
           <h2>{listing.address || listing.url}</h2>
           <p className="status-line">
             <span className={`status-dot ${listing.user_status}`} />

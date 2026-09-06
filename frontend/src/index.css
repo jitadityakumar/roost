@@ -188,17 +188,19 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 
 .back-btn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; margin-bottom: 1rem; font: inherit; text-decoration: none; }
 
-.detail-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
-.detail-header h2 { margin: 0; }
+/* nowrap (not flex-wrap) so a long address wraps its own text onto a
+   second line, rather than the whole title block dropping below
+   detail-actions -- detail-title shrinks/wraps via min-width: 0, while
+   detail-actions keeps its natural width via flex-shrink: 0, so it always
+   stays on the title's first line, pinned right. */
+.detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: nowrap; margin-top: 1rem; }
+.detail-title { min-width: 0; flex: 1 1 auto; }
+.detail-header h2 { margin: 0; overflow-wrap: break-word; }
 .detail-actions {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  /* Keeps this pinned to the right even when a long address wraps
-     .detail-header onto two lines -- justify-content: space-between only
-     works with 2+ items sharing a line, so a lone wrapped-down item falls
-     back to flex-start (left) without this. */
-  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .status-line {
