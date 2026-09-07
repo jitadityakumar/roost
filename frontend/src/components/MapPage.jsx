@@ -81,7 +81,9 @@ function MapPopupCard({ listing }) {
         <p className="meta">
           {listing.bedrooms ?? "?"} bed · {listing.bathrooms ?? "?"} bath · {listing.property_type || ""}
         </p>
-        <Link to={`/listings/${listing.id}`}>View listing →</Link>
+        <Link to={`/listings/${listing.id}`} target="_blank" rel="noopener noreferrer">
+          View listing →
+        </Link>
       </div>
     </div>
   );
