@@ -15,20 +15,34 @@ const DEFAULT_ZOOM = 10;
 
 function getStatusColor(status) {
   const { cssVar, fallback } = STATUS_COLOR_VAR[status] || {};
-  if (typeof window === "undefined" || !cssVar) return fallback;
+  if (!cssVar) return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
   return value || fallback;
+}
+
+// Read each status's color once per render rather than re-querying
+// getComputedStyle for every marker and every filter button.
+function useStatusColors() {
+  return useMemo(
+    () => Object.fromEntries(USER_STATUSES.map((status) => [status, getStatusColor(status)])),
+    []
+  );
 }
 
 // Re-frames the map to fit every currently-visible pin whenever the filtered
 // set changes -- a plain fixed center/zoom would leave most pins off-screen
 // once a status filter narrows the set to a handful of scattered listings.
+// Resets back to the London-wide default when the filter empties the set,
+// rather than leaving the view stuck on wherever it was last framed.
 function FitBounds({ listings }) {
   const map = useMap();
   const key = listings.map((l) => `${l.id}:${l.latitude}:${l.longitude}`).join("|");
 
   useEffect(() => {
-    if (listings.length === 0) return;
+    if (listings.length === 0) {
+      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+      return;
+    }
     const bounds = listings.map((l) => [l.latitude, l.longitude]);
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -39,7 +53,7 @@ function FitBounds({ listings }) {
 
 function MapPopupCard({ listing }) {
   const pending = listing.extraction_status !== "done";
-  const [thumbFilename] = useListingThumbnail(listing.id, { skip: pending });
+  const [thumbFilename, setThumbFilename] = useListingThumbnail(listing.id, { skip: pending });
 
   return (
     <div className="map-popup">
@@ -49,6 +63,7 @@ function MapPopupCard({ listing }) {
             src={api.mediaUrl(listing.id, "photos", thumbFilename)}
             alt={listing.address ? `Photo of ${listing.address}` : "Listing photo"}
             loading="lazy"
+            onError={() => setThumbFilename("")}
           />
         ) : (
           <span className="map-popup-thumb-placeholder" />
@@ -97,10 +112,16 @@ export default function MapPage() {
     () => listings.filter((l) => typeof l.latitude === "number" && typeof l.longitude === "number"),
     [listings]
   );
+  const matching = useMemo(
+    () => listings.filter((l) => selectedStatuses.has(l.user_status)),
+    [listings, selectedStatuses]
+  );
   const visible = useMemo(
     () => plottable.filter((l) => selectedStatuses.has(l.user_status)),
     [plottable, selectedStatuses]
   );
+  const missingCoords = matching.length - visible.length;
+  const statusColors = useStatusColors();
 
   const toggleStatus = (status) => {
     setSelectedStatuses((prev) => {
@@ -135,7 +156,7 @@ export default function MapPage() {
               aria-pressed={selectedStatuses.has(status)}
               onClick={() => toggleStatus(status)}
             >
-              <span className="dot" style={{ background: getStatusColor(status) }} />
+              <span className="dot" style={{ background: statusColors[status] }} />
               {USER_STATUS_LABEL[status]}
             </button>
           ))}
@@ -144,7 +165,9 @@ export default function MapPage() {
           </button>
         </div>
         <span className="filter-count">
-          {visible.length} of {plottable.length} listings shown
+          {visible.length} of {matching.length} listings shown
+          {missingCoords > 0 &&
+            ` (${missingCoords} without map coordinates)`}
         </span>
       </div>
 
@@ -160,8 +183,8 @@ export default function MapPage() {
             center={[l.latitude, l.longitude]}
             radius={8}
             pathOptions={{
-              color: getStatusColor(l.user_status),
-              fillColor: getStatusColor(l.user_status),
+              color: statusColors[l.user_status],
+              fillColor: statusColors[l.user_status],
               fillOpacity: 0.55,
               weight: 2,
             }}
