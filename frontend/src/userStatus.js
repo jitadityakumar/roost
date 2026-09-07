@@ -25,3 +25,18 @@ export const STATUS_COMMENT_VERB = {
   viewing: "note for the viewing",
   contacted: "note on contacting the agent",
 };
+
+// Same color mapping as .status-dot/.home-option/.status-menu in
+// index.css, exposed for places (the shortlist map, issue #86) that need
+// an actual color value rather than a CSS class -- e.g. Leaflet's SVG
+// marker renderer sets color as a presentation attribute, which can't
+// reference a `var(...)` the way a stylesheet rule can. Read via
+// getComputedStyle so the map still follows dark-mode overrides; the
+// fallback is only exercised where index.css isn't loaded (tests).
+export const STATUS_COLOR_VAR = {
+  triage: { cssVar: "--muted", fallback: "#666" },
+  approved: { cssVar: "--accent", fallback: "#2a6f4f" },
+  rejected: { cssVar: "--danger", fallback: "#b3261e" },
+  viewing: { cssVar: "--edit-color", fallback: "#2563eb" },
+  contacted: { cssVar: "--warn", fallback: "#b8860b" },
+};

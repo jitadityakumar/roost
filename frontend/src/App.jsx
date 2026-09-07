@@ -5,6 +5,7 @@ import ListingsPage from "./components/ListingsPage.jsx";
 import ListingDetail from "./components/ListingDetail.jsx";
 import AdminPage from "./components/AdminPage.jsx";
 import JourneyDetailsPage from "./components/JourneyDetailsPage.jsx";
+import MapPage from "./components/MapPage.jsx";
 import { USER_STATUSES } from "./userStatus.js";
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
             ))}
             <Route path="/listings/:id" element={<ListingDetail />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/map" element={<MapPage />} />
             <Route path="/journey-details/:poolId" element={<JourneyDetailsPage />} />
           </Routes>
         </main>

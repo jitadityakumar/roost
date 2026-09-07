@@ -1027,3 +1027,59 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .jd-footer-row { display: flex; justify-content: space-between; gap: 0.8rem; font-size: 0.78rem; }
 .jd-footer-label { color: var(--muted); }
 .jd-footer-val { font-weight: 500; text-align: right; word-break: break-word; }
+
+/* Shortlist map (issue #86) -- pin colors come from getStatusColor() in
+   MapPage.jsx (JS-side, since Leaflet's SVG renderer sets color as a plain
+   attribute, not a style property that can reference var(...)), reading the
+   same --muted/--accent/--danger/--edit-color/--warn tokens used elsewhere
+   for status theming. */
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.8rem;
+}
+.map-toolbar .filters { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.map-toolbar .filter-count { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+
+.filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.filter-btn .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.filter-btn.active { border-color: var(--accent); color: var(--fg); }
+
+.map-container { height: 65vh; min-height: 360px; width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+
+.map-popup { width: 200px; font-size: 0.85rem; }
+.map-popup-thumb {
+  width: 100%;
+  height: 100px;
+  background: var(--border);
+  border-radius: 6px 6px 0 0;
+  position: relative;
+  overflow: hidden;
+}
+.map-popup-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.map-popup-thumb-placeholder { display: block; width: 100%; height: 100%; }
+.map-popup-thumb .badge { position: absolute; top: 6px; left: 6px; font-size: 0.65rem; }
+.map-popup-body { padding: 0.5rem 0.1rem 0.1rem; }
+.map-popup-body .status-dot { display: inline-block; margin-right: 0.3rem; }
+.map-popup-body .price { font-weight: 600; }
+.map-popup-body .address { margin: 0.2rem 0; }
+.map-popup-body .meta { color: var(--muted); font-size: 0.78rem; margin: 0 0 0.4rem; }
+
+/* Leaflet's popup chrome is plain inline-styled white/black by default --
+   restyle to match the app's light/dark theme tokens instead of clashing. */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--bg); color: var(--fg); }
+.leaflet-popup-content { margin: 0.6rem 0.7rem; }

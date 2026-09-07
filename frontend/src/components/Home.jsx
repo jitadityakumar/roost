@@ -12,6 +12,9 @@ export default function Home() {
           {USER_STATUS_LABEL[status]}
         </Link>
       ))}
+      <Link className="home-option" to="/map">
+        Map view
+      </Link>
       <Link className="home-option" to="/admin">
         Admin
       </Link>
