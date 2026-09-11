@@ -3,15 +3,16 @@
 // No DOM/canvas dependency here so this stays unit-testable -- the canvas
 // component (FloorplanTracer.jsx) is the only thing that touches a <canvas>.
 
-// Fixed room types -- everything not a bedroom/reception-kitchen/bathroom/
-// outdoor space is lumped into hallway/storage. Keys must match the
-// backend's compare.py ROOM_TYPES exactly.
+// Fixed room types -- these are the only ones a user traces by hand.
+// Hallway/Storage isn't a button here: it's computed as the remainder of a
+// known internal sq ft figure minus these traced non-outdoor rooms (see
+// backend/app/floorplan/compare.py's HALLWAY_STORAGE handling). Keys must
+// match the backend's compare.py ROOM_TYPES exactly.
 export const ROOM_TYPES = {
   bedroom: { label: "Bedroom", color: "#2e7d6b" },
   reception_kitchen: { label: "Reception/Kitchen", color: "#2f5f83" },
   bathroom: { label: "Bathroom", color: "#0f7a8a" },
   outdoor: { label: "Outdoor Space", color: "#a8631c" },
-  hallway_storage: { label: "Hallway/Storage", color: "#6a4c93" },
 };
 
 // Fixed swatch palette offered in the room color picker, plus a custom

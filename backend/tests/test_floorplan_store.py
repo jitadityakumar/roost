@@ -15,15 +15,22 @@ def test_get_baseline_seeded_singleton_empty(isolated_db):
 def test_put_baseline_round_trips(isolated_db):
     rooms = [{"id": "r1", "name": "Bedroom 1", "color": "#2e7d6b", "type": "bedroom"}]
     shapes = [{"id": "s1", "roomId": "r1", "points": [{"x": 0, "y": 0}], "pxArea": 100.0, "scalePxPerFt": 10.0, "kind": "rect"}]
-    updated = store.put_baseline("data:image/png;base64,xx", 800, 600, 22.5, rooms, shapes)
+    updated = store.put_baseline("data:image/png;base64,xx", 800, 600, 22.5, rooms, shapes, internal_sqft=850.0)
     assert updated["rooms"] == rooms
     assert updated["shapes"] == shapes
     assert updated["active_scale"] == 22.5
     assert updated["image_w"] == 800
+    assert updated["internal_sqft"] == 850.0
 
     reread = store.get_baseline()
     assert reread["rooms"] == rooms
     assert reread["shapes"] == shapes
+    assert reread["internal_sqft"] == 850.0
+
+
+def test_put_baseline_internal_sqft_defaults_to_none(isolated_db):
+    updated = store.put_baseline("data:image/png;base64,xx", 800, 600, 22.5, [], [])
+    assert updated["internal_sqft"] is None
 
 
 def test_listing_trace_round_trips(isolated_db):

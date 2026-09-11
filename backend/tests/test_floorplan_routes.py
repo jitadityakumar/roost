@@ -27,12 +27,13 @@ def test_put_baseline_round_trips(client):
     resp = client.put(
         "/api/admin/floorplan-baseline",
         json={"image_blob": "data:image/png;base64,xx", "image_w": 800, "image_h": 600,
-              "active_scale": 22.5, "rooms": [ROOM], "shapes": [SHAPE]},
+              "active_scale": 22.5, "internal_sqft": 850.0, "rooms": [ROOM], "shapes": [SHAPE]},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["rooms"] == [ROOM]
     assert body["shapes"] == [SHAPE]
+    assert body["internal_sqft"] == 850.0
     assert client.get("/api/admin/floorplan-baseline").json()["rooms"] == [ROOM]
 
 
@@ -43,6 +44,37 @@ def test_put_baseline_422_on_unknown_room_type(client):
         json={"active_scale": 10.0, "rooms": [bad_room], "shapes": []},
     )
     assert resp.status_code == 422
+
+
+def test_put_baseline_silently_drops_legacy_hallway_storage_room(client):
+    # hallway_storage was a traceable room type before it became a computed
+    # remainder -- a save that still carries one from before this change
+    # (e.g. the tracer round-tripping an old baseline unmodified) should
+    # succeed by dropping it, not 422 on an opaque "unknown room type".
+    legacy_room = {"id": "legacy1", "name": "Hallway/Storage 1", "color": "#000", "type": "hallway_storage"}
+    legacy_shape = {**SHAPE, "id": "legacy-shape", "roomId": "legacy1"}
+    resp = client.put(
+        "/api/admin/floorplan-baseline",
+        json={"active_scale": 10.0, "rooms": [ROOM, legacy_room], "shapes": [SHAPE, legacy_shape]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["rooms"] == [ROOM]
+    assert body["shapes"] == [SHAPE]
+
+
+def test_put_listing_trace_silently_drops_legacy_hallway_storage_room(client):
+    listings_store.create_stub_listing(1, VALID_URL)
+    legacy_room = {"id": "legacy1", "name": "Hallway/Storage 1", "color": "#000", "type": "hallway_storage"}
+    legacy_shape = {**SHAPE, "id": "legacy-shape", "roomId": "legacy1"}
+    resp = client.put(
+        "/api/listings/1/floorplan-trace",
+        json={"image_path": "01.jpeg", "active_scale": 10.0, "rooms": [ROOM, legacy_room], "shapes": [SHAPE, legacy_shape]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["rooms"] == [ROOM]
+    assert body["shapes"] == [SHAPE]
 
 
 # --- listing trace -----------------------------------------------------------
@@ -120,3 +152,21 @@ def test_comparison_includes_floor_area_cross_check(client):
     cross_check = resp.json()["summary"]["floor_area_cross_check"]
     assert cross_check["stated_floor_area"] == 500
     assert cross_check["traced_indoor"] == 1.0
+
+
+def test_comparison_uses_baseline_internal_sqft_for_hallway_storage_remainder(client):
+    listings_store.create_stub_listing(1, VALID_URL)
+    client.patch("/api/listings/1", json={"fields": {"floor_area_sqft": 50}})
+    client.put(
+        "/api/admin/floorplan-baseline",
+        json={"active_scale": 10.0, "internal_sqft": 100.0, "rooms": [ROOM], "shapes": [SHAPE]},
+    )
+    client.put(
+        "/api/listings/1/floorplan-trace",
+        json={"image_path": "01.jpeg", "active_scale": 10.0, "rooms": [ROOM], "shapes": [SHAPE]},
+    )
+    resp = client.get("/api/listings/1/floorplan-comparison")
+    assert resp.status_code == 200
+    hallway = next(t for t in resp.json()["types"] if t["type"] == "hallway_storage")
+    assert hallway["baseline_total"] == 99.0  # 100 internal - 1 traced
+    assert hallway["listing_total"] == 49.0  # 50 stated - 1 traced

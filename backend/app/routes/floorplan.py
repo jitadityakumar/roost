@@ -36,6 +36,7 @@ class PutBaselineRequest(BaseModel):
     image_w: int | None = None
     image_h: int | None = None
     active_scale: float | None = None
+    internal_sqft: float | None = None
     rooms: list[Room]
     shapes: list[Shape]
 
@@ -55,6 +56,23 @@ def _validate_room_types(rooms: list[Room]) -> None:
         raise HTTPException(status_code=422, detail=f"unknown room type(s): {sorted(set(bad))}")
 
 
+# hallway_storage was a traceable room type before it became a computed
+# remainder (see compare.py) -- a baseline/trace saved with the old tracer
+# button can still have rooms of this type sitting in storage. Rather than
+# 422ing the very next save of that row (a confusing failure disconnected
+# from whatever the user actually changed), silently drop them: unlike a
+# genuinely unknown type (a typo, bad API input), this one has a known,
+# intentional meaning -- "no longer traced, now derived automatically".
+_LEGACY_ROOM_TYPES = {"hallway_storage"}
+
+
+def _drop_legacy_rooms(rooms: list[Room], shapes: list[Shape]) -> tuple[list[Room], list[Shape]]:
+    kept_rooms = [r for r in rooms if r.type not in _LEGACY_ROOM_TYPES]
+    kept_ids = {r.id for r in kept_rooms}
+    kept_shapes = [s for s in shapes if s.roomId in kept_ids]
+    return kept_rooms, kept_shapes
+
+
 def _dump_rooms(rooms: list[Room]) -> list[dict]:
     return [r.model_dump() for r in rooms]
 
@@ -70,10 +88,11 @@ def get_baseline():
 
 @router.put("/admin/floorplan-baseline")
 def put_baseline(body: PutBaselineRequest):
-    _validate_room_types(body.rooms)
+    rooms, shapes = _drop_legacy_rooms(body.rooms, body.shapes)
+    _validate_room_types(rooms)
     return store.put_baseline(
         body.image_blob, body.image_w, body.image_h, body.active_scale,
-        _dump_rooms(body.rooms), _dump_shapes(body.shapes),
+        _dump_rooms(rooms), _dump_shapes(shapes), body.internal_sqft,
     )
 
 
@@ -91,10 +110,11 @@ def get_listing_trace(listing_id: int, image_path: str = Query(...)):
 def put_listing_trace(listing_id: int, body: PutListingTraceRequest):
     if listings_store.get_listing(listing_id) is None:
         raise HTTPException(status_code=404, detail="listing not found")
-    _validate_room_types(body.rooms)
+    rooms, shapes = _drop_legacy_rooms(body.rooms, body.shapes)
+    _validate_room_types(rooms)
     return store.put_listing_trace(
         listing_id, body.image_path, body.image_w, body.image_h, body.active_scale,
-        _dump_rooms(body.rooms), _dump_shapes(body.shapes),
+        _dump_rooms(rooms), _dump_shapes(shapes),
     )
 
 
@@ -113,6 +133,7 @@ def get_floorplan_comparison(listing_id: int):
         baseline["rooms"], baseline["shapes"],
         trace["rooms"], trace["shapes"],
         listing_floor_area_sqft=listing.get("floor_area_sqft"),
+        baseline_internal_sqft=baseline.get("internal_sqft"),
     )
     result["baseline_has_shapes"] = bool(baseline["shapes"])
     result["trace_image_path"] = trace["image_path"]

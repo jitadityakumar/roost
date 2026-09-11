@@ -33,6 +33,7 @@ def put_baseline(
     active_scale: float | None,
     rooms: list[dict],
     shapes: list[dict],
+    internal_sqft: float | None = None,
 ) -> dict:
     conn = get_connection()
     try:
@@ -40,10 +41,10 @@ def put_baseline(
             """
             UPDATE floorplan_baseline SET
                 image_blob = ?, image_w = ?, image_h = ?, active_scale = ?,
-                rooms_json = ?, shapes_json = ?, updated_at = ?
+                rooms_json = ?, shapes_json = ?, internal_sqft = ?, updated_at = ?
             WHERE id = 1
             """,
-            (image_blob, image_w, image_h, active_scale, json.dumps(rooms), json.dumps(shapes), _now_iso()),
+            (image_blob, image_w, image_h, active_scale, json.dumps(rooms), json.dumps(shapes), internal_sqft, _now_iso()),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM floorplan_baseline WHERE id = 1").fetchone()

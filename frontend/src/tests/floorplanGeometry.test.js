@@ -131,9 +131,9 @@ describe("shadeColor", () => {
 });
 
 describe("ROOM_TYPES", () => {
-  it("has exactly the 5 fixed room type keys matching the backend", () => {
+  it("has exactly the 4 traceable room type keys matching the backend -- hallway/storage isn't traced, it's a remainder", () => {
     expect(Object.keys(ROOM_TYPES).sort()).toEqual(
-      ["bathroom", "bedroom", "hallway_storage", "outdoor", "reception_kitchen"].sort()
+      ["bathroom", "bedroom", "outdoor", "reception_kitchen"].sort()
     );
   });
 });

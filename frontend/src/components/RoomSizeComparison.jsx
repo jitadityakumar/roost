@@ -18,6 +18,14 @@ function formatDelta(deltaPct, isNew) {
   return `${sign}${deltaPct.toFixed(1)}%`;
 }
 
+// Group totals are usually always-numeric (summed from traced shapes), but
+// Hallway/Storage's totals are a remainder derived from an internal sq ft
+// input that may not have been entered yet -- null rather than 0, so this
+// renders "n/a" instead of implying there's no hallway/storage space.
+function formatTotal(sqft) {
+  return sqft === null ? "n/a" : `${sqft.toFixed(0)} sq ft`;
+}
+
 function StatCard({ label, baseline, listing, deltaPct }) {
   return (
     <div className="rs-stat">
@@ -88,10 +96,13 @@ export default function RoomSizeComparison({ data }) {
           <div className="rs-group-head">
             <span className="rs-group-title">{t.label}</span>
             <span className="rs-group-total">
-              {t.listing_total.toFixed(0)} sq ft listing <b>vs</b> {t.baseline_total.toFixed(0)} sq ft yours
+              {formatTotal(t.listing_total)} listing <b>vs</b> {formatTotal(t.baseline_total)} yours
             </span>
           </div>
           <div className="rs-rooms">
+            {t.rooms.length === 0 && t.type === "hallway_storage" && (
+              <p className="rs-hallway-hint">Not traced directly -- the remainder of the internal sq ft after the rooms above.</p>
+            )}
             {t.rooms.map((room) => (
               <RoomRow key={room.rank} room={room} />
             ))}

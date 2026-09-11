@@ -14,10 +14,16 @@ ROOM_TYPES = {
     "reception_kitchen": "Reception / Kitchen",
     "bathroom": "Bathroom",
     "outdoor": "Outdoor Space",
-    "hallway_storage": "Hallway / Storage",
 }
 
 OUTDOOR_TYPES = {"outdoor"}
+
+# Hallway/Storage is never traced by hand -- it's the remainder after
+# subtracting the traced non-outdoor rooms from a known internal sq ft
+# figure (floor_area_sqft for a listing, internal_sqft for the baseline,
+# both one-time/already-known inputs rather than something worth drawing).
+HALLWAY_STORAGE_TYPE = "hallway_storage"
+HALLWAY_STORAGE_LABEL = "Hallway / Storage"
 
 
 def sqft_of(shape: dict) -> float | None:
@@ -71,14 +77,28 @@ def compare(
     listing_rooms: list[dict],
     listing_shapes: list[dict],
     listing_floor_area_sqft: float | None = None,
+    baseline_internal_sqft: float | None = None,
 ) -> dict:
     baseline_by_type = _rooms_by_type(baseline_rooms, baseline_shapes)
     listing_by_type = _rooms_by_type(listing_rooms, listing_shapes)
 
-    baseline_indoor = sum(_type_total(baseline_by_type, t) for t in ROOM_TYPES if t not in OUTDOOR_TYPES)
+    baseline_traced_indoor = sum(_type_total(baseline_by_type, t) for t in ROOM_TYPES if t not in OUTDOOR_TYPES)
     baseline_outdoor = sum(_type_total(baseline_by_type, t) for t in OUTDOOR_TYPES)
-    listing_indoor = sum(_type_total(listing_by_type, t) for t in ROOM_TYPES if t not in OUTDOOR_TYPES)
+    listing_traced_indoor = sum(_type_total(listing_by_type, t) for t in ROOM_TYPES if t not in OUTDOOR_TYPES)
     listing_outdoor = sum(_type_total(listing_by_type, t) for t in OUTDOOR_TYPES)
+
+    # Hallway/Storage is never traced -- it's whatever's left of the known
+    # internal sq ft after subtracting the traced non-outdoor rooms. None
+    # (not 0) when the internal sq ft input itself is unknown, so the
+    # frontend can render "n/a" rather than implying zero hallway space.
+    # Deliberately not clamped to 0: if the traced rooms add up to more than
+    # the entered internal sq ft, a negative remainder is a useful signal of
+    # a tracing/data-entry mismatch, not something to hide.
+    baseline_hallway_storage = None if baseline_internal_sqft is None else baseline_internal_sqft - baseline_traced_indoor
+    listing_hallway_storage = None if listing_floor_area_sqft is None else listing_floor_area_sqft - listing_traced_indoor
+
+    baseline_indoor = baseline_internal_sqft if baseline_internal_sqft is not None else baseline_traced_indoor
+    listing_indoor = listing_floor_area_sqft if listing_floor_area_sqft is not None else listing_traced_indoor
 
     summary = {
         "indoor": {
@@ -100,9 +120,9 @@ def compare(
     }
     if listing_floor_area_sqft is not None:
         summary["floor_area_cross_check"] = {
-            "traced_indoor": listing_indoor,
+            "traced_indoor": listing_traced_indoor,
             "stated_floor_area": listing_floor_area_sqft,
-            "delta_pct": _delta_pct(listing_indoor, listing_floor_area_sqft),
+            "delta_pct": _delta_pct(listing_traced_indoor, listing_floor_area_sqft),
         }
 
     types = []
@@ -132,6 +152,17 @@ def compare(
                 "baseline_total": _type_total(baseline_by_type, room_type),
                 "listing_total": _type_total(listing_by_type, room_type),
                 "rooms": rows,
+            }
+        )
+
+    if baseline_hallway_storage is not None or listing_hallway_storage is not None:
+        types.append(
+            {
+                "type": HALLWAY_STORAGE_TYPE,
+                "label": HALLWAY_STORAGE_LABEL,
+                "baseline_total": baseline_hallway_storage,
+                "listing_total": listing_hallway_storage,
+                "rooms": [],
             }
         )
 

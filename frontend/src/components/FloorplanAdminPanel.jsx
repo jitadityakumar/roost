@@ -43,6 +43,7 @@ export default function FloorplanAdminPanel({ active }) {
       {baseline.image_blob ? (
         <p className="floorplan-admin-scale-readout">
           Current baseline total: <b>{totalSqft.toFixed(1)} sq ft</b> ({baseline.shapes.length} shape{baseline.shapes.length === 1 ? "" : "s"})
+          {baseline.internal_sqft != null && <> · internal sq ft: <b>{baseline.internal_sqft}</b></>}
         </p>
       ) : (
         <p className="empty-state">No baseline image set yet.</p>

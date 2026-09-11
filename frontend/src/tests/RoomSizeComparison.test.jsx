@@ -77,6 +77,24 @@ describe("RoomSizeComparison", () => {
     expect(screen.getByText("n/a")).toBeInTheDocument();
   });
 
+  it("renders the hallway/storage remainder group without per-room rows, showing n/a when a side's total is unknown", () => {
+    const data = fixture({
+      types: [
+        {
+          type: "hallway_storage",
+          label: "Hallway / Storage",
+          baseline_total: 89,
+          listing_total: null,
+          rooms: [],
+        },
+      ],
+    });
+    const { container } = render(<RoomSizeComparison data={data} />);
+    expect(screen.getByText("Hallway / Storage")).toBeInTheDocument();
+    expect(container.querySelector(".rs-group-total").textContent).toBe("n/a listing vs 89 sq ft yours");
+    expect(screen.getByText(/Not traced directly/)).toBeInTheDocument();
+  });
+
   it("renders the floor area cross-check row only when present", () => {
     const { rerender } = render(<RoomSizeComparison data={fixture()} />);
     expect(screen.queryByText("Traced vs stated floor area")).not.toBeInTheDocument();

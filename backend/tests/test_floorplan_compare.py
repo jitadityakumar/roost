@@ -127,3 +127,80 @@ def test_shape_ignored_if_room_id_not_in_rooms():
     result = compare.compare(baseline_rooms, baseline_shapes, [], [])
     bedroom_type = next(t for t in result["types"] if t["type"] == "bedroom")
     assert bedroom_type["baseline_total"] == 10.0
+
+
+# --- hallway/storage remainder (not traced -- derived from internal sq ft) --
+
+def test_hallway_storage_not_traceable():
+    # a room with this legacy type contributes nothing -- it's silently
+    # ignored, not validated (validation lives at the route layer)
+    room_with_stale_type = room("b1", "hallway_storage")
+    shape_for_it = shape("b1", 1000, 10)
+    result = compare.compare([room_with_stale_type], [shape_for_it], [], [], baseline_internal_sqft=100.0)
+    hallway = next(t for t in result["types"] if t["type"] == "hallway_storage")
+    assert hallway["baseline_total"] == 100.0  # nothing traceable was subtracted
+
+
+def test_hallway_storage_omitted_when_no_internal_sqft_known_on_either_side():
+    result = compare.compare([], [], [], [])
+    assert "hallway_storage" not in {t["type"] for t in result["types"]}
+
+
+def test_hallway_storage_is_remainder_of_internal_sqft_minus_traced_rooms():
+    baseline_rooms = [room("b1", "bedroom")]
+    baseline_shapes = [shape("b1", 1000, 10)]  # 10 sqft traced
+    listing_rooms = [room("l1", "bedroom")]
+    listing_shapes = [shape("l1", 500, 10)]  # 5 sqft traced
+
+    result = compare.compare(
+        baseline_rooms, baseline_shapes, listing_rooms, listing_shapes,
+        listing_floor_area_sqft=50.0, baseline_internal_sqft=100.0,
+    )
+    hallway = next(t for t in result["types"] if t["type"] == "hallway_storage")
+    assert hallway["baseline_total"] == 90.0
+    assert hallway["listing_total"] == 45.0
+    assert hallway["rooms"] == []
+
+
+def test_hallway_storage_null_on_side_missing_internal_sqft():
+    baseline_rooms = [room("b1", "bedroom")]
+    baseline_shapes = [shape("b1", 1000, 10)]
+
+    result = compare.compare(
+        baseline_rooms, baseline_shapes, [], [], baseline_internal_sqft=100.0
+    )
+    hallway = next(t for t in result["types"] if t["type"] == "hallway_storage")
+    assert hallway["baseline_total"] == 90.0
+    assert hallway["listing_total"] is None
+
+
+def test_indoor_summary_uses_internal_sqft_when_known_instead_of_traced_sum():
+    baseline_rooms = [room("b1", "bedroom")]
+    baseline_shapes = [shape("b1", 1000, 10)]  # 10 sqft traced
+
+    result = compare.compare(
+        baseline_rooms, baseline_shapes, [], [], baseline_internal_sqft=100.0
+    )
+    assert result["summary"]["indoor"]["baseline"] == 100.0
+
+
+def test_indoor_summary_falls_back_to_traced_sum_when_internal_sqft_unknown():
+    baseline_rooms = [room("b1", "bedroom")]
+    baseline_shapes = [shape("b1", 1000, 10)]  # 10 sqft traced
+
+    result = compare.compare(baseline_rooms, baseline_shapes, [], [])
+    assert result["summary"]["indoor"]["baseline"] == 10.0
+
+
+def test_hallway_storage_goes_negative_when_traced_rooms_exceed_internal_sqft():
+    # deliberately not clamped to 0 -- a negative remainder is a useful
+    # signal that the trace and the entered internal sq ft disagree, not
+    # something to hide from the user
+    baseline_rooms = [room("b1", "bedroom")]
+    baseline_shapes = [shape("b1", 1000, 10)]  # 10 sqft traced, more than internal_sqft below
+
+    result = compare.compare(
+        baseline_rooms, baseline_shapes, [], [], baseline_internal_sqft=5.0
+    )
+    hallway = next(t for t in result["types"] if t["type"] == "hallway_storage")
+    assert hallway["baseline_total"] == -5.0

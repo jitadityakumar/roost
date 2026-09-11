@@ -12,6 +12,7 @@ export default function FloorplanBaselineTracePage() {
   const navigate = useNavigate();
   const [baseline, setBaseline] = useState(null);
   const [imageSrc, setImageSrc] = useState(null);
+  const [internalSqft, setInternalSqft] = useState("");
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [tracerKey, setTracerKey] = useState(0);
@@ -22,6 +23,7 @@ export default function FloorplanBaselineTracePage() {
       .then((b) => {
         setBaseline(b);
         setImageSrc(b.image_blob || null);
+        setInternalSqft(b.internal_sqft != null ? String(b.internal_sqft) : "");
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -47,6 +49,7 @@ export default function FloorplanBaselineTracePage() {
         image_w: payload.imageW,
         image_h: payload.imageH,
         active_scale: payload.activeScale,
+        internal_sqft: internalSqft.trim() === "" ? null : parseFloat(internalSqft),
         rooms: payload.rooms,
         shapes: payload.shapes,
       });
@@ -76,7 +79,24 @@ export default function FloorplanBaselineTracePage() {
           {imageSrc ? "Change baseline image…" : "Set baseline image…"}
           <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleImageFile(e.target.files[0])} />
         </label>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+          Internal sq ft (whole property):
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={internalSqft}
+            onChange={(e) => setInternalSqft(e.target.value)}
+            placeholder="e.g. 850"
+            style={{ width: "7rem" }}
+          />
+        </label>
       </div>
+      <p className="hint">
+        Used to work out Hallway/Storage automatically -- it's the remainder after subtracting
+        the traced Bedroom/Reception-Kitchen/Bathroom rooms below, so it doesn't need tracing
+        itself. Saved along with the trace when you hit Save.
+      </p>
 
       {imageSrc ? (
         <FloorplanTracer
