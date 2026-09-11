@@ -44,6 +44,62 @@ describe("RoomSizeComparison", () => {
     expect(screen.getByText("145 sq ft")).toBeInTheDocument();
   });
 
+  it("scales every room's bars in a type group against the group's overall max, not just its own pair", () => {
+    // fixture's bedroom group: rank 1 {145, 122}, rank 2 {137, 91} -- the
+    // group max is 145 (rank 1's baseline). Rank 2's own pair-max (137) is
+    // smaller, so its baseline bar must read as < 100% of the track, not
+    // pinned to 100% the way a per-room scale would render it.
+    const { container } = render(<RoomSizeComparison data={fixture()} />);
+    const rows = container.querySelectorAll(".rs-room");
+    const [rank1Base, rank1Listing] = rows[0].querySelectorAll(".rs-bar-fill");
+    const [rank2Base, rank2Listing] = rows[1].querySelectorAll(".rs-bar-fill");
+    expect(parseFloat(rank1Base.style.width)).toBeCloseTo(100, 1);
+    expect(parseFloat(rank1Listing.style.width)).toBeCloseTo((122 / 145) * 100, 1);
+    expect(parseFloat(rank2Base.style.width)).toBeCloseTo((137 / 145) * 100, 1);
+    expect(parseFloat(rank2Listing.style.width)).toBeCloseTo((91 / 145) * 100, 1);
+  });
+
+  it("includes listing values (not just baseline) when finding the group's scale-setting max", () => {
+    const data = fixture({
+      types: [
+        {
+          type: "bedroom",
+          label: "Bedroom",
+          baseline_total: 100,
+          listing_total: 200,
+          rooms: [{ rank: 1, baseline_sqft: 100, listing_sqft: 200, delta_pct: 100 }],
+        },
+      ],
+    });
+    const { container } = render(<RoomSizeComparison data={data} />);
+    const [baseFill, listingFill] = container.querySelectorAll(".rs-bar-fill");
+    expect(parseFloat(baseFill.style.width)).toBeCloseTo(50, 1);
+    expect(parseFloat(listingFill.style.width)).toBeCloseTo(100, 1);
+  });
+
+  it("doesn't let a one-sided room's null side pull down the group max for the rest of the group", () => {
+    const data = fixture({
+      types: [
+        {
+          type: "bedroom",
+          label: "Bedroom",
+          baseline_total: 145,
+          listing_total: 122,
+          rooms: [
+            { rank: 1, baseline_sqft: 145, listing_sqft: 122, delta_pct: -15.9 },
+            { rank: 2, baseline_sqft: null, listing_sqft: 30, delta_pct: null },
+          ],
+        },
+      ],
+    });
+    const { container } = render(<RoomSizeComparison data={data} />);
+    const rows = container.querySelectorAll(".rs-room");
+    const rank1Base = rows[0].querySelector(".rs-bar-fill.base");
+    const rank2Listing = rows[1].querySelector(".rs-bar-fill.listing");
+    expect(parseFloat(rank1Base.style.width)).toBeCloseTo(100, 1);
+    expect(parseFloat(rank2Listing.style.width)).toBeCloseTo((30 / 145) * 100, 1);
+  });
+
   it('renders "new" for a room only the listing has', () => {
     const data = fixture({
       types: [

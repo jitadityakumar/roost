@@ -45,16 +45,29 @@ function StatCard({ label, baseline, listing, deltaPct }) {
   );
 }
 
-function RoomRow({ room, neutralUnknown }) {
+// Sq ft can't go below 0 for bar-width purposes -- Hallway/Storage's
+// remainder is the one case that can be genuinely negative (traced rooms
+// exceeding the entered internal sq ft); clamping here keeps a negative
+// value from inverting or overflowing a bar while the label text elsewhere
+// still shows the true (possibly negative) number.
+function widthOf(sqft) {
+  return Math.max(sqft || 0, 0);
+}
+
+// Every room row's bars within a type group share one scale -- the max
+// across every baseline/listing value in the group -- so e.g. all four
+// bedroom bars (2 baseline + 2 listing) are visually comparable to each
+// other, not just to their own paired room.
+function groupMaxWidth(rooms) {
+  const widths = rooms.flatMap((r) => [widthOf(r.baseline_sqft), widthOf(r.listing_sqft)]);
+  return Math.max(...widths, 1);
+}
+
+function RoomRow({ room, neutralUnknown, maxVal }) {
   const { rank, baseline_sqft: baselineSqft, listing_sqft: listingSqft, delta_pct: deltaPct } = room;
   const isNew = !neutralUnknown && baselineSqft === null && listingSqft !== null;
-  // Hallway/Storage's remainder can go negative (traced rooms exceeding the
-  // entered internal sq ft) -- clamp bar *width* to 0 so a negative value
-  // doesn't invert or overflow the bar, while still showing the real
-  // (possibly negative) number in the label text below.
-  const baseWidth = Math.max(baselineSqft || 0, 0);
-  const listingWidth = Math.max(listingSqft || 0, 0);
-  const maxVal = Math.max(baseWidth, listingWidth) || 1;
+  const baseWidth = widthOf(baselineSqft);
+  const listingWidth = widthOf(listingSqft);
   return (
     <div className="rs-room">
       <div className="rs-room-label">
@@ -103,24 +116,27 @@ export default function RoomSizeComparison({ data }) {
         )}
       </div>
 
-      {types.map((t) => (
-        <div className="rs-group" key={t.type}>
-          <div className="rs-group-head">
-            <span className="rs-group-title">{t.label}</span>
-            <span className="rs-group-total">
-              {formatTotal(t.listing_total)} listing <b>vs</b> {formatTotal(t.baseline_total)} yours
-            </span>
+      {types.map((t) => {
+        const maxVal = groupMaxWidth(t.rooms);
+        return (
+          <div className="rs-group" key={t.type}>
+            <div className="rs-group-head">
+              <span className="rs-group-title">{t.label}</span>
+              <span className="rs-group-total">
+                {formatTotal(t.listing_total)} listing <b>vs</b> {formatTotal(t.baseline_total)} yours
+              </span>
+            </div>
+            <div className="rs-rooms">
+              {t.type === "hallway_storage" && (
+                <p className="rs-hallway-hint">Not traced directly -- the remainder of the internal sq ft after the rooms above.</p>
+              )}
+              {t.rooms.map((room) => (
+                <RoomRow key={room.rank} room={room} neutralUnknown={t.type === "hallway_storage"} maxVal={maxVal} />
+              ))}
+            </div>
           </div>
-          <div className="rs-rooms">
-            {t.type === "hallway_storage" && (
-              <p className="rs-hallway-hint">Not traced directly -- the remainder of the internal sq ft after the rooms above.</p>
-            )}
-            {t.rooms.map((room) => (
-              <RoomRow key={room.rank} room={room} neutralUnknown={t.type === "hallway_storage"} />
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
