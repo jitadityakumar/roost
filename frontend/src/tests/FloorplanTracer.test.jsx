@@ -67,4 +67,26 @@ describe("FloorplanTracer", () => {
       })
     );
   });
+
+  it("'Clear all shapes & rooms' removes rooms too, so re-adding a type doesn't create duplicates", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(
+      <FloorplanTracer
+        imageSrc={null}
+        initialRooms={[{ id: "r1", name: "Bedroom 1", color: "#2e7d6b", type: "bedroom" }]}
+        initialShapes={[]}
+        initialScale={12.5}
+        onSave={vi.fn()}
+        saving={false}
+      />
+    );
+    expect(screen.getByDisplayValue("Bedroom 1")).toBeInTheDocument();
+    await user.click(screen.getByText("Clear all shapes & rooms"));
+    expect(screen.queryByDisplayValue("Bedroom 1")).not.toBeInTheDocument();
+    await user.click(screen.getByText("+ Bedroom"));
+    expect(screen.getByDisplayValue("Bedroom 1")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Bedroom 2")).not.toBeInTheDocument();
+  });
 });
