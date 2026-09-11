@@ -1237,6 +1237,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .rs-room-delta.good { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .rs-room-delta.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .rs-room-delta.bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.rs-room-delta.neutral { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
 
 @media (max-width: 600px) {
   .rs-room { grid-template-columns: 1fr; gap: 0.25rem; }

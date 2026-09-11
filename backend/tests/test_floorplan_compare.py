@@ -159,7 +159,9 @@ def test_hallway_storage_is_remainder_of_internal_sqft_minus_traced_rooms():
     hallway = next(t for t in result["types"] if t["type"] == "hallway_storage")
     assert hallway["baseline_total"] == 90.0
     assert hallway["listing_total"] == 45.0
-    assert hallway["rooms"] == []
+    assert hallway["rooms"] == [
+        {"rank": 1, "baseline_sqft": 90.0, "listing_sqft": 45.0, "delta_pct": -50.0}
+    ]
 
 
 def test_hallway_storage_null_on_side_missing_internal_sqft():
@@ -172,6 +174,43 @@ def test_hallway_storage_null_on_side_missing_internal_sqft():
     hallway = next(t for t in result["types"] if t["type"] == "hallway_storage")
     assert hallway["baseline_total"] == 90.0
     assert hallway["listing_total"] is None
+    assert hallway["rooms"] == [
+        {"rank": 1, "baseline_sqft": 90.0, "listing_sqft": None, "delta_pct": None}
+    ]
+
+
+def test_hallway_storage_null_on_baseline_side_missing_internal_sqft():
+    listing_rooms = [room("l1", "bedroom")]
+    listing_shapes = [shape("l1", 500, 10)]
+
+    result = compare.compare(
+        [], [], listing_rooms, listing_shapes, listing_floor_area_sqft=50.0
+    )
+    hallway = next(t for t in result["types"] if t["type"] == "hallway_storage")
+    assert hallway["baseline_total"] is None
+    assert hallway["listing_total"] == 45.0
+    assert hallway["rooms"] == [
+        {"rank": 1, "baseline_sqft": None, "listing_sqft": 45.0, "delta_pct": None}
+    ]
+
+
+def test_hallway_storage_delta_suppressed_when_baseline_remainder_is_negative():
+    # base -5 -> candidate -20 is a *worse* mismatch, not an improvement --
+    # the plain (candidate - base) / base formula would flip the sign here
+    # (a +300% "good" delta), so it must be suppressed to None instead.
+    baseline_rooms = [room("b1", "bedroom")]
+    baseline_shapes = [shape("b1", 1000, 10)]  # 10 traced, more than the 5 internal sqft below
+    listing_rooms = [room("l1", "bedroom")]
+    listing_shapes = [shape("l1", 2000, 10)]  # 20 traced, more than the 0 internal sqft below
+
+    result = compare.compare(
+        baseline_rooms, baseline_shapes, listing_rooms, listing_shapes,
+        baseline_internal_sqft=5.0, listing_floor_area_sqft=0.0,
+    )
+    hallway = next(t for t in result["types"] if t["type"] == "hallway_storage")
+    assert hallway["baseline_total"] == -5.0
+    assert hallway["listing_total"] == -20.0
+    assert hallway["rooms"][0]["delta_pct"] is None
 
 
 def test_indoor_summary_uses_internal_sqft_when_known_instead_of_traced_sum():

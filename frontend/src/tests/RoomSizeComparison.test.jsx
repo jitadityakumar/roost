@@ -48,8 +48,8 @@ describe("RoomSizeComparison", () => {
     const data = fixture({
       types: [
         {
-          type: "hallway_storage",
-          label: "Hallway / Storage",
+          type: "outdoor",
+          label: "Outdoor Space",
           baseline_total: 0,
           listing_total: 89,
           rooms: [{ rank: 1, baseline_sqft: null, listing_sqft: 89, delta_pct: null }],
@@ -77,7 +77,7 @@ describe("RoomSizeComparison", () => {
     expect(screen.getByText("n/a")).toBeInTheDocument();
   });
 
-  it("renders the hallway/storage remainder group without per-room rows, showing n/a when a side's total is unknown", () => {
+  it("renders the hallway/storage remainder group as a single bar row, showing n/a when a side's total is unknown", () => {
     const data = fixture({
       types: [
         {
@@ -85,7 +85,7 @@ describe("RoomSizeComparison", () => {
           label: "Hallway / Storage",
           baseline_total: 89,
           listing_total: null,
-          rooms: [],
+          rooms: [{ rank: 1, baseline_sqft: 89, listing_sqft: null, delta_pct: null }],
         },
       ],
     });
@@ -93,6 +93,40 @@ describe("RoomSizeComparison", () => {
     expect(screen.getByText("Hallway / Storage")).toBeInTheDocument();
     expect(container.querySelector(".rs-group-total").textContent).toBe("n/a listing vs 89 sq ft yours");
     expect(screen.getByText(/Not traced directly/)).toBeInTheDocument();
+    expect(container.querySelectorAll(".rs-room")).toHaveLength(1);
+    expect(screen.getByText("89 sq ft")).toBeInTheDocument();
+    // an unknown side here means "internal sq ft wasn't entered", not "this
+    // space doesn't exist" -- must render as a neutral "n/a", never the
+    // green "new" badge used for a real one-sided room in other types.
+    const badge = container.querySelector(".rs-room-delta");
+    expect(badge.textContent).toBe("n/a");
+    expect(badge.className).toContain("neutral");
+    expect(badge.className).not.toContain("good");
+  });
+
+  it("clamps a negative hallway/storage remainder's bar width on both sides instead of breaking, while still showing the real numbers", () => {
+    const data = fixture({
+      types: [
+        {
+          type: "hallway_storage",
+          label: "Hallway / Storage",
+          baseline_total: -5,
+          listing_total: -20,
+          rooms: [{ rank: 1, baseline_sqft: -5, listing_sqft: -20, delta_pct: null }],
+        },
+      ],
+    });
+    const { container } = render(<RoomSizeComparison data={data} />);
+    expect(screen.getByText("-5 sq ft")).toBeInTheDocument();
+    expect(screen.getByText("-20 sq ft")).toBeInTheDocument();
+    expect(container.querySelector(".rs-bar-fill.base").style.width).toBe("0%");
+    expect(container.querySelector(".rs-bar-fill.listing").style.width).toBe("0%");
+    // a negative baseline (mismatch) must never be colored as an
+    // improvement -- the backend suppresses delta_pct to null in this case,
+    // which must render neutral, not the green "new" badge.
+    const badge = container.querySelector(".rs-room-delta");
+    expect(badge.textContent).toBe("n/a");
+    expect(badge.className).not.toContain("good");
   });
 
   it("renders the floor area cross-check row only when present", () => {

@@ -71,6 +71,17 @@ def _type_total(by_type: dict[str, list[dict]], room_type: str) -> float:
     return sum(r["sqft"] for r in by_type[room_type])
 
 
+def _hallway_delta_pct(candidate: float | None, base: float | None) -> float | None:
+    """Like _delta_pct, but suppressed when the base side is itself a
+    tracing/data-entry mismatch (a negative remainder) -- dividing by a
+    negative base flips the sign, which would color a *worsening* mismatch
+    as an improvement (e.g. base -5 -> candidate -20 is a bigger overshoot,
+    but (-20 - -5) / -5 * 100 = +300%, rendered green)."""
+    if base is not None and base < 0:
+        return None
+    return _delta_pct(candidate, base)
+
+
 def compare(
     baseline_rooms: list[dict],
     baseline_shapes: list[dict],
@@ -162,7 +173,17 @@ def compare(
                 "label": HALLWAY_STORAGE_LABEL,
                 "baseline_total": baseline_hallway_storage,
                 "listing_total": listing_hallway_storage,
-                "rooms": [],
+                # A single synthetic row (there's no per-room breakdown to
+                # pair) so the frontend can render it with the same bar-chart
+                # RoomRow used for every other type, rather than a bare number.
+                "rooms": [
+                    {
+                        "rank": 1,
+                        "baseline_sqft": baseline_hallway_storage,
+                        "listing_sqft": listing_hallway_storage,
+                        "delta_pct": _hallway_delta_pct(listing_hallway_storage, baseline_hallway_storage),
+                    }
+                ],
             }
         )
 
