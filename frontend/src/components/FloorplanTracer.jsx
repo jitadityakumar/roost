@@ -63,10 +63,22 @@ export default function FloorplanTracer({ imageSrc, initialRooms, initialShapes,
   const stateRef = useRef(null);
   stateRef.current = { rooms, shapes, activeScale, activeRoomId, tool, selectedShapeId };
 
+  const toastTimersRef = useRef(new Set());
   const toast_ = useCallback((msg) => {
     setToastMsg(msg);
-    const id = setTimeout(() => setToastMsg((cur) => (cur === msg ? null : cur)), 2200);
-    return () => clearTimeout(id);
+    const id = setTimeout(() => {
+      toastTimersRef.current.delete(id);
+      setToastMsg((cur) => (cur === msg ? null : cur));
+    }, 2200);
+    toastTimersRef.current.add(id);
+  }, []);
+
+  useEffect(() => {
+    const timers = toastTimersRef.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
   }, []);
 
   // ---------- view transform ----------
@@ -241,8 +253,19 @@ export default function FloorplanTracer({ imageSrc, initialRooms, initialShapes,
     draw();
   }, [rooms, shapes, activeScale, selectedShapeId, tool, draw]);
 
+  // fitToContainer/draw are recreated (useCallback deps change) once imgDims
+  // is known -- keep a ref to the latest versions so this mount-once
+  // listener never calls a stale pre-image-load closure (which would bail
+  // out on imgDims.w === 0 and leave the view transform stuck uninitialized
+  // after a resize).
+  const resizeHandlersRef = useRef({ fitToContainer, draw });
+  resizeHandlersRef.current = { fitToContainer, draw };
+
   useEffect(() => {
-    function onResize() { fitToContainer(); draw(); }
+    function onResize() {
+      resizeHandlersRef.current.fitToContainer();
+      resizeHandlersRef.current.draw();
+    }
     window.addEventListener("resize", onResize);
     const wrap = wrapRef.current;
     let ro;
@@ -254,22 +277,22 @@ export default function FloorplanTracer({ imageSrc, initialRooms, initialShapes,
       window.removeEventListener("resize", onResize);
       if (ro) ro.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---------- rooms ----------
   function addRoomOfType(type) {
     const def = ROOM_TYPES[type];
     if (!def) return;
-    setRooms((prev) => {
-      const existingOfType = prev.filter((r) => r.type === type).length;
-      const name = `${def.label} ${existingOfType + 1}`;
-      const color = shadeColor(def.color, existingOfType);
-      const id = "r" + Date.now() + Math.floor(Math.random() * 999);
-      const room = { id, name, color, type };
-      setActiveRoomId(room.id);
-      return [...prev, room];
-    });
+    // Computed from the outer `rooms` (not inside the setRooms updater,
+    // which React/StrictMode may invoke more than once) so the new room's
+    // id/name/color are generated exactly once per click.
+    const existingOfType = rooms.filter((r) => r.type === type).length;
+    const name = `${def.label} ${existingOfType + 1}`;
+    const color = shadeColor(def.color, existingOfType);
+    const id = "r" + Date.now() + Math.floor(Math.random() * 999);
+    const room = { id, name, color, type };
+    setRooms((prev) => [...prev, room]);
+    setActiveRoomId(room.id);
   }
 
   function deleteRoom(id) {
@@ -278,11 +301,9 @@ export default function FloorplanTracer({ imageSrc, initialRooms, initialShapes,
     const shapeCount = shapes.filter((s) => s.roomId === id).length;
     if (!confirm(`Delete room "${room.name}" and its ${shapeCount} shape(s)?`)) return;
     setShapes((prev) => prev.filter((s) => s.roomId !== id));
-    setRooms((prev) => {
-      const next = prev.filter((r) => r.id !== id);
-      if (activeRoomId === id) setActiveRoomId(next[0]?.id || null);
-      return next;
-    });
+    const next = rooms.filter((r) => r.id !== id);
+    setRooms(next);
+    if (activeRoomId === id) setActiveRoomId(next[0]?.id || null);
   }
 
   function deleteShape(id) {

@@ -40,7 +40,9 @@ describe("RoomSizes", () => {
   });
 
   it('shows "Add trace" when there is no trace yet', async () => {
-    api.floorplan.comparison.mockRejectedValue(new Error("no trace with shapes for this listing yet"));
+    const notFound = new Error("no trace with shapes for this listing yet");
+    notFound.status = 404;
+    api.floorplan.comparison.mockRejectedValue(notFound);
     renderWith();
     await waitFor(() => expect(screen.getByText("Add trace")).toBeInTheDocument());
   });

@@ -2,8 +2,11 @@
 // GET /api/listings/{id}/floorplan-comparison (see app/floorplan/compare.py)
 // per the approved mockup: https://claude.ai/code/artifact/d89fcfe7-493a-45cf-b508-476e94555049
 
-function deltaClass(deltaPct) {
-  if (deltaPct === null) return "bad";
+// isNew (listing has a room/space the baseline doesn't) is a bonus, not a
+// shortfall -- style it like a positive delta, not the same alarming red as
+// "n/a" (baseline has it, the listing doesn't).
+function deltaClass(deltaPct, isNew) {
+  if (deltaPct === null) return isNew ? "good" : "bad";
   if (deltaPct >= 0) return "good";
   if (deltaPct >= -10) return "warn";
   return "bad";
@@ -22,7 +25,7 @@ function StatCard({ label, baseline, listing, deltaPct }) {
       <div className="rs-stat-figs">
         <span className="rs-stat-val">{listing.toFixed(0)} sq ft</span>
         <span className="rs-stat-base">vs {baseline.toFixed(0)}</span>
-        <span className={`rs-stat-delta ${deltaClass(deltaPct)}`}>{formatDelta(deltaPct, listing > 0)}</span>
+        <span className={`rs-stat-delta ${deltaClass(deltaPct, listing > 0)}`}>{formatDelta(deltaPct, listing > 0)}</span>
       </div>
     </div>
   );
@@ -36,7 +39,7 @@ function RoomRow({ room }) {
     <div className="rs-room">
       <div className="rs-room-label">
         <span className="rs-room-num">{rank}</span>
-        <span className={`rs-room-delta ${deltaClass(deltaPct)}`}>{formatDelta(deltaPct, isNew)}</span>
+        <span className={`rs-room-delta ${deltaClass(deltaPct, isNew)}`}>{formatDelta(deltaPct, isNew)}</span>
       </div>
       <div className="rs-bars">
         <div className="rs-bar-row">

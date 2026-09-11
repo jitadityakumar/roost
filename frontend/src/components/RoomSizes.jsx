@@ -3,11 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import RoomSizeComparison from "./RoomSizeComparison.jsx";
 
-// Matches the exact detail text of the 404 HTTPException in
-// backend/app/routes/floorplan.py's get_floorplan_comparison -- distinguishes
-// "no trace yet" (show Add trace) from a genuine error.
-const NO_TRACE_DETAIL = "no trace with shapes for this listing yet";
-
 export default function RoomSizes({ listingId, ready, floorplanFilenames }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -25,7 +20,14 @@ export default function RoomSizes({ listingId, ready, floorplanFilenames }) {
       })
       .catch((err) => {
         if (cancelled) return;
-        if (err.message === NO_TRACE_DETAIL) setData({ noTrace: true });
+        // A 404 here means "no listing trace with shapes yet" -- the
+        // listing itself is already loaded by ListingDetail by the time
+        // this fires, so a missing-listing 404 isn't a realistic
+        // alternative reading. Matching on status (not the detail text)
+        // keeps this from silently breaking if the backend's wording ever
+        // changes -- see backend/app/routes/floorplan.py's
+        // get_floorplan_comparison.
+        if (err.status === 404) setData({ noTrace: true });
         else setError(err.message);
       });
     return () => {

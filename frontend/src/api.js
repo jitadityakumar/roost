@@ -13,7 +13,9 @@ async function requestFrom(base, path, options) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `${res.status} ${res.statusText}`);
+    const error = new Error(body.detail || `${res.status} ${res.statusText}`);
+    error.status = res.status;
+    throw error;
   }
   if (res.status === 204) return null;
   return res.json();
