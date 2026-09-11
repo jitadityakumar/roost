@@ -17,6 +17,11 @@ vi.mock("../api.js", () => ({
     crime: vi.fn().mockResolvedValue({ unavailable: null, baselines: [] }),
     listingDestinations: vi.fn().mockResolvedValue([]),
     refreshListingDestinations: vi.fn().mockResolvedValue([]),
+    floorplan: {
+      comparison: vi.fn(),
+      getListingTrace: vi.fn(),
+      putListingTrace: vi.fn(),
+    },
   },
 }));
 

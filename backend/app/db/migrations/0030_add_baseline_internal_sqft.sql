@@ -1,0 +1,12 @@
+-- Issue #89 follow-up: Hallway/Storage is no longer a traceable room type
+-- (it's derived as the remainder of internal_sqft/floor_area_sqft minus the
+-- traced bedroom/reception-kitchen/bathroom total, not drawn by hand). For
+-- a listing that remainder already has an input (floor_area_sqft, existing
+-- column). The baseline has no equivalent field, so this adds one -- a
+-- one-time manual entry (no Rightmove-style scrape backing the user's own
+-- home), nullable until the user fills it in via the baseline trace page.
+--
+-- Plain ALTER TABLE ADD COLUMN: floorplan_baseline has no CHECK constraint
+-- beyond the singleton `id = 1` PK and nothing references it via FK, so the
+-- rebuild-and-swap dance doesn't apply here -- same reasoning as 0024.
+ALTER TABLE floorplan_baseline ADD COLUMN internal_sqft REAL;

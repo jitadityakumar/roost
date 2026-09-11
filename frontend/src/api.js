@@ -4,6 +4,7 @@ const CRIME_BASELINES_BASE = "/api/crime/baselines";
 const DESTINATIONS_BASE = "/api/destinations";
 const JOURNEY_SCAN_POOLS_BASE = "/api/journey-scan-pools";
 const COUNCIL_TAX_BASE = "/api/council-tax";
+const FLOORPLAN_BASELINE_BASE = "/api/admin/floorplan-baseline";
 
 async function requestFrom(base, path, options) {
   const res = await fetch(`${base}${path}`, {
@@ -12,7 +13,9 @@ async function requestFrom(base, path, options) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `${res.status} ${res.statusText}`);
+    const error = new Error(body.detail || `${res.status} ${res.statusText}`);
+    error.status = res.status;
+    throw error;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -77,5 +80,15 @@ export const api = {
     update: (listingId, commentId, body) =>
       request(`/${listingId}/comments/${commentId}`, { method: "PATCH", body: JSON.stringify(body) }),
     remove: (listingId, commentId) => request(`/${listingId}/comments/${commentId}`, { method: "DELETE" }),
+  },
+
+  floorplan: {
+    getBaseline: () => requestFrom(FLOORPLAN_BASELINE_BASE, ""),
+    putBaseline: (body) => requestFrom(FLOORPLAN_BASELINE_BASE, "", { method: "PUT", body: JSON.stringify(body) }),
+    getListingTrace: (listingId, imagePath) =>
+      request(`/${listingId}/floorplan-trace?image_path=${encodeURIComponent(imagePath)}`),
+    putListingTrace: (listingId, body) =>
+      request(`/${listingId}/floorplan-trace`, { method: "PUT", body: JSON.stringify(body) }),
+    comparison: (listingId) => request(`/${listingId}/floorplan-comparison`),
   },
 };

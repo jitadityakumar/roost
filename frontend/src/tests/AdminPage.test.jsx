@@ -33,6 +33,10 @@ vi.mock("../api.js", () => ({
       update: vi.fn(),
       remove: vi.fn(),
     },
+    floorplan: {
+      getBaseline: vi.fn(),
+      putBaseline: vi.fn(),
+    },
   },
 }));
 
@@ -50,6 +54,7 @@ beforeEach(() => {
   api.destinations.list.mockResolvedValue([]);
   api.destinations.backfillStatus.mockResolvedValue({ status: "idle", done: 0, total: 0 });
   api.councilTax.list.mockResolvedValue([]);
+  api.floorplan.getBaseline.mockResolvedValue({ id: 1, image_blob: null, image_w: null, image_h: null, active_scale: null, rooms: [], shapes: [] });
 });
 
 async function gotoPanel(user, label) {
@@ -630,5 +635,44 @@ describe("AdminPage council tax rates", () => {
     await user.click(screen.getByRole("button", { name: "Clear rates" }));
 
     await waitFor(() => expect(api.councilTax.remove).toHaveBeenCalledWith("E00000001"));
+  });
+
+  it("floor plan baseline panel is inert until selected, then fetches the baseline", async () => {
+    api.standards.list.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderAdmin();
+    expect(api.floorplan.getBaseline).not.toHaveBeenCalled();
+
+    await gotoPanel(user, "Floor plan baseline");
+
+    await waitFor(() => expect(api.floorplan.getBaseline).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("No baseline image set yet.")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Set baseline image…" })).toHaveAttribute(
+      "href",
+      "/admin/floorplan-baseline/trace"
+    );
+  });
+
+  it("floor plan baseline panel shows the existing total and an edit link once a baseline image is set", async () => {
+    api.standards.list.mockResolvedValue([]);
+    api.floorplan.getBaseline.mockResolvedValue({
+      id: 1,
+      image_blob: "data:image/png;base64,abc",
+      image_w: 100,
+      image_h: 100,
+      active_scale: 10,
+      rooms: [{ id: "r1", name: "Bedroom 1", color: "#fff", type: "bedroom" }],
+      shapes: [{ id: "s1", roomId: "r1", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }], pxArea: 10000, scalePxPerFt: 10, kind: "rect" }],
+    });
+    const user = userEvent.setup();
+    renderAdmin();
+
+    await gotoPanel(user, "Floor plan baseline");
+
+    await waitFor(() => expect(screen.getByText(/Current baseline total:/)).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Edit baseline trace…" })).toHaveAttribute(
+      "href",
+      "/admin/floorplan-baseline/trace"
+    );
   });
 });

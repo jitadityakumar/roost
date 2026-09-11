@@ -43,6 +43,12 @@ describe("api request()", () => {
 
     await expect(api.get(1)).rejects.toThrow("500 Error");
   });
+
+  it("attaches the HTTP status to the thrown error", async () => {
+    mockFetch({ ok: false, status: 404, json: { detail: "not found" } });
+
+    await expect(api.get(1)).rejects.toMatchObject({ status: 404 });
+  });
 });
 
 describe("api.list", () => {

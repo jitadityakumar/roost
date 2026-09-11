@@ -9,6 +9,7 @@ import NearestStations from "./NearestStations.jsx";
 import Commute from "./Commute.jsx";
 import Mortgage from "./Mortgage.jsx";
 import Crime from "./Crime.jsx";
+import RoomSizes from "./RoomSizes.jsx";
 import FrequentDestinations from "./FrequentDestinations.jsx";
 import Comments from "./Comments.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
@@ -347,6 +348,14 @@ export default function ListingDetail() {
             </div>
           )}
         </section>
+      )}
+
+      {media && (
+        <RoomSizes
+          listingId={id}
+          ready={listing.extraction_status === "done"}
+          floorplanFilenames={media.floorplans}
+        />
       )}
 
       <section>
