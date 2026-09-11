@@ -16,6 +16,7 @@ from app.routes import (
     crime_baselines,
     destination_journeys,
     destinations,
+    floorplan,
     journey_details,
     listings,
     media,
@@ -67,6 +68,7 @@ app.include_router(destinations.router)
 app.include_router(destination_journeys.router)
 app.include_router(journey_details.router)
 app.include_router(council_tax.router)
+app.include_router(floorplan.router)
 
 
 @app.get("/api/health")
