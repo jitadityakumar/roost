@@ -330,9 +330,11 @@ export default function FloorplanTracer({ imageSrc, initialRooms, initialShapes,
   }
 
   function clearAllShapes() {
-    if (!shapes.length) return;
-    if (!confirm("Delete all shapes? Rooms and scale stay.")) return;
+    if (!shapes.length && !rooms.length) return;
+    if (!confirm("Delete all shapes and rooms? Scale stays.")) return;
     setShapes([]);
+    setRooms([]);
+    setActiveRoomId(null);
     setSelectedShapeId(null);
   }
 
@@ -649,7 +651,7 @@ export default function FloorplanTracer({ imageSrc, initialRooms, initialShapes,
             <div className="tracer-totals-line"><span>Outdoor total</span><span className="mono">{outdoorTotal.toFixed(1)} sq ft</span></div>
             <div className="tracer-totals-grand"><span>Total</span><span className="mono">{(indoorTotal + outdoorTotal).toFixed(1)} sq ft</span></div>
             <div className="tracer-totals-actions">
-              <button className="ghost" onClick={clearAllShapes}>Clear all shapes</button>
+              <button className="ghost" onClick={clearAllShapes}>Clear all shapes &amp; rooms</button>
             </div>
           </div>
         </div>
