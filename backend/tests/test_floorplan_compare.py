@@ -99,26 +99,6 @@ def test_indoor_excludes_outdoor_type():
     assert result["summary"]["outdoor"]["listing"] == 10.0
 
 
-def test_floor_area_cross_check_uses_traced_indoor_vs_stated():
-    baseline_rooms = []
-    baseline_shapes = []
-    listing_rooms = [room("l1", "bedroom")]
-    listing_shapes = [shape("l1", 1000, 10)]  # 10 sqft
-
-    result = compare.compare(
-        baseline_rooms, baseline_shapes, listing_rooms, listing_shapes, listing_floor_area_sqft=20.0
-    )
-    cross_check = result["summary"]["floor_area_cross_check"]
-    assert cross_check["traced_indoor"] == 10.0
-    assert cross_check["stated_floor_area"] == 20.0
-    assert cross_check["delta_pct"] == -50.0
-
-
-def test_floor_area_cross_check_none_when_not_provided():
-    result = compare.compare([], [], [], [])
-    assert result["summary"]["floor_area_cross_check"] is None
-
-
 def test_shape_ignored_if_room_id_not_in_rooms():
     # a stale shape pointing at a deleted room shouldn't blow up or get
     # silently attributed to nothing

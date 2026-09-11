@@ -140,20 +140,6 @@ def test_comparison_happy_path(client):
     assert body["summary"]["indoor"]["listing"] == 1.0
 
 
-def test_comparison_includes_floor_area_cross_check(client):
-    listings_store.create_stub_listing(1, VALID_URL)
-    client.patch("/api/listings/1", json={"fields": {"floor_area_sqft": 500}})
-    client.put(
-        "/api/listings/1/floorplan-trace",
-        json={"image_path": "01.jpeg", "active_scale": 10.0, "rooms": [ROOM], "shapes": [SHAPE]},
-    )
-    resp = client.get("/api/listings/1/floorplan-comparison")
-    assert resp.status_code == 200
-    cross_check = resp.json()["summary"]["floor_area_cross_check"]
-    assert cross_check["stated_floor_area"] == 500
-    assert cross_check["traced_indoor"] == 1.0
-
-
 def test_comparison_uses_baseline_internal_sqft_for_hallway_storage_remainder(client):
     listings_store.create_stub_listing(1, VALID_URL)
     client.patch("/api/listings/1", json={"fields": {"floor_area_sqft": 50}})

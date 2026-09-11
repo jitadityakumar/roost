@@ -1210,7 +1210,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .rs-stat-figs { display: flex; align-items: baseline; gap: 0.4rem; margin-top: 0.25rem; flex-wrap: wrap; }
 .rs-stat-val { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .rs-stat-base { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-.rs-stat-delta { font-size: 0.76rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rs-stat-delta { font-size: 0.76rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 0.2rem; }
 .rs-stat-delta.good { color: var(--accent); }
 .rs-stat-delta.warn { color: var(--warn); }
 .rs-stat-delta.bad { color: var(--danger); }

@@ -127,14 +127,7 @@ def compare(
             "listing": listing_indoor + listing_outdoor,
             "delta_pct": _delta_pct(listing_indoor + listing_outdoor, baseline_indoor + baseline_outdoor),
         },
-        "floor_area_cross_check": None,
     }
-    if listing_floor_area_sqft is not None:
-        summary["floor_area_cross_check"] = {
-            "traced_indoor": listing_traced_indoor,
-            "stated_floor_area": listing_floor_area_sqft,
-            "delta_pct": _delta_pct(listing_traced_indoor, listing_floor_area_sqft),
-        }
 
     types = []
     for room_type, label in ROOM_TYPES.items():

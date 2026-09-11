@@ -62,7 +62,6 @@ describe("RoomSizes", () => {
         indoor: { baseline: 10, listing: 10, delta_pct: 0 },
         outdoor: { baseline: 0, listing: 0, delta_pct: null },
         grand: { baseline: 10, listing: 10, delta_pct: 0 },
-        floor_area_cross_check: null,
       },
       types: [],
     });

@@ -8,7 +8,6 @@ function fixture(overrides = {}) {
       indoor: { baseline: 606, listing: 601, delta_pct: -0.8 },
       outdoor: { baseline: 288, listing: 22, delta_pct: -92.4 },
       grand: { baseline: 894, listing: 623, delta_pct: -30.3 },
-      floor_area_cross_check: null,
     },
     types: [
       {
@@ -185,17 +184,18 @@ describe("RoomSizeComparison", () => {
     expect(badge.className).not.toContain("good");
   });
 
-  it("renders the floor area cross-check row only when present", () => {
-    const { rerender } = render(<RoomSizeComparison data={fixture()} />);
+  it("renders exactly 3 summary stat cards (indoor/outdoor/grand), no floor-area cross-check", () => {
+    const { container } = render(<RoomSizeComparison data={fixture()} />);
+    expect(container.querySelectorAll(".rs-stat")).toHaveLength(3);
     expect(screen.queryByText("Traced vs stated floor area")).not.toBeInTheDocument();
+  });
 
-    const withCrossCheck = fixture({
-      summary: {
-        ...fixture().summary,
-        floor_area_cross_check: { traced_indoor: 601, stated_floor_area: 650, delta_pct: -7.5 },
-      },
-    });
-    rerender(<RoomSizeComparison data={withCrossCheck} />);
-    expect(screen.getByText("Traced vs stated floor area")).toBeInTheDocument();
+  it("puts a stat card's delta badge on its own line, after the value/baseline line", () => {
+    const { container } = render(<RoomSizeComparison data={fixture()} />);
+    const stat = container.querySelector(".rs-stat");
+    const figs = stat.querySelector(".rs-stat-figs");
+    const delta = stat.querySelector(".rs-stat-delta");
+    expect(delta.parentElement).toBe(stat);
+    expect(figs.contains(delta)).toBe(false);
   });
 });

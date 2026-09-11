@@ -39,8 +39,8 @@ function StatCard({ label, baseline, listing, deltaPct }) {
       <div className="rs-stat-figs">
         <span className="rs-stat-val">{listing.toFixed(0)} sq ft</span>
         <span className="rs-stat-base">vs {baseline.toFixed(0)}</span>
-        <span className={`rs-stat-delta ${deltaClass(deltaPct, listing > 0)}`}>{formatDelta(deltaPct, listing > 0)}</span>
       </div>
+      <div className={`rs-stat-delta ${deltaClass(deltaPct, listing > 0)}`}>{formatDelta(deltaPct, listing > 0)}</div>
     </div>
   );
 }
@@ -106,14 +106,6 @@ export default function RoomSizeComparison({ data }) {
         <StatCard label="Indoor total" baseline={summary.indoor.baseline} listing={summary.indoor.listing} deltaPct={summary.indoor.delta_pct} />
         <StatCard label="Outdoor total" baseline={summary.outdoor.baseline} listing={summary.outdoor.listing} deltaPct={summary.outdoor.delta_pct} />
         <StatCard label="Grand total" baseline={summary.grand.baseline} listing={summary.grand.listing} deltaPct={summary.grand.delta_pct} />
-        {summary.floor_area_cross_check && (
-          <StatCard
-            label="Traced vs stated floor area"
-            baseline={summary.floor_area_cross_check.stated_floor_area}
-            listing={summary.floor_area_cross_check.traced_indoor}
-            deltaPct={summary.floor_area_cross_check.delta_pct}
-          />
-        )}
       </div>
 
       {types.map((t) => {
