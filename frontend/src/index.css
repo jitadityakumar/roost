@@ -28,6 +28,9 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
+  overflow-x: hidden; /* .tracer-page's 100vw full-bleed can exceed the visible
+    viewport by the scrollbar's width on non-overlay scrollbars; clip rather
+    than show a persistent few-px horizontal scrollbar/shift. */
 }
 
 .app-header {
@@ -430,6 +433,12 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .standards-warning ul { margin: 0; padding-left: 1.2rem; }
 
 .admin-page { max-width: 640px; margin: 0 auto; }
+
+/* Full-bleed override for pages hosting FloorplanTracer -- the canvas is
+   designed for computer use, not mobile, and benefits from the whole
+   browser width rather than main's 900px reading-width cap. Breaks out of
+   main's centered max-width via the negative-margin/100vw trick. */
+.tracer-page { max-width: none; width: 100vw; margin-left: calc(50% - 50vw); padding: 1.5rem 2rem; box-sizing: border-box; }
 
 /* Sidebar submenu shell (issue #60) -- same layout on web and mobile, no
    separate mobile treatment. All four panels below are always mounted;

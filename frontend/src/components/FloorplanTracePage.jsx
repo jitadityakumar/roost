@@ -87,7 +87,7 @@ export default function FloorplanTracePage() {
   if (!trace) return <p>Loading…</p>;
 
   return (
-    <div className="listing-detail">
+    <div className="listing-detail tracer-page">
       <button className="back-btn" onClick={() => navigate(`/listings/${id}`)}>← Back to listing</button>
       <h2>Trace room sizes</h2>
       <FloorplanTracer
