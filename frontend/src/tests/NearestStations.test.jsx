@@ -10,6 +10,10 @@ vi.mock("../components/networkLogos.js", () => ({
   logoUrlForType: vi.fn(() => undefined),
 }));
 
+// 804.672m == exactly 0.5 miles -- a clean, unambiguous test value so
+// assertions don't depend on rounding behavior for an arbitrary meters figure.
+const HALF_MILE_METERS = 804.672;
+
 describe("NearestStations", () => {
   it("renders nothing for an empty or missing list", () => {
     const { container: emptyContainer } = render(<NearestStations stations={[]} />);
@@ -19,39 +23,49 @@ describe("NearestStations", () => {
     expect(missingContainer).toBeEmptyDOMElement();
   });
 
-  it("renders the station name and formatted straight-line distance", () => {
+  it("renders the station name and formatted straight-line distance in miles", () => {
     render(
-      <NearestStations stations={[{ name: "Sampleton", straight_line_meters: 300, types: ["NATIONAL_TRAIN"] }]} />
+      <NearestStations
+        stations={[{ name: "Sampleton", straight_line_meters: HALF_MILE_METERS, types: ["NATIONAL_TRAIN"] }]}
+      />
     );
 
     expect(screen.getByText("Sampleton")).toBeInTheDocument();
-    expect(screen.getByText("300m")).toBeInTheDocument();
+    expect(screen.getByText("0.50 mi")).toBeInTheDocument();
   });
 
   it("shows a known badge letter for a recognized transport type", () => {
     render(
-      <NearestStations stations={[{ name: "Sampleton", straight_line_meters: 1000, types: ["LONDON_UNDERGROUND"] }]} />
+      <NearestStations
+        stations={[{ name: "Sampleton", straight_line_meters: HALF_MILE_METERS, types: ["LONDON_UNDERGROUND"] }]}
+      />
     );
 
     expect(screen.getByTitle("Underground")).toHaveTextContent("U");
   });
 
   it("falls back to the default badge for an unrecognized transport type", () => {
-    render(<NearestStations stations={[{ name: "Sampleton", straight_line_meters: 1000, types: ["HOVERCRAFT"] }]} />);
+    render(
+      <NearestStations stations={[{ name: "Sampleton", straight_line_meters: HALF_MILE_METERS, types: ["HOVERCRAFT"] }]} />
+    );
 
     expect(screen.getByTitle("Station")).toHaveTextContent("?");
   });
 
   it("shows the DLR badge for Rightmove's real LIGHT_RAILWAY type, not a stale DLR key", () => {
     render(
-      <NearestStations stations={[{ name: "Sampleton", straight_line_meters: 1000, types: ["LIGHT_RAILWAY"] }]} />
+      <NearestStations
+        stations={[{ name: "Sampleton", straight_line_meters: HALF_MILE_METERS, types: ["LIGHT_RAILWAY"] }]}
+      />
     );
 
     expect(screen.getByTitle("DLR")).toHaveTextContent("D");
   });
 
   it("shows the Tram badge for Rightmove's real TRAM type, not a stale TRAMLINK key", () => {
-    render(<NearestStations stations={[{ name: "Sampleton", straight_line_meters: 1000, types: ["TRAM"] }]} />);
+    render(
+      <NearestStations stations={[{ name: "Sampleton", straight_line_meters: HALF_MILE_METERS, types: ["TRAM"] }]} />
+    );
 
     expect(screen.getByTitle("Tram")).toHaveTextContent("T");
   });
@@ -60,16 +74,16 @@ describe("NearestStations", () => {
     render(<NearestStations stations={[{ name: "Sampleton", straight_line_meters: null, types: [] }]} />);
 
     expect(screen.getByText("Sampleton")).toBeInTheDocument();
-    expect(screen.queryByText(/m$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/mi$/)).not.toBeInTheDocument();
   });
 
-  it("shows walking distance and time alongside the straight-line distance when stored", () => {
+  it("shows walking distance/time in meters alongside the straight-line distance in miles", () => {
     render(
       <NearestStations
         stations={[
           {
             name: "Sampleton",
-            straight_line_meters: 300,
+            straight_line_meters: HALF_MILE_METERS,
             types: ["NATIONAL_TRAIN"],
             walk_distance_meters: 845,
             walk_duration_seconds: 720,
@@ -78,7 +92,7 @@ describe("NearestStations", () => {
       />
     );
 
-    expect(screen.getByText("300m")).toBeInTheDocument();
+    expect(screen.getByText("0.50 mi")).toBeInTheDocument();
     expect(screen.getByText("845m · 12 min walk")).toBeInTheDocument();
   });
 
@@ -89,7 +103,7 @@ describe("NearestStations", () => {
         stations={[
           {
             name: "Sampleton",
-            straight_line_meters: 300,
+            straight_line_meters: HALF_MILE_METERS,
             types: ["LONDON_UNDERGROUND"],
             walk_distance_meters: 845,
             walk_duration_seconds: 720,
@@ -113,7 +127,7 @@ describe("NearestStations", () => {
         stations={[
           {
             name: "Sampleton",
-            straight_line_meters: 300,
+            straight_line_meters: HALF_MILE_METERS,
             types: ["NATIONAL_TRAIN"],
             walk_distance_meters: 845,
             walk_duration_seconds: 720,
@@ -128,10 +142,12 @@ describe("NearestStations", () => {
 
   it("omits walking distance and time when not stored, keeping the straight-line distance", () => {
     render(
-      <NearestStations stations={[{ name: "Sampleton", straight_line_meters: 300, types: ["NATIONAL_TRAIN"] }]} />
+      <NearestStations
+        stations={[{ name: "Sampleton", straight_line_meters: HALF_MILE_METERS, types: ["NATIONAL_TRAIN"] }]}
+      />
     );
 
-    expect(screen.getByText("300m")).toBeInTheDocument();
+    expect(screen.getByText("0.50 mi")).toBeInTheDocument();
     expect(screen.queryByText(/min walk/)).not.toBeInTheDocument();
   });
 
@@ -139,7 +155,9 @@ describe("NearestStations", () => {
     vi.mocked(logoUrlForType).mockReturnValueOnce("/fake/underground.svg");
 
     render(
-      <NearestStations stations={[{ name: "Sampleton", straight_line_meters: 1000, types: ["LONDON_UNDERGROUND"] }]} />
+      <NearestStations
+        stations={[{ name: "Sampleton", straight_line_meters: HALF_MILE_METERS, types: ["LONDON_UNDERGROUND"] }]}
+      />
     );
 
     const img = screen.getByAltText("Underground");
@@ -155,7 +173,7 @@ describe("NearestStations", () => {
     render(
       <NearestStations
         stations={[
-          { name: "Wimbledon", straight_line_meters: 500, types: ["NATIONAL_TRAIN", "LONDON_UNDERGROUND"] },
+          { name: "Wimbledon", straight_line_meters: HALF_MILE_METERS, types: ["NATIONAL_TRAIN", "LONDON_UNDERGROUND"] },
         ]}
       />
     );
