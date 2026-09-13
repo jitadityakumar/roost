@@ -6,12 +6,12 @@ issue's implementation plan comment for the full design.
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime, timezone
 
 from app.commute.tfl_client import (
     TflApiError,
     _DESTINATION_SEARCH_MODES,
+    _strip_suffix,
     compute_walk_distance,
     search_stop_points_by_radius,
 )
@@ -30,16 +30,16 @@ logger = logging.getLogger(__name__)
 RADIUS_METERS = 2000
 MAX_WALK_MINUTES = 25
 
-# TfL returns a separate StopPoint per mode at the same physical station
-# (e.g. "Wimbledon Tram Stop"/"Wimbledon Rail"/"Wimbledon Underground") --
-# strip these suffixes before applying stations.py's own punctuation/case
-# normalization, so all three group under one physical station instead of
-# tripling walking-duration calls and rendering near-duplicate rows.
-_MODE_SUFFIX_RE = re.compile(r"\s+(Underground|Overground|Rail|DLR|Tram Stop|Elizabeth Line)$", re.IGNORECASE)
-
-
+# TfL returns a separate StopPoint per mode at the same physical station,
+# each carrying the *fuller* "<Mode> Station" form in commonName (e.g.
+# "Wimbledon Rail Station"/"Wimbledon Underground Station"/"Wimbledon Tram
+# Stop" -- confirmed live, issue #92's validation, and matches the fuller
+# suffixes tfl_client.py's own _strip_suffix already handles for the same
+# reason). Reuse that function rather than a second ad hoc regex here --
+# stripping just the bare mode word (no "Station") would leave these three
+# un-grouped, since real TfL names don't take that shorter form.
 def _group_key(name: str) -> str:
-    return _normalize_name(_MODE_SUFFIX_RE.sub("", name))
+    return _normalize_name(_strip_suffix(name))
 
 
 def discover_candidates(lat: float, lon: float) -> list[dict]:
@@ -70,7 +70,10 @@ def discover_candidates(lat: float, lon: float) -> list[dict]:
                 "modes": modes,
                 "lat": canonical.get("lat"),
                 "lon": canonical.get("lon"),
-                "distance_meters": canonical["distance_meters"],
+                # TfL's radius search returns a float meters value -- round
+                # to match compute_walk_distance's own convention (and the
+                # INTEGER column this ends up in).
+                "distance_meters": round(canonical["distance_meters"]),
             }
         )
     return candidates

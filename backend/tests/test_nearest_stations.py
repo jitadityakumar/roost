@@ -19,13 +19,18 @@ def _raw_stop_point(id_, name, modes, distance_meters, lat=51.4, lon=-0.2):
 
 def test_discover_candidates_groups_same_station_across_modes(monkeypatch):
     # Wimbledon live-sample case (issue #92): 3 separate StopPoints for one
-    # physical station must collapse to a single candidate.
+    # physical station must collapse to a single candidate. Real TfL
+    # commonName values use the *fuller* "<Mode> Station" form (confirmed
+    # live, and matching tfl_client.py's own _strip_suffix fixtures, e.g.
+    # "Woking Rail Station") -- a bare "Wimbledon Rail"/"Wimbledon
+    # Underground" (no "Station") would NOT exercise the real suffix-
+    # stripping path, so use the realistic form here.
     monkeypatch.setattr(
         discovery,
         "search_stop_points_by_radius",
         lambda *a, **k: [
-            _raw_stop_point("910GWMBLDN", "Wimbledon Rail", ["national-rail"], 150),
-            _raw_stop_point("9400ZZLUWIM", "Wimbledon Underground", ["tube"], 140),
+            _raw_stop_point("910GWMBLDN", "Wimbledon Rail Station", ["national-rail"], 150),
+            _raw_stop_point("9400ZZLUWIM", "Wimbledon Underground Station", ["tube"], 140),
             _raw_stop_point("9400ZZLUWIM2", "Wimbledon Tram Stop", ["tram"], 160),
         ],
     )
@@ -38,6 +43,21 @@ def test_discover_candidates_groups_same_station_across_modes(monkeypatch):
     assert c["stop_point_id"] == "9400ZZLUWIM"
     assert c["distance_meters"] == 140
     assert set(c["modes"]) == {"national-rail", "tube", "tram"}
+
+
+def test_discover_candidates_rounds_float_distance_to_int(monkeypatch):
+    # TfL's radius search returns a float `distance` -- must be rounded to
+    # match compute_walk_distance's own convention (and the INTEGER column
+    # this ends up in), not stored as a raw float.
+    monkeypatch.setattr(
+        discovery,
+        "search_stop_points_by_radius",
+        lambda *a, **k: [_raw_stop_point("A", "Somewhere Rail Station", ["national-rail"], 120.7)],
+    )
+
+    candidates = discovery.discover_candidates(51.42, -0.2)
+    assert candidates[0]["distance_meters"] == 121
+    assert isinstance(candidates[0]["distance_meters"], int)
 
 
 def test_discover_candidates_keeps_distinct_stations_separate(monkeypatch):
@@ -228,3 +248,19 @@ def test_get_nearest_stations_no_walk_maps_url_without_origin(listing_id):
 
     result = nearest_stations_store.get_nearest_stations(listing_id, None, None)
     assert result[0]["walk_maps_url"] is None
+
+
+# --- modes_to_rightmove_types ------------------------------------------------
+
+def test_modes_to_rightmove_types_translates_and_dedupes_preserving_order():
+    from app.nearest_stations.modes import modes_to_rightmove_types
+
+    result = modes_to_rightmove_types(["tube", "national-rail", "tube"])
+    assert result == ["LONDON_UNDERGROUND", "NATIONAL_TRAIN"]
+
+
+def test_modes_to_rightmove_types_drops_unmapped_modes():
+    from app.nearest_stations.modes import modes_to_rightmove_types
+
+    assert modes_to_rightmove_types(["bus", "tube"]) == ["LONDON_UNDERGROUND"]
+    assert modes_to_rightmove_types(["river-bus"]) == []
