@@ -400,6 +400,87 @@ def test_search_stop_points_returns_empty_on_error(monkeypatch):
     assert tfl_client.search_stop_points("paddington") == []
 
 
+# --- search_stop_points_by_radius (issue #92) ----------------------------
+
+def test_search_stop_points_by_radius_returns_candidates(monkeypatch):
+    payload = {
+        "stopPoints": [
+            {
+                "id": "910GWMBLDN",
+                "commonName": "Wimbledon Rail Station",
+                "modes": ["national-rail"],
+                "lat": 51.421,
+                "lon": -0.206,
+                "distance": 120.5,
+            }
+        ],
+        "pageSize": 0,
+        "total": 0,
+        "page": 0,
+    }
+    captured = {}
+
+    def fake_get(url):
+        captured["url"] = url
+        return payload
+
+    monkeypatch.setattr(tfl_client, "_get", fake_get)
+
+    results = tfl_client.search_stop_points_by_radius(51.42, -0.2, 2000, "national-rail,tube")
+
+    assert results == [
+        {
+            "id": "910GWMBLDN",
+            "name": "Wimbledon Rail Station",
+            "modes": ["national-rail"],
+            "lat": 51.421,
+            "lon": -0.206,
+            "distance_meters": 120.5,
+        }
+    ]
+    assert "stopTypes=NaptanRailStation%2CNaptanMetroStation" in captured["url"]
+    assert "modes=national-rail%2Ctube" in captured["url"]
+
+
+def test_search_stop_points_by_radius_dedups_nothing_itself(monkeypatch):
+    # Same-station, multiple-StopPoints-per-mode case (Wimbledon
+    # tram/rail/underground) -- this function returns every raw match
+    # unmodified; grouping/dedup is the nearest_stations package's job, not
+    # this client function's.
+    payload = {
+        "stopPoints": [
+            {"id": "A", "commonName": "Wimbledon Rail", "modes": ["national-rail"], "lat": 1, "lon": 1, "distance": 100},
+            {"id": "B", "commonName": "Wimbledon Underground", "modes": ["tube"], "lat": 1, "lon": 1, "distance": 110},
+            {"id": "C", "commonName": "Wimbledon Tram Stop", "modes": ["tram"], "lat": 1, "lon": 1, "distance": 90},
+        ]
+    }
+    monkeypatch.setattr(tfl_client, "_get", lambda url: payload)
+
+    results = tfl_client.search_stop_points_by_radius(1, 1, 2000, "national-rail,tube,tram")
+    assert len(results) == 3
+
+
+def test_search_stop_points_by_radius_skips_entries_missing_required_fields(monkeypatch):
+    payload = {
+        "stopPoints": [
+            {"id": "A", "commonName": "No Distance", "modes": ["tube"], "lat": 1, "lon": 1},
+            {"id": None, "commonName": "No Id", "modes": ["tube"], "lat": 1, "lon": 1, "distance": 50},
+            {"id": "B", "commonName": None, "modes": ["tube"], "lat": 1, "lon": 1, "distance": 50},
+        ]
+    }
+    monkeypatch.setattr(tfl_client, "_get", lambda url: payload)
+
+    assert tfl_client.search_stop_points_by_radius(1, 1, 2000, "tube") == []
+
+
+def test_search_stop_points_by_radius_returns_empty_on_error(monkeypatch):
+    def raise_error(url):
+        raise tfl_client.TflApiError("boom")
+
+    monkeypatch.setattr(tfl_client, "_get", raise_error)
+    assert tfl_client.search_stop_points_by_radius(1, 1, 2000, "tube") == []
+
+
 # --- pool_out (issue #59) ------------------------------------------------
 
 def test_pool_out_collects_journeys_across_non_overlapping_pages(monkeypatch):

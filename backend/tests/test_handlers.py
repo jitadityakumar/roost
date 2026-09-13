@@ -274,6 +274,20 @@ def test_handle_rightmove_extract_raises_for_unknown_listing():
         handlers.handle_rightmove_extract(_job(listing_id=12345))
 
 
+def test_handle_rightmove_extract_invokes_nearest_stations_discovery(listing_id, monkeypatch):
+    # Issue #92: a separate call from compute_station_walk_distances, not
+    # merged into it -- both must run.
+    calls = []
+    monkeypatch.setattr(handlers, "compute_nearest_stations", lambda *a, **k: calls.append(a))
+
+    handlers.handle_rightmove_extract(_job(listing_id))
+
+    assert len(calls) == 1
+    assert calls[0][0] == listing_id
+    assert calls[0][1] == 51.5074
+    assert calls[0][2] == -0.1278
+
+
 def test_handle_rightmove_extract_stores_walk_distances_for_resolved_stations(listing_id, monkeypatch):
     from app.commute import walk_store
 

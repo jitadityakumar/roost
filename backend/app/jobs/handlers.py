@@ -23,6 +23,7 @@ from app.config import MEDIA_DIR
 from app.crime.client import lookup_postcode
 from app.destinations.compute import compute_for_listing
 from app.jobs import llm_enqueue, llm_prompts, queue
+from app.nearest_stations.discovery import compute_nearest_stations
 from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
 from app.jobs.llm_client import parse_structured_output, run_claude_prompt
 from app.jobs.llm_client import as_bool, as_council_tax_band, as_float, as_int, epc_rating_from_score
@@ -252,6 +253,13 @@ def handle_rightmove_extract(job: dict) -> None:
     compute_station_walk_distances(
         listing_id, fields.get("latitude"), fields.get("longitude"), extracted.get("nearest_stations") or []
     )
+
+    # Issue #92: discover Nearest Stations candidates via TfL's own radius
+    # search, independent of the Rightmove-sourced computation just above --
+    # a separate call, not merged into compute_station_walk_distances, since
+    # that function still feeds Commute's resolve_crs_codes() candidate set
+    # (nearest_stations_raw), which is untouched by this issue.
+    compute_nearest_stations(listing_id, fields.get("latitude"), fields.get("longitude"))
 
     compute_for_listing(listing_id, fields.get("latitude"), fields.get("longitude"))
 

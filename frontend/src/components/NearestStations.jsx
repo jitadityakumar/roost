@@ -88,10 +88,14 @@ export default function NearestStations({ stations }) {
                 ))}
               <span
                 className="station-distance"
-                title="As the crow flies (Rightmove data)"
-                aria-label={`As the crow flies: ${formatDistance(s.distance, s.unit)}`}
+                title="As the crow flies"
+                aria-label={
+                  s.straight_line_meters != null
+                    ? `As the crow flies: ${formatWalkMeters(s.straight_line_meters)}`
+                    : undefined
+                }
               >
-                {formatDistance(s.distance, s.unit)}
+                {s.straight_line_meters != null ? formatWalkMeters(s.straight_line_meters) : null}
               </span>
             </span>
           </li>
