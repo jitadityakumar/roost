@@ -8,6 +8,7 @@ nearest_stations_raw).
 from __future__ import annotations
 
 from app.commute.maps_url import maps_walking_url
+from app.commute.tfl_client import _strip_suffix
 from app.db.connection import get_connection
 from app.nearest_stations import discovery
 from app.nearest_stations.modes import modes_to_rightmove_types
@@ -62,7 +63,13 @@ def get_nearest_stations(
     it can't be confused with walk_distance_meters, and "types" (modes
     translated to Rightmove-type keys, see nearest_stations.modes.
     modes_to_rightmove_types) so the existing badge/logo lookups (both keyed
-    by Rightmove type) don't need to change."""
+    by Rightmove type) don't need to change.
+
+    Name is displayed with tfl_client's "<Mode> Station"/"Tram Stop" suffix
+    stripped -- the row's own type badge already conveys mode, so "Haydons
+    Road Rail Station" renders as just "Haydons Road". Stripped here at read
+    time (not at storage) so the change applies to already-stored rows too,
+    not just freshly discovered ones."""
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -90,7 +97,7 @@ def get_nearest_stations(
             walk_maps_url = maps_walking_url(origin_lat, origin_lon, r["lat"], r["lon"])
         result.append(
             {
-                "name": r["name"],
+                "name": _strip_suffix(r["name"]),
                 "types": modes_to_rightmove_types((r["modes"] or "").split(",")),
                 "straight_line_meters": r["distance_meters"],
                 "walk_distance_meters": r["walk_distance_meters"],

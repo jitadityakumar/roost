@@ -95,7 +95,7 @@ def test_compute_nearest_stations_does_not_wipe_existing_rows_on_discovery_failu
         [
             {
                 "stop_point_id": "EXISTING",
-                "name": "Existing Station",
+                "name": "Existing Parkway",
                 "modes": "national-rail",
                 "lat": 51.4,
                 "lon": -0.2,
@@ -116,7 +116,7 @@ def test_compute_nearest_stations_does_not_wipe_existing_rows_on_discovery_failu
 
     stations = nearest_stations_store.get_nearest_stations(listing_id, 51.4, -0.2, max_walk_minutes=999)
     assert len(stations) == 1
-    assert stations[0]["name"] == "Existing Station"
+    assert stations[0]["name"] == "Existing Parkway"
 
 
 def test_compute_nearest_stations_stores_null_duration_when_walk_call_fails(listing_id, monkeypatch):
@@ -186,7 +186,7 @@ def test_get_nearest_stations_filters_and_sorts_by_duration(listing_id):
         [
             {
                 "stop_point_id": "SLOW",
-                "name": "Slow Station",
+                "name": "Slow Parkway",
                 "modes": "national-rail",
                 "lat": 51.4,
                 "lon": -0.2,
@@ -197,7 +197,7 @@ def test_get_nearest_stations_filters_and_sorts_by_duration(listing_id):
             },
             {
                 "stop_point_id": "FAST",
-                "name": "Fast Station",
+                "name": "Fast Parkway",
                 "modes": "tube",
                 "lat": 51.41,
                 "lon": -0.21,
@@ -208,7 +208,7 @@ def test_get_nearest_stations_filters_and_sorts_by_duration(listing_id):
             },
             {
                 "stop_point_id": "NODATA",
-                "name": "No Duration Station",
+                "name": "No Duration Parkway",
                 "modes": "tube",
                 "lat": None,
                 "lon": None,
@@ -222,10 +222,59 @@ def test_get_nearest_stations_filters_and_sorts_by_duration(listing_id):
 
     result = nearest_stations_store.get_nearest_stations(listing_id, 51.4, -0.2)
 
-    assert [s["name"] for s in result] == ["Fast Station", "Slow Station"]
+    assert [s["name"] for s in result] == ["Fast Parkway", "Slow Parkway"]
     assert result[0]["types"] == ["LONDON_UNDERGROUND"]
     assert result[0]["walk_maps_url"] is not None
     assert result[1]["types"] == ["NATIONAL_TRAIN"]
+
+
+def test_get_nearest_stations_strips_mode_suffix_from_display_name(listing_id):
+    # Type badge already conveys mode -- "Haydons Road Rail Station" should
+    # render as just "Haydons Road", matching tfl_client's own suffix list
+    # (Rail Station/Underground Station/DLR Station/Overground Station/
+    # Tram Stop/bare Station).
+    nearest_stations_store.replace_candidates(
+        listing_id,
+        [
+            {
+                "stop_point_id": "A",
+                "name": "Haydons Road Rail Station",
+                "modes": "national-rail",
+                "lat": 51.4,
+                "lon": -0.2,
+                "distance_meters": 300,
+                "walk_distance_meters": 300,
+                "duration_seconds": 300,
+                "computed_at": "2026-09-13T00:00:00+00:00",
+            },
+            {
+                "stop_point_id": "B",
+                "name": "Colliers Wood Underground Station",
+                "modes": "tube",
+                "lat": 51.41,
+                "lon": -0.21,
+                "distance_meters": 400,
+                "walk_distance_meters": 400,
+                "duration_seconds": 400,
+                "computed_at": "2026-09-13T00:00:00+00:00",
+            },
+            {
+                "stop_point_id": "C",
+                "name": "Wimbledon Tram Stop",
+                "modes": "tram",
+                "lat": 51.42,
+                "lon": -0.22,
+                "distance_meters": 500,
+                "walk_distance_meters": 500,
+                "duration_seconds": 500,
+                "computed_at": "2026-09-13T00:00:00+00:00",
+            },
+        ],
+    )
+
+    result = nearest_stations_store.get_nearest_stations(listing_id, 51.4, -0.2)
+
+    assert {s["name"] for s in result} == {"Haydons Road", "Colliers Wood", "Wimbledon"}
 
 
 def test_get_nearest_stations_no_walk_maps_url_without_origin(listing_id):
