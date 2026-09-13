@@ -29,6 +29,17 @@ export function formatDistance(distance, unit) {
   return `${n.toFixed(2)} ${unit || "mi"}`;
 }
 
+const METERS_PER_MILE = 1609.344;
+
+// The walk duration/distance line stays metric (formatWalkMeters, m/km) --
+// only the "as the crow flies" straight-line figure is shown in miles, per
+// user preference (matches Rightmove's own straight-line distance
+// convention, which this replaces as the candidate source).
+function formatStraightLineMiles(meters) {
+  if (meters == null) return null;
+  return formatDistance(meters / METERS_PER_MILE);
+}
+
 export default function NearestStations({ stations }) {
   if (!Array.isArray(stations) || stations.length === 0) return null;
 
@@ -88,10 +99,14 @@ export default function NearestStations({ stations }) {
                 ))}
               <span
                 className="station-distance"
-                title="As the crow flies (Rightmove data)"
-                aria-label={`As the crow flies: ${formatDistance(s.distance, s.unit)}`}
+                title="As the crow flies"
+                aria-label={
+                  s.straight_line_meters != null
+                    ? `As the crow flies: ${formatStraightLineMiles(s.straight_line_meters)}`
+                    : undefined
+                }
               >
-                {formatDistance(s.distance, s.unit)}
+                {formatStraightLineMiles(s.straight_line_meters)}
               </span>
             </span>
           </li>

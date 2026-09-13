@@ -110,6 +110,12 @@ def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
 
 _DESTINATION_SEARCH_MODES = "national-rail,tube,overground,dlr,tram,elizabeth-line"
 
+# Required by /StopPoint's radius search, not optional -- confirmed live
+# during issue #92's validation. NaptanMetroStation is specifically what
+# surfaces tram stops (a rail-only stopTypes list missed the Wimbledon tram
+# stop in that validation).
+_RADIUS_SEARCH_STOP_TYPES = "NaptanRailStation,NaptanMetroStation"
+
 
 def search_stop_points(query: str, limit: int = 8) -> list[dict]:
     """Admin-form destination-station search (issue #47) -- proxies TfL's
@@ -146,6 +152,57 @@ def search_stop_points(query: str, limit: int = 8) -> list[dict]:
         results.append({"id": stop_id, "name": name, "modes": m.get("modes") or []})
         if len(results) >= limit:
             break
+    return results
+
+
+def search_stop_points_by_radius(lat: float, lon: float, radius_m: int, modes: str) -> list[dict]:
+    """Issue #92: discover every non-bus station StopPoint within `radius_m`
+    meters of (lat, lon), independent of Rightmove's own nearest_stations_raw
+    list -- Rightmove only ever lists 3 stations and can omit real nearby
+    ones. `stopTypes=NaptanRailStation,NaptanMetroStation` is required by
+    this TfL endpoint (not optional) -- confirmed live during issue #92's
+    validation, and NaptanMetroStation is specifically what's needed to
+    surface tram stops (a rail-only stopTypes list missed the Wimbledon tram
+    stop in that validation). `modes` should be the same non-bus allowlist
+    _DESTINATION_SEARCH_MODES already uses elsewhere in this module, not a
+    second list.
+
+    No pagination handling -- confirmed live (pageSize/total/page all came
+    back 0, full result returned unpaginated for a real radius query),
+    unlike the windowed journey-scan's real page cap (see #52). Never
+    raises -- a failed/empty search just returns [], same never-raise
+    contract as search_stop_points.
+
+    Returns each match's raw fields relevant to discovery: `id` (matching
+    search_stop_points's own "id" convention -- any stop_point_id rename
+    happens in the nearest_stations package's own row shape, not here),
+    `name`, `modes` (list), `lat`, `lon`, `distance_meters` (straight-line,
+    from TfL's own `distance` field, meters)."""
+    params = urlencode({"lat": lat, "lon": lon, "radius": radius_m, "stopTypes": _RADIUS_SEARCH_STOP_TYPES, "modes": modes})
+    try:
+        data = _get(f"https://api.tfl.gov.uk/StopPoint?{params}")
+    except TflApiError as e:
+        logger.info("TfL StopPoint radius search failed for (%s, %s): %s", lat, lon, e)
+        return []
+
+    stop_points = data.get("stopPoints") or [] if isinstance(data, dict) else []
+    results = []
+    for sp in stop_points:
+        stop_id = sp.get("id")
+        name = sp.get("commonName")
+        distance = sp.get("distance")
+        if not stop_id or not name or distance is None:
+            continue
+        results.append(
+            {
+                "id": stop_id,
+                "name": name,
+                "modes": sp.get("modes") or [],
+                "lat": sp.get("lat"),
+                "lon": sp.get("lon"),
+                "distance_meters": distance,
+            }
+        )
     return results
 
 

@@ -68,10 +68,16 @@ if [ "$ASSUME_YES" != true ]; then
 fi
 
 for id in $ids; do
-  resp=$(curl -sf -X POST "$BASE_URL/api/listings/$id/walk-refresh")
+  # Issue #92 widened what this endpoint computes per listing (radius search
+  # + several walking-duration calls, not just the original ~3-station
+  # loop) -- the whole backfill can now run tens of minutes unattended
+  # (latency-bound, not throttle-bound; see the issue's volume estimate), so
+  # a per-request timeout matters here in a way it didn't before.
+  resp=$(curl -sf --max-time 60 -X POST "$BASE_URL/api/listings/$id/walk-refresh")
   stations=$(echo "$resp" | jq -r '[.nearest_stations_raw[]? | select(.walk_distance_meters != null)] | length')
   total=$(echo "$resp" | jq -r '.nearest_stations_raw | length')
-  echo "listing $id: walk data for $stations/$total station(s)"
+  discovered=$(echo "$resp" | jq -r '.nearest_stations | length')
+  echo "listing $id: walk data for $stations/$total Rightmove station(s), $discovered TfL-discovered nearby"
 done
 
 echo

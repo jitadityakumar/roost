@@ -10,10 +10,11 @@ from app.comments import store as comments_store
 from app.counciltax import store as counciltax_store
 from app.crime.client import lookup_postcode
 from app.jobs import llm_enqueue, queue
-from app.jobs.handlers import compute_station_walk_distances
+from app.jobs.handlers import compute_nearest_stations, compute_station_walk_distances
 from app.jobs.pipeline_status import derive_pipeline_status
 from app.listings import store, url_utils
 from app.listings.serialize import serialize_listing
+from app.nearest_stations.store import get_nearest_stations
 from app.standards import store as standards_store
 from app.standards.evaluate import evaluate_listing
 
@@ -67,11 +68,24 @@ def _attach_walk_data(listing_id: int, out: dict) -> None:
                 entry["walk_maps_url"] = maps_walking_url(origin_lat, origin_lon, walk["lat"], walk["lon"])
 
 
+def _attach_nearest_stations(listing_id: int, out: dict) -> None:
+    """Issue #92: sets out["nearest_stations"] from the TfL-discovered
+    nearest_station_candidates table, independent of nearest_stations_raw
+    (which _attach_walk_data above still populates -- untouched, still feeds
+    Commute's resolve_crs_codes()). Single-listing serialization only, same
+    call site as _attach_walk_data -- mind the has_warning caveat in that
+    function's own docstring, which applies identically here (a listing
+    failing only a nearest-stations-derived rule shows no warning dot on the
+    list view)."""
+    out["nearest_stations"] = get_nearest_stations(listing_id, out.get("latitude"), out.get("longitude"))
+
+
 def _serialize_with_pipeline_status(listing: dict) -> dict:
     statuses = queue.latest_job_statuses_for_listings([listing["id"]])
     out = serialize_listing(listing)
     out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
     _attach_walk_data(listing["id"], out)
+    _attach_nearest_stations(listing["id"], out)
     # Live join, not a stored column -- computed here (not just in
     # get_listing) so PATCH's response (e.g. editing council_tax_band)
     # reflects the new estimate immediately too, issue #60.
@@ -176,12 +190,13 @@ def get_listing(listing_id: int):
     if listing is None:
         raise HTTPException(status_code=404, detail="listing not found")
     out = _serialize_with_pipeline_status(listing)
-    # Reads the already-guarded walk_duration_seconds values _attach_walk_data
-    # attached above (via lookup_walk's stale-row check), not a fresh
-    # get_walk_distances() call -- reading the raw table directly here would
-    # bypass that guard and risk a min computed from a station no longer
-    # among the listing's current nearest stations after a Rightmove reorder.
-    nearest = out.get("nearest_stations_raw") or []
+    # Issue #92: repointed at the TfL-discovered nearest_stations (already
+    # filtered/attached above by _attach_nearest_stations) rather than
+    # nearest_stations_raw -- now that Nearest Stations is TfL-discovered,
+    # that's the semantically correct "nearest station" set; leaving this
+    # reading the old Rightmove-3 source would be silently inconsistent with
+    # what the UI now shows.
+    nearest = out.get("nearest_stations") or []
     durations = [e["walk_duration_seconds"] for e in nearest if e.get("walk_duration_seconds") is not None]
     listing["min_walk_minutes"] = round(min(durations) / 60) if durations else None
     out["standards_violations"] = evaluate_listing(listing, standards_store.list_rules())
@@ -251,6 +266,12 @@ def refresh_walk_distances(listing_id: int):
         compute_station_walk_distances(
             listing_id, serialized.get("latitude"), serialized.get("longitude"), nearest_stations_raw
         )
+        # Issue #92: also recompute the TfL-discovered candidate set --
+        # extending this endpoint rather than adding a sibling one, since it
+        # already has the has_pending_job race guard above (needed
+        # identically here) and scripts/tfl-walk-backfill.sh already drives
+        # this endpoint per-listing for backfills.
+        compute_nearest_stations(listing_id, serialized.get("latitude"), serialized.get("longitude"))
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 
