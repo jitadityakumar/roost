@@ -10,6 +10,9 @@ import csv
 import os
 import re
 
+from app.commute.tfl_client import _strip_suffix as _strip_tfl_suffix
+from app.db.connection import get_connection
+
 STATIONS_CSV = os.path.join(os.path.dirname(__file__), "stations.csv")
 
 MAX_DISTANCE_MILES = 1.0
@@ -90,3 +93,67 @@ def resolve_crs_codes(nearest_stations_raw: list[dict]) -> list[dict]:
     if not any(r["distance"] is not None for r in resolved):
         return resolved
     return [r for r in resolved if r["distance"] is not None and r["distance"] <= MAX_DISTANCE_MILES]
+
+
+def national_rail_from_radius_candidates(
+    listing_id: int, exclude_crs: set[str], max_walk_seconds: int
+) -> list[dict]:
+    """Issue #94: additional national-rail candidates for listing_id sourced
+    from nearest_station_candidates (issue #92's TfL radius search) that
+    resolve_crs_codes() wouldn't have seen, since they were never in
+    Rightmove's own nearest_stations_raw list to begin with.
+
+    Resolves each candidate's TfL commonName to a CRS via the same
+    stations.csv lookup resolve_crs_codes() uses, deduped against
+    `exclude_crs` (the CRS codes resolve_crs_codes() already produced for
+    this listing) and by CRS within this function's own results. Applies
+    Commute's own walk cutoff using the row's own duration_seconds
+    directly -- not walk_store.lookup_walk(), which is keyed to
+    nearest_stations_raw positions and has no analogue for a station with
+    no Rightmove index. A candidate with no stored duration is dropped
+    (nothing to compare against) rather than falling back to its
+    straight-line distance_meters -- unlike resolve_crs_codes()'s own
+    0.5mi raw-distance fallback, which exists only for the case where the
+    walk-computation job hasn't run yet; nearest_station_candidates rows
+    always come from the same TfL call that also computes duration_seconds,
+    so a missing value here means the walk itself is unknown, not just
+    unmeasured."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT name, modes, duration_seconds, walk_distance_meters "
+            "FROM nearest_station_candidates WHERE listing_id = ?",
+            (listing_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    resolved = []
+    seen_crs = set(exclude_crs)
+    for row in rows:
+        if "national-rail" not in (row["modes"] or "").split(","):
+            continue
+        duration = row["duration_seconds"]
+        if duration is None or duration > max_walk_seconds:
+            continue
+        # row["name"] is TfL's own commonName (e.g. "Wandsworth Town Rail
+        # Station"), not Rightmove's raw name format -- strip via
+        # tfl_client's own suffix stripper (handles "Rail Station"/
+        # "Underground Station"/etc, unlike strip_station_suffix above
+        # which only handles the bare Rightmove "Station"/"Tram Stop"
+        # suffix), same as nearest_stations/store.py does at read time.
+        name = _strip_tfl_suffix(row["name"])
+        crs = _NAME_TO_CRS.get(_normalize_name(name))
+        if not crs or crs in seen_crs:
+            continue
+        seen_crs.add(crs)
+        resolved.append(
+            {
+                "name": name,
+                "crs": crs,
+                "distance": None,
+                "walk_distance_meters": row["walk_distance_meters"],
+                "walk_duration_seconds": duration,
+            }
+        )
+    return resolved
