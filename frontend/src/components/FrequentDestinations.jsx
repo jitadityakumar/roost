@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import CollapsibleSection from "./CollapsibleSection.jsx";
 
 // "45m" under an hour, "2h" for an exact number of hours, "1h6m" otherwise
 // -- rather than a bare minute count.
@@ -92,7 +93,7 @@ function DestinationRow({ destination, refreshing }) {
   );
 }
 
-export default function FrequentDestinations({ listingId, ready }) {
+export default function FrequentDestinations({ listingId, ready, defaultExpanded }) {
   const [destinations, setDestinations] = useState(null);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -125,10 +126,11 @@ export default function FrequentDestinations({ listingId, ready }) {
   }
 
   return (
-    <>
-      <div className="section-heading">
-        <h3>Frequent destinations</h3>
-        {ready && (
+    <CollapsibleSection
+      title="Frequent destinations"
+      defaultExpanded={defaultExpanded}
+      actions={
+        ready && (
           <button
             className="icon-btn"
             onClick={handleRefresh}
@@ -138,8 +140,9 @@ export default function FrequentDestinations({ listingId, ready }) {
           >
             <span className={`spin${refreshing ? " spinning" : ""}`}>↻</span>
           </button>
-        )}
-      </div>
+        )
+      }
+    >
       <p role="status" className="visually-hidden">
         {refreshing ? "Recomputing frequent destinations…" : ""}
       </p>
@@ -161,6 +164,6 @@ export default function FrequentDestinations({ listingId, ready }) {
           ))}
         </ul>
       )}
-    </>
+    </CollapsibleSection>
   );
 }

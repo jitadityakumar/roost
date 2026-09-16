@@ -10,14 +10,14 @@ vi.mock("../api.js", () => ({
 
 describe("FrequentDestinations", () => {
   it("shows a waiting message when the listing isn't ready yet", () => {
-    render(<FrequentDestinations listingId={1} ready={false} />);
+    render(<FrequentDestinations listingId={1} ready={false} defaultExpanded={true} />);
     expect(screen.getByText(/Waiting for listing details/)).toBeInTheDocument();
     expect(api.listingDestinations).not.toHaveBeenCalled();
   });
 
   it("shows an empty state when no destinations are configured", async () => {
     api.listingDestinations.mockResolvedValue([]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
     await waitFor(() =>
       expect(screen.getByText(/No frequent destinations configured/)).toBeInTheDocument()
     );
@@ -46,7 +46,7 @@ describe("FrequentDestinations", () => {
         arrival_time: "2026-08-17T09:04:00",
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
     expect(screen.getByText("24m")).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe("FrequentDestinations", () => {
         arrival_time: "2026-08-17T09:04:00",
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
     expect(screen.getByText("1 change · Freq 6/hr")).toBeInTheDocument();
@@ -109,7 +109,7 @@ describe("FrequentDestinations", () => {
         arrival_time: "2026-08-17T12:50:00",
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("Bandol")).toBeInTheDocument());
     expect(screen.getByText("Surbiton → London Road (Guildford)")).toBeInTheDocument();
@@ -143,7 +143,7 @@ describe("FrequentDestinations", () => {
         home_duration_diff_minutes: 24,
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
     expect(screen.getByText("(+24)")).toBeInTheDocument();
@@ -173,7 +173,7 @@ describe("FrequentDestinations", () => {
         home_duration_diff_minutes: -10,
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
     expect(screen.getByText("(-10)")).toBeInTheDocument();
@@ -203,7 +203,7 @@ describe("FrequentDestinations", () => {
         home_duration_diff_minutes: 0,
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
     expect(screen.getByText("(+0)")).toBeInTheDocument();
@@ -232,7 +232,7 @@ describe("FrequentDestinations", () => {
         arrival_time: "2026-08-17T09:04:00",
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("24m")).toBeInTheDocument());
     expect(document.querySelector(".destination-home-diff")).not.toBeInTheDocument();
@@ -260,7 +260,7 @@ describe("FrequentDestinations", () => {
         arrival_time: "2026-08-17T07:31:00",
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("1h21m")).toBeInTheDocument());
   });
@@ -278,7 +278,7 @@ describe("FrequentDestinations", () => {
         resolved: false,
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText(/No journey found/)).toBeInTheDocument());
     expect(screen.getByText(/SW1A 1AA/)).toBeInTheDocument();
@@ -309,7 +309,7 @@ describe("FrequentDestinations", () => {
         journey_scan_pool_id: 42,
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByRole("link")).toBeInTheDocument());
     expect(screen.getByRole("link")).toHaveAttribute("href", "/journey-details/42");
@@ -340,7 +340,7 @@ describe("FrequentDestinations", () => {
         journey_scan_pool_id: null,
       },
     ]);
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText("Office")).toBeInTheDocument());
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
@@ -350,7 +350,7 @@ describe("FrequentDestinations", () => {
     api.listingDestinations.mockResolvedValue([]);
     api.refreshListingDestinations.mockResolvedValue([]);
     const user = userEvent.setup();
-    render(<FrequentDestinations listingId={1} ready={true} />);
+    render(<FrequentDestinations listingId={1} ready={true} defaultExpanded={true} />);
 
     await waitFor(() => expect(screen.getByText(/No frequent destinations configured/)).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Recompute journeys" }));

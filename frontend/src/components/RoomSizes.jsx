@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import RoomSizeComparison from "./RoomSizeComparison.jsx";
 
-export default function RoomSizes({ listingId, ready, floorplanFilenames }) {
+export default function RoomSizes({ listingId, ready, floorplanFilenames = [] }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -35,15 +35,12 @@ export default function RoomSizes({ listingId, ready, floorplanFilenames }) {
     };
   }, [listingId, ready, floorplanFilenames.length]);
 
-  if (!ready || floorplanFilenames.length === 0) return null;
-
   function goToTrace() {
     navigate(`/listings/${listingId}/trace`);
   }
 
   return (
-    <section>
-      <h3>Room Sizes</h3>
+    <>
       {error && <p className="error">Couldn't load room sizes: {error}</p>}
       {!error && data === null && <p>Loading…</p>}
       {!error && data?.noTrace && (
@@ -62,6 +59,6 @@ export default function RoomSizes({ listingId, ready, floorplanFilenames }) {
           </button>
         </>
       )}
-    </section>
+    </>
   );
 }

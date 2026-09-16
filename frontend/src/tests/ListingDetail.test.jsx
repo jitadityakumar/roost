@@ -22,6 +22,21 @@ vi.mock("../api.js", () => ({
       getListingTrace: vi.fn(),
       putListingTrace: vi.fn(),
     },
+    detailSections: {
+      get: vi.fn().mockResolvedValue({
+        details_expanded: true,
+        description_features_expanded: true,
+        nearest_stations_expanded: true,
+        floorplans_expanded: true,
+        epc_expanded: true,
+        room_sizes_expanded: true,
+        commute_expanded: true,
+        frequent_destinations_expanded: true,
+        mortgage_expanded: true,
+        crime_expanded: true,
+        jobs_expanded: true,
+      }),
+    },
   },
 }));
 
@@ -251,5 +266,61 @@ describe("ListingDetail status-change menu", () => {
         initials: "JK",
       })
     );
+  });
+});
+
+describe("ListingDetail section collapsing", () => {
+  it("renders a section collapsed on load when the admin config says so", async () => {
+    api.get.mockResolvedValue(baseListing());
+    api.detailSections.get.mockResolvedValueOnce({
+      details_expanded: true,
+      description_features_expanded: true,
+      nearest_stations_expanded: true,
+      floorplans_expanded: true,
+      epc_expanded: true,
+      room_sizes_expanded: true,
+      commute_expanded: false,
+      frequent_destinations_expanded: true,
+      mortgage_expanded: true,
+      crime_expanded: true,
+      jobs_expanded: true,
+    });
+    renderDetail();
+
+    const commuteToggle = await screen.findByRole("button", { name: /Commute/ });
+    expect(commuteToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("clicking a section header toggles it open", async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(baseListing());
+    api.detailSections.get.mockResolvedValueOnce({
+      details_expanded: true,
+      description_features_expanded: true,
+      nearest_stations_expanded: true,
+      floorplans_expanded: true,
+      epc_expanded: true,
+      room_sizes_expanded: true,
+      commute_expanded: false,
+      frequent_destinations_expanded: true,
+      mortgage_expanded: true,
+      crime_expanded: true,
+      jobs_expanded: true,
+    });
+    renderDetail();
+
+    const commuteToggle = await screen.findByRole("button", { name: /Commute/ });
+    expect(commuteToggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(commuteToggle);
+    expect(commuteToggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders an empty-state placeholder for a section with no data, rather than hiding it", async () => {
+    api.get.mockResolvedValue(baseListing({ nearest_stations: [] }));
+    renderDetail();
+
+    const stationsToggle = await screen.findByRole("button", { name: /Nearest stations/ });
+    expect(stationsToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("No nearby stations found.")).toBeInTheDocument();
   });
 });

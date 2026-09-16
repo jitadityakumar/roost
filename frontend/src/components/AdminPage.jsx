@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import FloorplanAdminPanel from "./FloorplanAdminPanel.jsx";
+import SectionsAdminPanel from "./SectionsAdminPanel.jsx";
 import {
   BOOLEAN_FIELDS,
   BOOLEAN_OPERATORS,
@@ -422,6 +423,7 @@ const NAV_ITEMS = [
   { key: "destinations", label: "Frequent destinations" },
   { key: "counciltax", label: "Council tax rates" },
   { key: "floorplan", label: "Floor plan baseline" },
+  { key: "sections", label: "Detail Page Sections" },
 ];
 
 export default function AdminPage() {
@@ -926,6 +928,10 @@ export default function AdminPage() {
 
         <div className={`admin-panel ${activePanel === "floorplan" ? "" : "admin-panel-hidden"}`}>
           <FloorplanAdminPanel active={activePanel === "floorplan"} />
+        </div>
+
+        <div className={`admin-panel ${activePanel === "sections" ? "" : "admin-panel-hidden"}`}>
+          <SectionsAdminPanel active={activePanel === "sections"} />
         </div>
       </div>
     </div>

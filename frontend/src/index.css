@@ -525,6 +525,11 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .status-chip.complete { color: var(--accent); border: 1px solid var(--accent); }
 .chev-btn { color: var(--muted); font-size: 0.75rem; transition: transform 0.15s; }
 .council-row.expanded .chev-btn { transform: rotate(90deg); }
+.collapsible-section.expanded .chev-btn { transform: rotate(90deg); }
+.collapsible-section-toggle {
+  display: flex; align-items: center; gap: 0.4rem; background: none; border: none;
+  cursor: pointer; padding: 0; font: inherit; color: inherit;
+}
 
 .council-body {
   border-top: 1px solid var(--border); padding: 0.9rem 0.9rem 1rem;
