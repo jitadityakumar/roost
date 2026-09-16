@@ -2,10 +2,11 @@ from fastapi import APIRouter, HTTPException
 
 from app.commute.client import CommuteApiError, fetch_station_termini
 from app.commute.maps_url import maps_walking_url
-from app.commute.stations import latlong_for_crs, resolve_crs_codes
+from app.commute.stations import latlong_for_crs, national_rail_from_radius_candidates, resolve_crs_codes
 from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.listings import store
 from app.listings.serialize import serialize_listing
+from app.nearest_stations.discovery import MAX_WALK_MINUTES
 
 router = APIRouter(prefix="/api/listings", tags=["commute"])
 
@@ -16,7 +17,16 @@ router = APIRouter(prefix="/api/listings", tags=["commute"])
 # call failed and we have no stored duration, fall back to Rightmove's raw
 # straight-line distance at the old 0.5mi cutoff (a station that far out and
 # unmeasurable isn't worth guessing about).
-COMMUTE_MAX_WALK_SECONDS = 30 * 60
+#
+# The walk-time cutoff itself is shared with Nearest Stations
+# (nearest_stations.discovery.MAX_WALK_MINUTES) rather than a separately
+# configured number -- issue #94 unions Nearest Stations' TfL-discovered
+# national-rail candidates into this section, and having the two features
+# disagree on what counts as "a reasonable walk" produced a confusing UX
+# (a station excluded from Nearest Stations for being an 28-30min walk
+# still showing up here) with no real justification for the two cutoffs to
+# differ. Changing MAX_WALK_MINUTES now changes both sections at once.
+COMMUTE_MAX_WALK_SECONDS = MAX_WALK_MINUTES * 60
 COMMUTE_FALLBACK_MAX_MILES = 0.5
 
 
@@ -63,4 +73,28 @@ def get_commute(listing_id: int):
                 result["walk_maps_url"] = maps_walking_url(origin_lat, origin_lon, *dest_latlong)
 
         stations.append(result)
+
+    # #94: union in national-rail candidates that #92's TfL radius search
+    # discovered but Rightmove's own nearest_stations_raw never listed --
+    # resolve_crs_codes() above structurally can't see these.
+    existing_crs = {s["crs"] for s in stations}
+    for candidate in national_rail_from_radius_candidates(listing_id, existing_crs, COMMUTE_MAX_WALK_SECONDS):
+        result = {"name": candidate["name"], "crs": candidate["crs"], "distance": candidate["distance"]}
+        try:
+            result["termini"] = fetch_station_termini(candidate["crs"])
+            result["error"] = None
+        except CommuteApiError as e:
+            result["termini"] = None
+            result["error"] = str(e)
+
+        result["walk_distance_meters"] = candidate["walk_distance_meters"]
+        result["walk_duration_seconds"] = candidate["walk_duration_seconds"]
+        result["walk_maps_url"] = None
+        if origin_lat is not None and origin_lon is not None:
+            dest_latlong = latlong_for_crs(candidate["crs"])
+            if dest_latlong is not None:
+                result["walk_maps_url"] = maps_walking_url(origin_lat, origin_lon, *dest_latlong)
+
+        stations.append(result)
+
     return {"stations": stations}
