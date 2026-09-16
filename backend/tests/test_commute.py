@@ -400,6 +400,84 @@ def test_get_commute_radius_candidate_uses_its_own_duration_not_walk_store(clien
     assert station["walk_distance_meters"] == 750
 
 
+def test_get_commute_radius_candidate_reports_termini_error_without_failing_request(client, listing_id, monkeypatch):
+    from app.commute.client import CommuteApiError
+    from app.nearest_stations.store import replace_candidates
+    from app.routes import commute as commute_route
+
+    def raise_error(crs):
+        raise CommuteApiError("boom")
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", raise_error)
+    replace_candidates(
+        listing_id,
+        [_candidate_row("Wandsworth Town Rail Station", "national-rail", 900)],
+    )
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    assert resp.status_code == 200
+    station = next(s for s in resp.json()["stations"] if s["crs"] == "WNT")
+    assert station["termini"] is None
+    assert "boom" in station["error"]
+
+
+def test_get_commute_radius_candidates_deduped_against_each_other(client, listing_id, monkeypatch):
+    # Two TfL StopPoints for the same physical station (e.g. separate rows
+    # from a hub) resolving to the same CRS must not appear twice.
+    from app.nearest_stations.store import replace_candidates
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    replace_candidates(
+        listing_id,
+        [
+            _candidate_row("Wandsworth Town Rail Station", "national-rail", 900, stop_point_id="910GWANDSTN1"),
+            _candidate_row("Wandsworth Town Rail Station", "national-rail", 950, stop_point_id="910GWANDSTN2"),
+        ],
+    )
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    stations = resp.json()["stations"]
+    assert [s["crs"] for s in stations].count("WNT") == 1
+
+
+def test_get_commute_radius_candidate_dropped_when_name_unresolvable(client, listing_id):
+    from app.nearest_stations.store import replace_candidates
+
+    replace_candidates(
+        listing_id,
+        [_candidate_row("Not A Real Rail Station", "national-rail", 900)],
+    )
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    # Only Clapham Junction (from resolve_crs_codes()) should be present.
+    assert [s["crs"] for s in resp.json()["stations"]] == ["CLJ"]
+
+
+def test_get_commute_radius_candidate_handles_null_modes_without_erroring(client, listing_id):
+    from app.nearest_stations.store import replace_candidates
+
+    replace_candidates(
+        listing_id,
+        [_candidate_row("Wandsworth Town Rail Station", "", 900)],
+    )
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    assert resp.status_code == 200
+    assert "WNT" not in {s["crs"] for s in resp.json()["stations"]}
+
+
+def test_get_commute_radius_candidate_includes_walk_maps_url_when_listing_has_latlon(client, listing_id, monkeypatch):
+    from app.nearest_stations.store import replace_candidates
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    store.apply_extracted_fields(listing_id, {"latitude": 51.4695, "longitude": -0.1706})
+    replace_candidates(
+        listing_id,
+        [_candidate_row("Wandsworth Town Rail Station", "national-rail", 900)],
+    )
+    resp = client.get(f"/api/listings/{listing_id}/commute")
+    station = next(s for s in resp.json()["stations"] if s["crs"] == "WNT")
+    assert station["walk_maps_url"].startswith("https://www.google.com/maps/dir/?api=1")
+
+
 # --- TfL API client ---------------------------------------------------
 
 @pytest.fixture(autouse=True)

@@ -2,9 +2,14 @@
 station list, against a copied `stations.csv` (National Rail only -- see
 README.md for the dataset's ODbL attribution).
 
-No network call and nothing to cache: cheap enough to redo on every listing-
-detail page load. See context.md's "Phase 2: commute-station join" for the
-design and the suffix-stripping validation against real listing data.
+resolve_crs_codes() itself makes no network call and nothing to cache:
+cheap enough to redo on every listing-detail page load. See context.md's
+"Phase 2: commute-station join" for the design and the suffix-stripping
+validation against real listing data. national_rail_from_radius_candidates()
+(issue #94) is the one exception to the no-DB-access rule -- it reads
+nearest_station_candidates (owned by app.nearest_stations, issue #92)
+directly, since it's the one caller-facing lookup that needs to resolve
+those rows' names against this module's own CRS table.
 """
 import csv
 import os
