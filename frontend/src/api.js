@@ -5,6 +5,7 @@ const DESTINATIONS_BASE = "/api/destinations";
 const JOURNEY_SCAN_POOLS_BASE = "/api/journey-scan-pools";
 const COUNCIL_TAX_BASE = "/api/council-tax";
 const FLOORPLAN_BASELINE_BASE = "/api/admin/floorplan-baseline";
+const DETAIL_SECTIONS_BASE = "/api/admin/detail-page-sections";
 
 async function requestFrom(base, path, options) {
   const res = await fetch(`${base}${path}`, {
@@ -90,5 +91,10 @@ export const api = {
     putListingTrace: (listingId, body) =>
       request(`/${listingId}/floorplan-trace`, { method: "PUT", body: JSON.stringify(body) }),
     comparison: (listingId) => request(`/${listingId}/floorplan-comparison`),
+  },
+
+  detailSections: {
+    get: () => requestFrom(DETAIL_SECTIONS_BASE, ""),
+    put: (body) => requestFrom(DETAIL_SECTIONS_BASE, "", { method: "PUT", body: JSON.stringify(body) }),
   },
 };

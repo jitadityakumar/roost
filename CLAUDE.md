@@ -487,6 +487,31 @@ table is hand-populated. No FK/CHECK constraints on the table deliberately,
 so a future rate-table tweak never needs the rebuild-and-swap dance other
 migrations in this repo have hit.
 
+**Collapsible detail-page sections, admin-configured defaults, no
+persistence (issue #93).** `ListingDetail.jsx`'s 11 sections (Details,
+Description & Key Features, Nearest stations, Floorplans, EPC, Room Sizes,
+Commute, Frequent Destinations, Mortgage, Crime, Jobs) are each wrapped in a
+shared `CollapsibleSection.jsx` component — local `expanded` state only,
+seeded once from `defaultExpanded` at mount, never persisted. The admin
+default per section lives in a singleton `detail_page_sections_config` table
+(migration `0032`, same fixed-columns-keyed-by-`id=1` shape as
+`floorplan_baseline`), served via `GET`/`PUT /api/admin/detail-page-sections`
+(`app/detail_sections/`) and edited from the new "Detail Page Sections" admin
+panel (`SectionsAdminPanel.jsx`, one whole-object `PUT`, no per-row
+auto-save). `ListingDetail.jsx` fetches the config alongside the listing/jobs
+on load and gates rendering on it resolving (`useState`'s initializer only
+runs once, so a section must not mount before its real default is known — it
+would otherwise flash open/closed). A section with no data still renders its
+header + an explicit "No data"-style placeholder when expanded
+(`CollapsibleSection`'s `hasData`/`emptyMessage` props), rather than
+disappearing like several of these sections did before this issue —
+Commute/Mortgage/Crime are the deliberate exception, since their child
+components already render a distinct message for every state internally.
+Frequent Destinations is the one section that wraps *itself*
+(`FrequentDestinations.jsx` renders its own `CollapsibleSection`) rather than
+being wrapped by `ListingDetail.jsx`, since its header owns the refresh
+action button.
+
 ## Working in this repo
 
 This is a **public** repository. Never commit real listing data, credentials,

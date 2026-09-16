@@ -12,6 +12,7 @@ import Crime from "./Crime.jsx";
 import RoomSizes from "./RoomSizes.jsx";
 import FrequentDestinations from "./FrequentDestinations.jsx";
 import Comments from "./Comments.jsx";
+import CollapsibleSection from "./CollapsibleSection.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 import { USER_STATUSES, USER_STATUS_LABEL, STATUS_COMMENT_VERB } from "../userStatus.js";
 import { getCookie, setCookie } from "../cookie.js";
@@ -75,6 +76,7 @@ export default function ListingDetail() {
   const [listing, setListing] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [media, setMedia] = useState(null);
+  const [sectionsConfig, setSectionsConfig] = useState(null);
   const [error, setError] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
@@ -86,9 +88,10 @@ export default function ListingDetail() {
 
   const load = useCallback(async () => {
     try {
-      const [l, j] = await Promise.all([api.get(id), api.jobs(id)]);
+      const [l, j, sections] = await Promise.all([api.get(id), api.jobs(id), api.detailSections.get()]);
       setListing(l);
       setJobs(j);
+      setSectionsConfig(sections);
       if (l.extraction_status === "done") {
         setMedia(await api.mediaList(id));
       }
@@ -159,7 +162,7 @@ export default function ListingDetail() {
   }
 
   if (error) return <p className="error">{error}</p>;
-  if (!listing) return <p>Loading…</p>;
+  if (!listing || !sectionsConfig) return <p>Loading…</p>;
 
   const backTo = location.state?.from || listing.user_status;
 
@@ -280,7 +283,7 @@ export default function ListingDetail() {
 
       <Comments listing={listing} onUpdate={setListing} />
 
-      <section className="fields">
+      <CollapsibleSection title="Details" className="fields" defaultExpanded={sectionsConfig.details_expanded}>
         {FIELDS.map((f) => (
           <FieldRow key={f.field} listing={listing} onSave={handleFieldSave} editMode={editMode} {...f} />
         ))}
@@ -297,92 +300,114 @@ export default function ListingDetail() {
           </span>
           <span className="field-value">{formatFetchedAt(listing)}</span>
         </div>
-      </section>
+      </CollapsibleSection>
 
-      {listing.description && (
-        <section>
-          <h3>Description</h3>
-          <div
-            className="description"
-            dangerouslySetInnerHTML={{
-              __html: DOMPurify.sanitize(listing.description, {
-                ALLOWED_TAGS: ["br", "p", "b", "strong", "i", "em", "ul", "ol", "li"],
-                ALLOWED_ATTR: [],
-              }),
-            }}
-          />
-        </section>
-      )}
+      <CollapsibleSection
+        title="Description & Key Features"
+        defaultExpanded={sectionsConfig.description_features_expanded}
+        hasData={Boolean(listing.description) || (Array.isArray(listing.key_features) && listing.key_features.length > 0)}
+        emptyMessage="No description or key features."
+      >
+        {listing.description && (
+          <div>
+            <h4>Description</h4>
+            <div
+              className="description"
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(listing.description, {
+                  ALLOWED_TAGS: ["br", "p", "b", "strong", "i", "em", "ul", "ol", "li"],
+                  ALLOWED_ATTR: [],
+                }),
+              }}
+            />
+          </div>
+        )}
 
-      {Array.isArray(listing.key_features) && listing.key_features.length > 0 && (
-        <section>
-          <h3>Key features</h3>
-          <ul className="key-features">
-            {listing.key_features.map((feature, i) => (
-              <li key={i}>{feature}</li>
-            ))}
-          </ul>
-        </section>
-      )}
+        {Array.isArray(listing.key_features) && listing.key_features.length > 0 && (
+          <div>
+            <h4>Key features</h4>
+            <ul className="key-features">
+              {listing.key_features.map((feature, i) => (
+                <li key={i}>{feature}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CollapsibleSection>
 
-      {Array.isArray(listing.nearest_stations) && listing.nearest_stations.length > 0 && (
-        <section>
-          <h3>Nearest stations</h3>
-          <NearestStations stations={listing.nearest_stations} />
-        </section>
-      )}
+      <CollapsibleSection
+        title="Nearest stations"
+        defaultExpanded={sectionsConfig.nearest_stations_expanded}
+        hasData={Array.isArray(listing.nearest_stations) && listing.nearest_stations.length > 0}
+        emptyMessage="No nearby stations found."
+      >
+        <NearestStations stations={listing.nearest_stations} />
+      </CollapsibleSection>
 
-      {media && (floorplanUrls.length > 0 || epcUrls.length > 0) && (
-        <section>
-          <h3>Media</h3>
-          {floorplanUrls.length > 0 && (
-            <div className="media-category">
-              <h4>floorplans</h4>
-              <MediaGrid images={floorplanUrls} />
-            </div>
-          )}
-          {epcUrls.length > 0 && (
-            <div className="media-category">
-              <h4>epc</h4>
-              <MediaGrid images={epcUrls} />
-            </div>
-          )}
-        </section>
-      )}
+      <CollapsibleSection
+        title="Floorplans"
+        defaultExpanded={sectionsConfig.floorplans_expanded}
+        hasData={listing.extraction_status === "done" && floorplanUrls.length > 0}
+        emptyMessage={listing.extraction_status === "done" ? "No floorplan images." : "Waiting for listing details…"}
+      >
+        <MediaGrid images={floorplanUrls} />
+      </CollapsibleSection>
 
-      {media && (
+      <CollapsibleSection
+        title="EPC"
+        defaultExpanded={sectionsConfig.epc_expanded}
+        hasData={listing.extraction_status === "done" && epcUrls.length > 0}
+        emptyMessage={listing.extraction_status === "done" ? "No EPC images." : "Waiting for listing details…"}
+      >
+        <MediaGrid images={epcUrls} />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Room Sizes"
+        defaultExpanded={sectionsConfig.room_sizes_expanded}
+        hasData={(media?.floorplans?.length ?? 0) > 0}
+        emptyMessage={
+          listing.extraction_status === "done" ? "No floorplans to measure." : "Waiting for listing details…"
+        }
+      >
         <RoomSizes
           listingId={id}
           ready={listing.extraction_status === "done"}
-          floorplanFilenames={media.floorplans}
+          floorplanFilenames={media?.floorplans ?? []}
         />
-      )}
+      </CollapsibleSection>
 
-      <section>
-        <h3>Commute</h3>
+      <CollapsibleSection title="Commute" defaultExpanded={sectionsConfig.commute_expanded}>
         <Commute listingId={id} ready={listing.extraction_status === "done"} />
-      </section>
+      </CollapsibleSection>
 
-      <section>
-        <FrequentDestinations listingId={id} ready={listing.extraction_status === "done"} />
-      </section>
+      {/* Frequent Destinations wraps itself (rather than being wrapped here like every
+          other section) since its header owns the refresh action button. */}
+      <FrequentDestinations
+        listingId={id}
+        ready={listing.extraction_status === "done"}
+        defaultExpanded={sectionsConfig.frequent_destinations_expanded}
+      />
 
-      <section>
-        <h3>Mortgage</h3>
+      <CollapsibleSection title="Mortgage" defaultExpanded={sectionsConfig.mortgage_expanded}>
         <Mortgage
           listingId={id}
           priceGbp={listing.price_gbp}
           ready={listing.extraction_status === "done"}
         />
-      </section>
+      </CollapsibleSection>
 
-      <section>
-        <h3>Crime</h3>
+      <CollapsibleSection title="Crime" defaultExpanded={sectionsConfig.crime_expanded}>
         <Crime listingId={id} ready={listing.extraction_status === "done"} />
-      </section>
+      </CollapsibleSection>
 
-      <section className="jobs-section">
-        <h3>Jobs</h3>
+      <CollapsibleSection
+        title="Jobs"
+        className="jobs-section"
+        defaultExpanded={sectionsConfig.jobs_expanded}
+        hasData={jobs.length > 0}
+        emptyMessage="No jobs yet."
+      >
         <table className="jobs-table">
           <thead>
             <tr>
@@ -405,7 +430,7 @@ export default function ListingDetail() {
             ))}
           </tbody>
         </table>
-      </section>
+      </CollapsibleSection>
     </div>
   );
 }

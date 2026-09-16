@@ -21,22 +21,27 @@ function renderWith(props) {
 }
 
 describe("RoomSizes", () => {
-  it("renders nothing when the listing has no floor plan image", () => {
-    const { container } = render(
+  // RoomSizes no longer hides itself when there's no floor plan image or
+  // extraction isn't done -- it's always mounted once rendered, and the
+  // wrapping CollapsibleSection in ListingDetail.jsx controls visibility via
+  // its own hasData/emptyMessage props instead. It just never fires its
+  // fetch effect in these states, so it's stuck on its own "Loading…" body.
+  it("doesn't fetch a comparison when the listing has no floor plan image", () => {
+    render(
       <MemoryRouter>
         <RoomSizes listingId="1" ready floorplanFilenames={[]} />
       </MemoryRouter>
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(api.floorplan.comparison).not.toHaveBeenCalled();
   });
 
-  it("renders nothing while extraction isn't done yet", () => {
-    const { container } = render(
+  it("doesn't fetch a comparison while extraction isn't done yet", () => {
+    render(
       <MemoryRouter>
         <RoomSizes listingId="1" ready={false} floorplanFilenames={["01.jpeg"]} />
       </MemoryRouter>
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(api.floorplan.comparison).not.toHaveBeenCalled();
   });
 
   it('shows "Add trace" when there is no trace yet', async () => {
