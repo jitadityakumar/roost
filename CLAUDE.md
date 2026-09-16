@@ -293,6 +293,76 @@ separate, national-rail-only integration keyed by CRS); tube/tram/DLR/
 overground stations get a walking distance/time in Nearest Stations only,
 same section boundary as before this PR.
 
+**Nearest Stations is a separate TfL-radius-search discovery pipeline, not
+the walking-distance computation above (issue #92).** Rightmove's own
+`nearest_stations_raw` only ever lists 3 stations and can omit real closer
+ones, so `app/nearest_stations/` (`discovery.py`, `store.py`, `modes.py`)
+independently calls TfL's `/StopPoint` radius search (`tfl_client.
+search_stop_points_by_radius`, 2000m, `NaptanRailStation`/
+`NaptanMetroStation` stop types — metro is what's needed to surface tram
+stops) around the listing's lat/lon, dedupes TfL's one-StopPoint-per-mode
+results into one row per physical station (`discovery._group_key`, reusing
+`tfl_client._strip_suffix` for TfL's real `"<Mode> Station"`/`"Tram Stop"`
+commonName format), and stores the full deduped set — not pre-filtered to
+`MAX_WALK_MINUTES` (25) — in `nearest_station_candidates` (migration
+`0031`). Runs inline in `handle_rightmove_extract` alongside (not instead
+of) `compute_station_walk_distances` above — that function is unchanged and
+still exclusively feeds `station_walk_distances`/Commute's
+`resolve_crs_codes()` candidate set (from `nearest_stations_raw`); this new
+pipeline is what the frontend's `NearestStations.jsx` now actually renders
+(`listing.nearest_stations`, attached by `routes/listings.py`'s
+`_attach_nearest_stations`), replacing its old `nearest_stations_raw`-based
+rendering entirely. Also callable standalone via
+`POST /{id}/walk-refresh` (same route now recomputes both pipelines).
+Displayed station names have the mode suffix stripped at **read** time
+(`store.get_nearest_stations`, via `tfl_client._strip_suffix`) so a
+suffix-stripping fix retroactively applies to already-stored rows, not just
+future discoveries.
+
+**Commute's national-rail candidate set unions in TfL-discovered stations
+too (issue #94), on top of its own `resolve_crs_codes()` scan.**
+`stations.national_rail_from_radius_candidates()` is the one exception to
+`app/commute/stations.py`'s otherwise CSV-only, no-DB-access design — it
+reads `nearest_station_candidates` (owned by `app.nearest_stations`, issue
+#92) directly, resolving each TfL-discovered candidate's commonName to a
+CRS via the same `_normalize_name`/`_NAME_TO_CRS` machinery
+`resolve_crs_codes()` uses (stripped via `tfl_client._strip_suffix`, **not**
+`stations.strip_station_suffix` — TfL's own suffix format differs from
+Rightmove's bare `"Station"`), deduped against what `resolve_crs_codes()`
+already found. Applies Commute's walk cutoff using the candidate row's own
+`duration_seconds` directly (dropped if absent, no straight-line fallback —
+unlike `resolve_crs_codes()`'s own 0.5mi raw-distance fallback, which exists
+only for stations whose walk-computation job hasn't run yet). Wired into
+`GET /api/listings/{id}/commute` (`routes/commute.py`), appended after the
+existing `resolve_crs_codes()` loop. **`COMMUTE_MAX_WALK_SECONDS` is
+derived from `nearest_stations.discovery.MAX_WALK_MINUTES` (25), not its
+own hardcoded value** — the two sections' walk-time cutoffs were
+independently configured by historical accident (Commute predates #92) and
+were showing confusingly-overlapping-but-inconsistent station sets on a
+live listing before this sync; kept deliberately separate from the
+distance-based fallback thresholds (`stations.MAX_DISTANCE_MILES` 1mi,
+`commute.py`'s `COMMUTE_FALLBACK_MAX_MILES` 0.5mi, Nearest Stations'
+`RADIUS_METERS` 2000), which serve different purposes and weren't part of
+that sync.
+
+**Manual room-shape tracing + baseline comparison (issue #89), built into
+Roost itself.** `app/floorplan/` lets the admin trace an admin-scoped
+singleton baseline (`/admin/floorplan-baseline/trace`) and each listing
+trace its own floorplan (`/listings/:id/trace`) using a shared
+`FloorplanTracer.jsx` component — draw rectangles/polygons per room,
+calibrate px-per-real-world-length per shape (each shape freezes the scale
+active when drawn, since a plan isn't drawn to one consistent scale
+throughout). Baseline/listing traces store as JSON blobs (rooms + shapes +
+the baseline image inline as a data URI — no file-upload endpoint exists in
+Roost) — a new storage convention for this codebase, unlike every other
+table here. `GET /api/listings/{id}/floorplan-comparison`
+(`app/floorplan/compare.py`, pure logic, no I/O) pairs rooms rank-by-size
+within each type (biggest vs. biggest); **Hallway/Storage is a computed
+remainder** (known internal sq ft minus traced Bedroom/Reception-Kitchen/
+Bathroom total), never traced directly, and is deliberately left unclamped
+when negative (traced rooms exceeding entered internal sq ft is a real
+data-mismatch signal, not something to hide).
+
 **Frequent-destination journeys, computed once and persisted (issue #28,
 fully moved onto TfL by issue #47) -- same "compute at scrape time, never
 live" precedent as station walking distance above.** `app/destinations/`

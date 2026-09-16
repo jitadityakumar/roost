@@ -15,9 +15,13 @@ Core (no configuration needed):
   scrapes + extracts fields, downloads photos/floorplan/EPC image.
 - Manual field editing — an edit sticks and is never overwritten by a later
   refresh/re-scrape.
-- Status tracking (in-review / active / rejected) with a comment field.
+- Status tracking (Triage / Approved / Rejected / Viewing / Contacted), with
+  a required comment + initials when entering Rejected/Viewing/Contacted.
 - Admin-defined "standards" rules (e.g. "floor area < 700 sqft") flagged
   per-listing, purely advisory.
+- Map view of the shortlist (Leaflet/OpenStreetMap), filterable by status.
+- Manual room-shape tracing per listing, compared against an admin-defined
+  baseline floor plan (room-by-room size deltas, not just total sq ft).
 
 Optional — each needs an external dependency to actually run; without it the
 feature is skipped/hidden rather than the app breaking (see
@@ -30,8 +34,10 @@ feature is skipped/hidden rather than the app breaking (see
   `london-commuter-stations` sibling service.
 - Mortgage-affordability estimate — needs a running `mortgage-calculator`
   sibling service.
-- Nearest-station walking distance/time, and "frequent destination" journey
-  times (e.g. commute to work) via TfL — needs a free TfL API key.
+- Nearest stations (discovered via a TfL radius search, not just
+  Rightmove's own list of 3), walking distance/time, and "frequent
+  destination" journey times (e.g. commute to work) via TfL — needs a free
+  TfL API key.
 - Home-vs-listing commute duration comparison — needs your home coordinates.
 - Local crime-rate comparison against baseline postcodes, and council tax
   band estimates — needs outbound internet to two free public APIs (no key).
