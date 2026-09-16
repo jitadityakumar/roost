@@ -251,20 +251,20 @@ def test_get_commute_falls_back_to_raw_distance_when_stale_row_name_mismatches(c
     assert station["walk_maps_url"] is None
 
 
-def test_get_commute_excludes_station_with_walk_over_30_minutes(client, listing_id):
+def test_get_commute_excludes_station_with_walk_over_max_walk_minutes(client, listing_id):
     from app.commute.walk_store import replace_walk_distances
 
-    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 2500, 1801)])
+    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 2200, 1501)])
     resp = client.get(f"/api/listings/{listing_id}/commute")
     assert resp.json()["stations"] == []
 
 
-def test_get_commute_includes_station_with_walk_at_exactly_30_minutes(client, listing_id, monkeypatch):
+def test_get_commute_includes_station_with_walk_at_exactly_max_walk_minutes(client, listing_id, monkeypatch):
     from app.commute.walk_store import replace_walk_distances
     from app.routes import commute as commute_route
 
     monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
-    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 2400, 1800)])
+    replace_walk_distances(listing_id, [_walk_row(0, "Clapham Junction Station", 2100, 1500)])
     resp = client.get(f"/api/listings/{listing_id}/commute")
     assert [s["crs"] for s in resp.json()["stations"]] == ["CLJ"]
 

@@ -6,6 +6,7 @@ from app.commute.stations import latlong_for_crs, national_rail_from_radius_cand
 from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.listings import store
 from app.listings.serialize import serialize_listing
+from app.nearest_stations.discovery import MAX_WALK_MINUTES
 
 router = APIRouter(prefix="/api/listings", tags=["commute"])
 
@@ -16,7 +17,16 @@ router = APIRouter(prefix="/api/listings", tags=["commute"])
 # call failed and we have no stored duration, fall back to Rightmove's raw
 # straight-line distance at the old 0.5mi cutoff (a station that far out and
 # unmeasurable isn't worth guessing about).
-COMMUTE_MAX_WALK_SECONDS = 30 * 60
+#
+# The walk-time cutoff itself is shared with Nearest Stations
+# (nearest_stations.discovery.MAX_WALK_MINUTES) rather than a separately
+# configured number -- issue #94 unions Nearest Stations' TfL-discovered
+# national-rail candidates into this section, and having the two features
+# disagree on what counts as "a reasonable walk" produced a confusing UX
+# (a station excluded from Nearest Stations for being an 28-30min walk
+# still showing up here) with no real justification for the two cutoffs to
+# differ. Changing MAX_WALK_MINUTES now changes both sections at once.
+COMMUTE_MAX_WALK_SECONDS = MAX_WALK_MINUTES * 60
 COMMUTE_FALLBACK_MAX_MILES = 0.5
 
 
