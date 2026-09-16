@@ -366,7 +366,9 @@ export default function ListingDetail() {
         title="Room Sizes"
         defaultExpanded={sectionsConfig.room_sizes_expanded}
         hasData={(media?.floorplans?.length ?? 0) > 0}
-        emptyMessage="No floorplans to measure."
+        emptyMessage={
+          listing.extraction_status === "done" ? "No floorplans to measure." : "Waiting for listing details…"
+        }
       >
         <RoomSizes
           listingId={id}
