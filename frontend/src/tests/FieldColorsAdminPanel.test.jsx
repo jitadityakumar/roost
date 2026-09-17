@@ -78,6 +78,19 @@ describe("FieldColorsAdminPanel", () => {
     expect(api.fieldColors.put).not.toHaveBeenCalledWith("lease_years_remaining", expect.anything());
   });
 
+  it("renders the crime multiplier and initial monthly payment fields as ordinary numeric rule-cards (issue #101 follow-up)", async () => {
+    api.fieldColors.list.mockResolvedValue([]);
+    render(<FieldColorsAdminPanel active={true} />);
+
+    const crimeCard = (await screen.findByText("Crime multiplier")).closest(".rule-card");
+    expect(crimeCard.querySelectorAll("input")).toHaveLength(2);
+    expect(crimeCard.querySelectorAll(".direction-toggle button")).toHaveLength(2);
+
+    const paymentCard = screen.getByText("Initial monthly payment").closest(".rule-card");
+    expect(paymentCard.querySelectorAll("input")).toHaveLength(2);
+    expect(paymentCard.querySelectorAll(".direction-toggle button")).toHaveLength(2);
+  });
+
   it("toggling direction flips the higher/lower label on the threshold rows", async () => {
     const user = userEvent.setup();
     api.fieldColors.list.mockResolvedValue([]);

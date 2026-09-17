@@ -46,6 +46,11 @@ def test_upsert_numeric_rejects_non_numeric_cutoff():
 # generic CRUD + validation for free and surfaces them in the admin panel.
 
 def test_crime_multiplier_and_initial_monthly_payment_are_valid_numeric_fields():
+    from app.field_colors.fields import field_kind
+
+    assert field_kind("crime_multiplier") == "numeric"
+    assert field_kind("initial_monthly_payment") == "numeric"
+
     rule = store.upsert_threshold("crime_multiplier", "1.0", "2.0", False)
     assert rule["field"] == "crime_multiplier"
     rule = store.upsert_threshold("initial_monthly_payment", "2000", "3000", False)
