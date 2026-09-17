@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 from app.db.connection import get_connection
@@ -41,9 +42,16 @@ def _validate(field: str, green_cutoff, red_cutoff, higher_is_better):
             normalized.append(None)
             continue
         try:
-            float(value)
+            parsed = float(value)
         except (TypeError, ValueError):
             raise ValueError(f"value {value!r} is not numeric")
+        # bare float() also accepts "nan"/"inf"/"-inf" -- a stored cutoff like
+        # that silently breaks evaluate.py's comparisons (NaN is never <=/>=
+        # anything, so the field gets stuck on "amber" forever; an Infinity
+        # cutoff is always/never hit). Not reachable via <input type=number>,
+        # but the API itself needs the guard.
+        if not math.isfinite(parsed):
+            raise ValueError(f"value {value!r} is not a finite number")
         normalized.append(str(value))
     return normalized[0], normalized[1], bool(higher_is_better)
 

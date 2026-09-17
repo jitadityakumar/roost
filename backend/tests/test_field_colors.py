@@ -68,6 +68,20 @@ def test_delete_threshold():
     assert store.list_thresholds() == []
 
 
+def test_delete_threshold_unknown_field_is_a_no_op():
+    # No row to delete either way -- DELETE on a field outside the registry
+    # (or just one with no stored row) silently succeeds rather than 404ing,
+    # same idempotent-delete precedent as standards_rules.delete_rule.
+    store.delete_threshold("not_a_field")
+    assert store.list_thresholds() == []
+
+
+@pytest.mark.parametrize("bad_value", ["nan", "inf", "-inf", "Infinity"])
+def test_upsert_numeric_rejects_non_finite_cutoff(bad_value):
+    with pytest.raises(ValueError, match="not a finite number"):
+        store.upsert_threshold("floor_area_sqft", bad_value, None, True)
+
+
 # --- evaluate: numeric ---------------------------------------------------
 
 def test_color_for_numeric_lower_is_better_green():
@@ -128,6 +142,21 @@ def test_color_for_epc_band_red():
 def test_color_for_epc_band_amber():
     rule = {"green_cutoff": "C", "red_cutoff": "E", "higher_is_better": None}
     assert color_for("epc_current", "D (58)", rule) == "amber"
+
+
+def test_color_for_epc_band_one_sided_cutoff_only_evaluates_that_side():
+    rule = {"green_cutoff": None, "red_cutoff": "E", "higher_is_better": None}
+    assert color_for("epc_current", "G (10)", rule) == "red"
+    assert color_for("epc_current", "A (95)", rule) == "amber"  # no green rule -> never green
+
+
+def test_color_for_numeric_both_cutoffs_none_is_always_amber():
+    # Reachable via a raw PUT with both cutoffs omitted (the admin panel
+    # avoids this shape by DELETEing instead) -- every value for that field
+    # is stuck on "amber" forever, never green or red.
+    rule = {"green_cutoff": None, "red_cutoff": None, "higher_is_better": True}
+    assert color_for("floor_area_sqft", 1, rule) == "amber"
+    assert color_for("floor_area_sqft", 1_000_000, rule) == "amber"
 
 
 # --- evaluate: colors_for_listing -----------------------------------------
@@ -229,3 +258,17 @@ def test_get_listing_no_field_colors_when_no_rules(client):
 
     resp = client.get("/api/listings/1")
     assert resp.json()["field_colors"] == {}
+
+
+def test_get_listing_mirrors_service_charge_pm_color_from_pa(client):
+    listings_store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    listings_store.apply_extracted_fields(1, {"service_charge_pa": 4000, "service_charge_pm": 333})
+    client.put(
+        "/api/admin/field-color-thresholds/service_charge_pa",
+        json={"green_cutoff": "2500", "red_cutoff": "4000", "higher_is_better": False},
+    )
+
+    resp = client.get("/api/listings/1")
+    colors = resp.json()["field_colors"]
+    assert colors["service_charge_pa"] == "red"
+    assert colors["service_charge_pm"] == "red"
