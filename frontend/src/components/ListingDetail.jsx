@@ -9,6 +9,7 @@ import NearestStations from "./NearestStations.jsx";
 import Commute from "./Commute.jsx";
 import Mortgage, { formatMoney, mortgageSummary } from "./Mortgage.jsx";
 import Crime, { computePropertyRatio } from "./Crime.jsx";
+import { numericColorFor } from "../fieldColorFields.js";
 import RoomSizes from "./RoomSizes.jsx";
 import FrequentDestinations from "./FrequentDestinations.jsx";
 import Comments from "./Comments.jsx";
@@ -37,7 +38,7 @@ function formatFetchedAt(listing) {
 // Details section (issue #101) -- fetched independently since Details can
 // be viewed without expanding either section. Same availability guards and
 // formatting as Crime.jsx/Mortgage.jsx; no new calculations.
-function CrimeMultiplierRow({ listingId, ready }) {
+function CrimeMultiplierRow({ listingId, ready, colorRule }) {
   const [ratio, setRatio] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -62,17 +63,29 @@ function CrimeMultiplierRow({ listingId, ready }) {
     };
   }, [listingId, ready]);
 
+  const color = ratio === null ? null : numericColorFor(ratio, colorRule);
+
   return (
     <div className="field-row">
       <span className="field-label-col">
         <span className="field-label">Crime multiplier</span>
       </span>
-      <span className="field-value">{loading ? "…" : ratio === null ? "—" : `${ratio.toFixed(1)}x`}</span>
+      <span className="field-value">
+        {loading ? (
+          "…"
+        ) : ratio === null ? (
+          "—"
+        ) : color ? (
+          <span className={`threshold-chip tc-${color}`}>{`${ratio.toFixed(1)}x`}</span>
+        ) : (
+          `${ratio.toFixed(1)}x`
+        )}
+      </span>
     </div>
   );
 }
 
-function MortgageSummaryRows({ listingId, priceGbp, ready }) {
+function MortgageSummaryRows({ listingId, priceGbp, ready, initialPaymentColorRule }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -100,13 +113,27 @@ function MortgageSummaryRows({ listingId, priceGbp, ready }) {
     };
   }, [listingId, ready, priceGbp]);
 
+  const paymentColor = summary ? numericColorFor(summary.initialPayment, initialPaymentColorRule) : null;
+
   return (
     <>
       <div className="field-row">
         <span className="field-label-col">
           <span className="field-label">Initial monthly payment</span>
         </span>
-        <span className="field-value">{loading ? "…" : summary ? formatMoney(summary.initialPayment) : "—"}</span>
+        <span className="field-value">
+          {loading ? (
+            "…"
+          ) : summary ? (
+            paymentColor ? (
+              <span className={`threshold-chip tc-${paymentColor}`}>{formatMoney(summary.initialPayment)}</span>
+            ) : (
+              formatMoney(summary.initialPayment)
+            )
+          ) : (
+            "—"
+          )}
+        </span>
       </div>
       <div className="field-row">
         <span className="field-label-col">
@@ -162,6 +189,7 @@ export default function ListingDetail() {
   const [jobs, setJobs] = useState([]);
   const [media, setMedia] = useState(null);
   const [sectionsConfig, setSectionsConfig] = useState(null);
+  const [fieldColorRules, setFieldColorRules] = useState({});
   const [error, setError] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
@@ -173,10 +201,19 @@ export default function ListingDetail() {
 
   const load = useCallback(async () => {
     try {
-      const [l, j, sections] = await Promise.all([api.get(id), api.jobs(id), api.detailSections.get()]);
+      const [l, j, sections, thresholds] = await Promise.all([
+        api.get(id),
+        api.jobs(id),
+        api.detailSections.get(),
+        api.fieldColors.list(),
+      ]);
       setListing(l);
       setJobs(j);
       setSectionsConfig(sections);
+      // Crime multiplier / initial monthly payment aren't `listings` columns,
+      // so the server's listing.field_colors never covers them -- evaluated
+      // client-side instead (see numericColorFor in fieldColorFields.js).
+      setFieldColorRules(Object.fromEntries(thresholds.map((t) => [t.field, t])));
       if (l.extraction_status === "done") {
         setMedia(await api.mediaList(id));
       }
@@ -386,8 +423,17 @@ export default function ListingDetail() {
             )}
           </span>
         </div>
-        <CrimeMultiplierRow listingId={id} ready={listing.extraction_status === "done"} />
-        <MortgageSummaryRows listingId={id} priceGbp={listing.price_gbp} ready={listing.extraction_status === "done"} />
+        <CrimeMultiplierRow
+          listingId={id}
+          ready={listing.extraction_status === "done"}
+          colorRule={fieldColorRules.crime_multiplier}
+        />
+        <MortgageSummaryRows
+          listingId={id}
+          priceGbp={listing.price_gbp}
+          ready={listing.extraction_status === "done"}
+          initialPaymentColorRule={fieldColorRules.initial_monthly_payment}
+        />
         <FieldRow listing={listing} field="listing_added_on" label="Listed on" editable={false} onSave={handleFieldSave} editMode={editMode} />
         <div className="field-row">
           <span className="field-label-col">

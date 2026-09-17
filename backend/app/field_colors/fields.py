@@ -6,7 +6,17 @@ isn't registered there (it's the new parsed column this issue adds, not a
 pre-existing standards field).
 
 chain_free is deliberately absent here: its "green on Yes" highlight is a
-hard-coded frontend conditional with no admin rule, per the issue."""
+hard-coded frontend conditional with no admin rule, per the issue.
+
+crime_multiplier and initial_monthly_payment (issue #101's Details-section
+additions) are registered here too, but unlike the fields above they're
+never columns on `listings` -- they're computed client-side from the
+Crime/Mortgage sections' own API calls, so evaluate.colors_for_listing
+(which reads off a listing dict) never produces a colour for them. The
+frontend evaluates these two against the same threshold rows itself
+(fieldColorFields.js's numericColorFor) after fetching them alongside the
+listing. Registering them here only makes them show up in the admin panel
+and validates their threshold rows through the normal store/evaluate path."""
 from app.standards.fields import FIELD_LABELS as _STANDARDS_LABELS
 
 NUMERIC_FIELDS = {
@@ -15,6 +25,8 @@ NUMERIC_FIELDS = {
     "service_charge_pa": _STANDARDS_LABELS["service_charge_pa"],
     "floor_area_sqft": _STANDARDS_LABELS["floor_area_sqft"],
     "broadband_top_speed_mbps": "Broadband top speed",
+    "crime_multiplier": "Crime multiplier",
+    "initial_monthly_payment": "Initial monthly payment",
 }
 
 # service_charge_pm is deliberately not its own colorable field -- it

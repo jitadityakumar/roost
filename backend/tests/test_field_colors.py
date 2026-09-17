@@ -39,6 +39,29 @@ def test_upsert_numeric_rejects_non_numeric_cutoff():
         store.upsert_threshold("floor_area_sqft", "not-a-number", None, True)
 
 
+# --- crime_multiplier / initial_monthly_payment (issue #101 follow-up) ----
+# These two fields are never `listings` columns -- the frontend evaluates
+# them itself (fieldColorFields.js's numericColorFor) after fetching the
+# threshold rows below. Registering them here only gets store/evaluate's
+# generic CRUD + validation for free and surfaces them in the admin panel.
+
+def test_crime_multiplier_and_initial_monthly_payment_are_valid_numeric_fields():
+    rule = store.upsert_threshold("crime_multiplier", "1.0", "2.0", False)
+    assert rule["field"] == "crime_multiplier"
+    rule = store.upsert_threshold("initial_monthly_payment", "2000", "3000", False)
+    assert rule["field"] == "initial_monthly_payment"
+
+
+def test_crime_multiplier_and_initial_monthly_payment_absent_from_listing_colors():
+    # colors_for_listing reads off a listing dict -- neither field is ever a
+    # `listings` column, so a rule for them never produces a colour here.
+    store.upsert_threshold("crime_multiplier", "1.0", "2.0", False)
+    store.upsert_threshold("initial_monthly_payment", "2000", "3000", False)
+    colors = colors_for_listing({"id": 1}, store.list_thresholds())
+    assert "crime_multiplier" not in colors
+    assert "initial_monthly_payment" not in colors
+
+
 def test_upsert_epc_band_normalizes_case():
     rule = store.upsert_threshold("epc_current", "c", "e", None)
     assert rule["green_cutoff"] == "C"

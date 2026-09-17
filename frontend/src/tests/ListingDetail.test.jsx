@@ -22,6 +22,9 @@ vi.mock("../api.js", () => ({
       getListingTrace: vi.fn(),
       putListingTrace: vi.fn(),
     },
+    fieldColors: {
+      list: vi.fn().mockResolvedValue([]),
+    },
     detailSections: {
       get: vi.fn().mockResolvedValue({
         details_expanded: true,
@@ -212,6 +215,55 @@ describe("ListingDetail crime multiplier and mortgage summary rows (issue #101)"
     const details = heading.closest(".collapsible-section");
     const paymentRow = await within(details).findByText("Initial monthly payment");
     expect(within(paymentRow.closest(".field-row")).getByText("—")).toBeInTheDocument();
+  });
+
+  it("chips the crime multiplier row using an admin-configured threshold (issue #101 follow-up)", async () => {
+    api.get.mockResolvedValue(baseListing({}));
+    api.crime.mockResolvedValue({
+      unavailable: null,
+      baselines: [
+        {
+          id: 1,
+          label: "Barnes",
+          is_reference: true,
+          comparison: { candidate_score: 15, baseline_score: 10, categories: [] },
+        },
+      ],
+    });
+    api.fieldColors.list.mockResolvedValueOnce([
+      { field: "crime_multiplier", green_cutoff: "1.0", red_cutoff: "2.0", higher_is_better: false },
+    ]);
+    renderDetail();
+
+    const heading = await screen.findByText("Details");
+    const details = heading.closest(".collapsible-section");
+    const row = within(details).getByText("Crime multiplier").closest(".field-row");
+    const chip = await within(row).findByText("1.5x");
+    expect(chip).toHaveClass("threshold-chip", "tc-amber");
+  });
+
+  it("chips the initial monthly payment row using an admin-configured threshold (issue #101 follow-up)", async () => {
+    api.get.mockResolvedValue(baseListing({ price_gbp: 500000 }));
+    api.mortgage.mockResolvedValue({
+      error: null,
+      result: {
+        monthlyPayments: [{ fromMonth: 1, payment: 2345.67, isVariable: false }],
+        payoffMonth: 301,
+        sdltPaid: 0,
+        totalInterestPaid: 0,
+        totalPaid: 0,
+      },
+    });
+    api.fieldColors.list.mockResolvedValueOnce([
+      { field: "initial_monthly_payment", green_cutoff: "2500", red_cutoff: "3000", higher_is_better: false },
+    ]);
+    renderDetail();
+
+    const heading = await screen.findByText("Details");
+    const details = heading.closest(".collapsible-section");
+    const row = within(details).getByText("Initial monthly payment").closest(".field-row");
+    const chip = await within(row).findByText("£2,346");
+    expect(chip).toHaveClass("threshold-chip", "tc-green");
   });
 });
 
