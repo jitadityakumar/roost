@@ -27,6 +27,17 @@ function relativeRatio(score, referenceScore) {
   return score / referenceScore;
 }
 
+// The property's own multiplier, same calculation as its bar in
+// CrimeBarChart below -- shared with the Details section summary row
+// (issue #101) so both display the identical figure.
+export function computePropertyRatio(baselines) {
+  const ok = baselines.filter((b) => b.comparison);
+  if (ok.length === 0) return null;
+  const reference = ok.find((b) => b.is_reference) ?? null;
+  const referenceScore = reference ? reference.comparison.baseline_score : null;
+  return referenceScore === null ? 1 : relativeRatio(ok[0].comparison.candidate_score, referenceScore);
+}
+
 function CrimeBarChart({ baselines, propertyPostcode }) {
   const ok = baselines.filter((b) => b.comparison);
   const errored = baselines.filter((b) => b.error);
@@ -45,10 +56,7 @@ function CrimeBarChart({ baselines, propertyPostcode }) {
           // (old behavior) this row's own score is always the comparator's
           // candidate, so it's never "new" against itself.
           isNew: referenceScore === null ? false : ok[0].comparison.candidate_score > 0,
-          ratio:
-            referenceScore === null
-              ? 1
-              : relativeRatio(ok[0].comparison.candidate_score, referenceScore),
+          ratio: computePropertyRatio(baselines),
           isProperty: true,
         },
         ...ok.map((b) => ({

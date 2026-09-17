@@ -7,8 +7,8 @@ import PhotoCarousel from "./PhotoCarousel.jsx";
 import MediaGrid from "./MediaGrid.jsx";
 import NearestStations from "./NearestStations.jsx";
 import Commute from "./Commute.jsx";
-import Mortgage from "./Mortgage.jsx";
-import Crime from "./Crime.jsx";
+import Mortgage, { formatMoney, mortgageSummary } from "./Mortgage.jsx";
+import Crime, { computePropertyRatio } from "./Crime.jsx";
 import RoomSizes from "./RoomSizes.jsx";
 import FrequentDestinations from "./FrequentDestinations.jsx";
 import Comments from "./Comments.jsx";
@@ -31,6 +31,91 @@ function formatFetchedAt(listing) {
   // Match listing_added_on's plain ISO-date display (FieldRow's default
   // rendering) -- date only, no time, no locale reformatting.
   return listing.rightmove_fetched_at.slice(0, 10);
+}
+
+// Copies of the Crime/Mortgage sections' own headline figures into the
+// Details section (issue #101) -- fetched independently since Details can
+// be viewed without expanding either section. Same availability guards and
+// formatting as Crime.jsx/Mortgage.jsx; no new calculations.
+function CrimeMultiplierRow({ listingId, ready }) {
+  const [ratio, setRatio] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    setLoading(true);
+    api
+      .crime(listingId)
+      .then((data) => {
+        if (cancelled) return;
+        setRatio(data.unavailable || !data.baselines?.length ? null : computePropertyRatio(data.baselines));
+      })
+      .catch(() => {
+        if (!cancelled) setRatio(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listingId, ready]);
+
+  return (
+    <div className="field-row">
+      <span className="field-label-col">
+        <span className="field-label">Crime multiplier</span>
+      </span>
+      <span className="field-value">{loading ? "…" : ratio === null ? "—" : `${ratio.toFixed(1)}x`}</span>
+    </div>
+  );
+}
+
+function MortgageSummaryRows({ listingId, priceGbp, ready }) {
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!ready || priceGbp == null) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    api
+      .mortgage(listingId)
+      .then((data) => {
+        if (cancelled) return;
+        setSummary(data.error ? null : mortgageSummary(data.result));
+      })
+      .catch(() => {
+        if (!cancelled) setSummary(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listingId, ready, priceGbp]);
+
+  return (
+    <>
+      <div className="field-row">
+        <span className="field-label-col">
+          <span className="field-label">Initial monthly payment</span>
+        </span>
+        <span className="field-value">{loading ? "…" : summary ? formatMoney(summary.initialPayment) : "—"}</span>
+      </div>
+      <div className="field-row">
+        <span className="field-label-col">
+          <span className="field-label">Time to payoff</span>
+        </span>
+        <span className="field-value">{loading ? "…" : summary ? summary.payoffLabel : "—"}</span>
+      </div>
+    </>
+  );
 }
 
 // The jobs table shows current status, not a full audit log: every Refresh
@@ -301,6 +386,8 @@ export default function ListingDetail() {
             )}
           </span>
         </div>
+        <CrimeMultiplierRow listingId={id} ready={listing.extraction_status === "done"} />
+        <MortgageSummaryRows listingId={id} priceGbp={listing.price_gbp} ready={listing.extraction_status === "done"} />
         <FieldRow listing={listing} field="listing_added_on" label="Listed on" editable={false} onSave={handleFieldSave} editMode={editMode} />
         <div className="field-row">
           <span className="field-label-col">

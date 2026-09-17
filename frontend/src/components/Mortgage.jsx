@@ -1,8 +1,23 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
-function formatMoney(v) {
+export function formatMoney(v) {
   return `£${Math.round(v).toLocaleString("en-GB")}`;
+}
+
+// Initial payment + payoff duration, same calculation this component uses
+// for its own rows -- shared with the Details section summary (issue #101)
+// so both display identical figures.
+export function mortgageSummary(result) {
+  if (!result || result.monthlyPayments.length === 0) return null;
+  const initialPayment = result.monthlyPayments[0].payment;
+  const payoffElapsed = result.payoffMonth - 1;
+  const payoffYears = Math.floor(payoffElapsed / 12);
+  const payoffMonths = payoffElapsed % 12;
+  const payoffLabel = [payoffYears > 0 ? `${payoffYears}y` : null, payoffMonths > 0 ? `${payoffMonths}m` : null]
+    .filter(Boolean)
+    .join(" ");
+  return { initialPayment, payoffLabel };
 }
 
 // mirrors mortgage-calculator's own convention: elapsed = fromMonth - 1;
@@ -60,20 +75,12 @@ export default function Mortgage({ listingId, priceGbp, ready }) {
     return <p className="error">Couldn't load mortgage estimate: no payment schedule returned.</p>;
   }
 
-  const initialPayment = result.monthlyPayments[0].payment;
-  const payoffElapsed = result.payoffMonth - 1;
-  const payoffYears = Math.floor(payoffElapsed / 12);
-  const payoffMonths = payoffElapsed % 12;
+  const { initialPayment, payoffLabel } = mortgageSummary(result);
 
   return (
     <div className="mortgage-summary">
       <Row label="Initial monthly payment" value={formatMoney(initialPayment)} accent />
-      <Row
-        label="Time to payoff"
-        value={[payoffYears > 0 ? `${payoffYears}y` : null, payoffMonths > 0 ? `${payoffMonths}m` : null]
-          .filter(Boolean)
-          .join(" ")}
-      />
+      <Row label="Time to payoff" value={payoffLabel} />
       <Row label="Stamp duty" value={formatMoney(result.sdltPaid)} />
       <Row label="Total interest paid" value={formatMoney(result.totalInterestPaid)} />
       <Row label="Total paid" value={formatMoney(result.totalPaid)} />
