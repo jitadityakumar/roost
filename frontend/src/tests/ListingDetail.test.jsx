@@ -98,6 +98,54 @@ describe("ListingDetail standards warning", () => {
   });
 });
 
+describe("ListingDetail field colour chips (issue #100)", () => {
+  it("renders a threshold chip for a colorable field with a computed colour", async () => {
+    api.get.mockResolvedValue(baseListing({ price_gbp: 500000, field_colors: { price_gbp: "green" } }));
+    renderDetail();
+
+    const chip = await screen.findByText("£500,000");
+    expect(chip).toHaveClass("threshold-chip", "tc-green");
+  });
+
+  it("renders a plain value when field_colors has no entry for the field", async () => {
+    api.get.mockResolvedValue(baseListing({ price_gbp: 500000, field_colors: {} }));
+    renderDetail();
+
+    const value = await screen.findByText("£500,000");
+    expect(value).not.toHaveClass("threshold-chip");
+  });
+
+  it("does not chip a non-colorable field even if it happens to have a matching key", async () => {
+    api.get.mockResolvedValue(baseListing({ postcode: "SW17 9QR", field_colors: { postcode: "green" } }));
+    renderDetail();
+
+    const value = await screen.findByText("SW17 9QR");
+    expect(value).not.toHaveClass("threshold-chip");
+  });
+
+  it("highlights chain_free green on Yes with no field_colors entry needed", async () => {
+    api.get.mockResolvedValue(baseListing({ chain_free: true }));
+    renderDetail();
+
+    const chainFreeLabel = await screen.findByText("Chain free");
+    const row = chainFreeLabel.closest(".field-row");
+    const chip = within(row).getByText("Yes");
+    expect(chip).toHaveClass("threshold-chip", "tc-green");
+  });
+
+  it("chips the broadband custom row using field_colors.broadband_top_speed_mbps", async () => {
+    api.get.mockResolvedValue(
+      baseListing({ broadband_top_speed: "900Mb", field_colors: { broadband_top_speed_mbps: "green" } })
+    );
+    renderDetail();
+
+    const label = await screen.findByText("Broadband top speed");
+    const row = label.closest(".field-row");
+    const chip = within(row).getByText("900 Mbps");
+    expect(chip).toHaveClass("threshold-chip", "tc-green");
+  });
+});
+
 describe("ListingDetail council tax rows", () => {
   it("renders the estimate and council name as read-only rows", async () => {
     api.get.mockResolvedValue(

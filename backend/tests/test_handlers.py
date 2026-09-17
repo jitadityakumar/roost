@@ -35,6 +35,7 @@ def test_handle_rightmove_extract_maps_fields(listing_id):
     assert listing["service_charge_pm"] == 100
     assert listing["broadband_top_speed"] == "900 Mbps"
     assert listing["broadband_top_speed_provider"] == "Testnet"
+    assert listing["broadband_top_speed_mbps"] == 900
     assert listing["extraction_status"] == "done"
     assert listing["listing_added_on"] == "2026-01-15"
     assert listing["rightmove_fetched_at"] is not None

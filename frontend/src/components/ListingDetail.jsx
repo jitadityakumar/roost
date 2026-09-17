@@ -46,23 +46,23 @@ function latestJobsByType(jobs) {
 }
 
 const FIELDS = [
-  { field: "price_gbp", label: "Price", editable: true, currency: true },
+  { field: "price_gbp", label: "Price", editable: true, currency: true, colorable: true },
   { field: "address", label: "Address", editable: true },
   { field: "postcode", label: "Postcode", editable: true },
   { field: "property_type", label: "Type", editable: true },
   { field: "bedrooms", label: "Bedrooms", editable: true },
   { field: "bathrooms", label: "Bathrooms", editable: true },
   { field: "tenure", label: "Tenure", editable: true },
-  { field: "lease_years_remaining", label: "Lease years remaining", sourceField: "lease_years_remaining_source", editable: true },
-  { field: "service_charge_pa", label: "Service charge (per yr)", sourceField: "service_charge_source", editable: true, currency: true },
-  { field: "service_charge_pm", label: "Service charge (per mo)", sourceField: "service_charge_source", editable: true, currency: true },
+  { field: "lease_years_remaining", label: "Lease years remaining", sourceField: "lease_years_remaining_source", editable: true, colorable: true },
+  { field: "service_charge_pa", label: "Service charge (per yr)", sourceField: "service_charge_source", editable: true, currency: true, colorable: true },
+  { field: "service_charge_pm", label: "Service charge (per mo)", sourceField: "service_charge_source", editable: true, currency: true, colorable: true },
   { field: "council_tax_band", label: "Council tax band", sourceField: "council_tax_band_source", editable: true },
   { field: "council_tax_monthly_est", label: "Council tax (est.)", editable: false, currency: true, suffix: "/mo" },
   { field: "admin_district", label: "Council", editable: false },
-  { field: "floor_area_sqft", label: "Floor area", sourceField: "floor_area_sqft_source", editable: true, unit: "sq ft" },
-  { field: "epc_current", label: "EPC current", sourceField: "epc_source", editable: true },
+  { field: "floor_area_sqft", label: "Floor area", sourceField: "floor_area_sqft_source", editable: true, unit: "sq ft", colorable: true },
+  { field: "epc_current", label: "EPC current", sourceField: "epc_source", editable: true, colorable: true },
   { field: "epc_potential", label: "EPC potential", sourceField: "epc_source", editable: true },
-  { field: "chain_free", label: "Chain free", sourceField: "chain_free_source", editable: true, boolean: true },
+  { field: "chain_free", label: "Chain free", sourceField: "chain_free_source", editable: true, boolean: true, highlightGreenOn: true },
   { field: "cash_only", label: "Cash buyers only", sourceField: "cash_only_source", editable: true, boolean: true },
   { field: "garden", label: "Garden", sourceField: "garden_source", editable: true, boolean: true },
   { field: "parking", label: "Parking", sourceField: "parking_source", editable: true },
@@ -291,7 +291,15 @@ export default function ListingDetail() {
           <span className="field-label-col">
             <span className="field-label">Broadband top speed</span>
           </span>
-          <span className="field-value">{formatBroadband(listing)}</span>
+          <span className="field-value">
+            {listing.field_colors?.broadband_top_speed_mbps ? (
+              <span className={`threshold-chip tc-${listing.field_colors.broadband_top_speed_mbps}`}>
+                {formatBroadband(listing)}
+              </span>
+            ) : (
+              formatBroadband(listing)
+            )}
+          </span>
         </div>
         <FieldRow listing={listing} field="listing_added_on" label="Listed on" editable={false} onSave={handleFieldSave} editMode={editMode} />
         <div className="field-row">

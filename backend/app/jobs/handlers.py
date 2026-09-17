@@ -22,6 +22,7 @@ from app.commute.tfl_client import TflApiError, compute_walk_distance, resolve_s
 from app.config import MEDIA_DIR
 from app.crime.client import lookup_postcode
 from app.destinations.compute import compute_for_listing
+from app.field_colors.broadband import parse_broadband_mbps
 from app.jobs import llm_enqueue, llm_prompts, queue
 from app.nearest_stations.discovery import compute_nearest_stations
 from app.jobs.llm_client import JOB_TYPE_MODELS, TEXT_EXTRACT_TIMEOUT_S, VISION_TIMEOUT_S
@@ -202,6 +203,7 @@ def handle_rightmove_extract(job: dict) -> None:
             fields["broadband_top_speed"] = summary.get("top_speed")
             fields["broadband_top_speed_category"] = summary.get("top_speed_category")
             fields["broadband_top_speed_provider"] = summary.get("top_speed_provider")
+            fields["broadband_top_speed_mbps"] = parse_broadband_mbps(summary.get("top_speed"))
         except Exception:
             pass  # broadband is a nice-to-have, not worth failing the job over
 

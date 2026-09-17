@@ -17,6 +17,7 @@ from app.routes import (
     destination_journeys,
     destinations,
     detail_sections,
+    field_colors,
     floorplan,
     journey_details,
     listings,
@@ -71,6 +72,7 @@ app.include_router(journey_details.router)
 app.include_router(council_tax.router)
 app.include_router(floorplan.router)
 app.include_router(detail_sections.router)
+app.include_router(field_colors.router)
 
 
 @app.get("/api/health")

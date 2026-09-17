@@ -1,0 +1,12 @@
+-- Issue #100: broadband_top_speed is free text (e.g. "900Mb") with no
+-- numeric column anywhere -- field-colour threshold evaluation needs a bare
+-- Mbps integer to compare against admin cutoffs. Parsed at write time by
+-- app/field_colors/broadband.py, same point broadband_top_speed itself is
+-- set (jobs/handlers.py). Existing listings need a one-time backfill run
+-- separately (not scripted in this repo -- same one-off docker exec
+-- precedent as the council-tax GSS backfill).
+--
+-- Plain ALTER TABLE ADD COLUMN: listings has no CHECK constraint this would
+-- violate and nothing FK-references this column, so the rebuild-and-swap
+-- dance doesn't apply here -- same reasoning as 0024/0030.
+ALTER TABLE listings ADD COLUMN broadband_top_speed_mbps INTEGER;

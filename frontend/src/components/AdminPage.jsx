@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import FieldColorsAdminPanel from "./FieldColorsAdminPanel.jsx";
 import FloorplanAdminPanel from "./FloorplanAdminPanel.jsx";
 import SectionsAdminPanel from "./SectionsAdminPanel.jsx";
 import {
@@ -424,6 +425,7 @@ const NAV_ITEMS = [
   { key: "counciltax", label: "Council tax rates" },
   { key: "floorplan", label: "Floor plan baseline" },
   { key: "sections", label: "Detail Page Sections" },
+  { key: "field-colors", label: "Field colour thresholds" },
 ];
 
 export default function AdminPage() {
@@ -932,6 +934,10 @@ export default function AdminPage() {
 
         <div className={`admin-panel ${activePanel === "sections" ? "" : "admin-panel-hidden"}`}>
           <SectionsAdminPanel active={activePanel === "sections"} />
+        </div>
+
+        <div className={`admin-panel ${activePanel === "field-colors" ? "" : "admin-panel-hidden"}`}>
+          <FieldColorsAdminPanel active={activePanel === "field-colors"} />
         </div>
       </div>
     </div>
