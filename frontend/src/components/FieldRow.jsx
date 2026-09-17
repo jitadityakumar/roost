@@ -1,11 +1,30 @@
 import { useState } from "react";
 
-export default function FieldRow({ listing, field, label, sourceField, editable, onSave, boolean, currency, unit, suffix, editMode }) {
+export default function FieldRow({
+  listing,
+  field,
+  label,
+  sourceField,
+  editable,
+  onSave,
+  boolean,
+  currency,
+  unit,
+  suffix,
+  editMode,
+  colorable,
+  highlightGreenOn,
+}) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(listing[field] ?? "");
 
   const isEdited = listing.edited_fields && field in listing.edited_fields;
   const source = sourceField ? listing[sourceField] : null;
+  // Issue #100: colorable fields get their colour from the server
+  // (listing.field_colors, computed by field_colors.evaluate against
+  // admin-configured thresholds); chain_free's "green on Yes" is a plain
+  // hard-coded highlight instead, with no admin rule behind it.
+  const color = colorable ? listing.field_colors?.[field] : highlightGreenOn && listing[field] === true ? "green" : null;
 
   function display(v) {
     if (v === null || v === undefined || v === "") return "—";
@@ -46,7 +65,7 @@ export default function FieldRow({ listing, field, label, sourceField, editable,
         </span>
       ) : (
         <span className="field-value">
-          {display(listing[field])}
+          {color ? <span className={`threshold-chip tc-${color}`}>{display(listing[field])}</span> : display(listing[field])}
           {editable && editMode && (
             <button className="edit-btn" onClick={() => setEditing(true)}>
               ✎

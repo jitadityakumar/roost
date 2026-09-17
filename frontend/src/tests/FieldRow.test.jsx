@@ -65,6 +65,64 @@ describe("FieldRow display formatting", () => {
   });
 });
 
+describe("FieldRow threshold chips (issue #100)", () => {
+  it("wraps the value in a coloured chip when colorable and field_colors has an entry", () => {
+    render(
+      <FieldRow
+        listing={makeListing({ price_gbp: 500000, field_colors: { price_gbp: "green" } })}
+        field="price_gbp"
+        label="Price"
+        currency
+        colorable
+      />
+    );
+    const chip = screen.getByText("£500,000");
+    expect(chip).toHaveClass("threshold-chip", "tc-green");
+  });
+
+  it("renders a plain value when colorable but field_colors has no entry for this field", () => {
+    render(
+      <FieldRow
+        listing={makeListing({ price_gbp: 500000, field_colors: {} })}
+        field="price_gbp"
+        label="Price"
+        currency
+        colorable
+      />
+    );
+    const value = screen.getByText("£500,000");
+    expect(value).not.toHaveClass("threshold-chip");
+  });
+
+  it("renders a plain value for a non-colorable field even when field_colors is populated", () => {
+    render(
+      <FieldRow
+        listing={makeListing({ address: "1 Test St", field_colors: { address: "green" } })}
+        field="address"
+        label="Address"
+      />
+    );
+    const value = screen.getByText("1 Test St");
+    expect(value).not.toHaveClass("threshold-chip");
+  });
+
+  it("highlights chain_free green on Yes with no admin rule involved", () => {
+    render(
+      <FieldRow listing={makeListing({ chain_free: true })} field="chain_free" label="Chain free" boolean highlightGreenOn />
+    );
+    const chip = screen.getByText("Yes");
+    expect(chip).toHaveClass("threshold-chip", "tc-green");
+  });
+
+  it("does not highlight chain_free on No", () => {
+    render(
+      <FieldRow listing={makeListing({ chain_free: false })} field="chain_free" label="Chain free" boolean highlightGreenOn />
+    );
+    const value = screen.getByText("No");
+    expect(value).not.toHaveClass("threshold-chip");
+  });
+});
+
 describe("FieldRow editing", () => {
   it("saves a numeric field as a Number when the original value was numeric", async () => {
     const onSave = vi.fn();

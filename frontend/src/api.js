@@ -6,6 +6,7 @@ const JOURNEY_SCAN_POOLS_BASE = "/api/journey-scan-pools";
 const COUNCIL_TAX_BASE = "/api/council-tax";
 const FLOORPLAN_BASELINE_BASE = "/api/admin/floorplan-baseline";
 const DETAIL_SECTIONS_BASE = "/api/admin/detail-page-sections";
+const FIELD_COLOR_THRESHOLDS_BASE = "/api/admin/field-color-thresholds";
 
 async function requestFrom(base, path, options) {
   const res = await fetch(`${base}${path}`, {
@@ -96,5 +97,12 @@ export const api = {
   detailSections: {
     get: () => requestFrom(DETAIL_SECTIONS_BASE, ""),
     put: (body) => requestFrom(DETAIL_SECTIONS_BASE, "", { method: "PUT", body: JSON.stringify(body) }),
+  },
+
+  fieldColors: {
+    list: () => requestFrom(FIELD_COLOR_THRESHOLDS_BASE, ""),
+    put: (field, body) =>
+      requestFrom(FIELD_COLOR_THRESHOLDS_BASE, `/${field}`, { method: "PUT", body: JSON.stringify(body) }),
+    remove: (field) => requestFrom(FIELD_COLOR_THRESHOLDS_BASE, `/${field}`, { method: "DELETE" }),
   },
 };

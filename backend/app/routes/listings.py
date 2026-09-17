@@ -9,6 +9,8 @@ from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.comments import store as comments_store
 from app.counciltax import store as counciltax_store
 from app.crime.client import lookup_postcode
+from app.field_colors import store as field_colors_store
+from app.field_colors.evaluate import colors_for_listing
 from app.jobs import llm_enqueue, queue
 from app.jobs.handlers import compute_nearest_stations, compute_station_walk_distances
 from app.jobs.pipeline_status import derive_pipeline_status
@@ -200,6 +202,12 @@ def get_listing(listing_id: int):
     durations = [e["walk_duration_seconds"] for e in nearest if e.get("walk_duration_seconds") is not None]
     listing["min_walk_minutes"] = round(min(durations) / 60) if durations else None
     out["standards_violations"] = evaluate_listing(listing, standards_store.list_rules())
+    # Issue #100: server-side 3-tier colour evaluation (not duplicated
+    # threshold logic in the frontend), same precedent as standards_violations
+    # above. Reads `out` (already-serialized types) rather than the raw
+    # `listing` row -- both carry the same colourable columns, but `out` is
+    # what every other computed field here is derived from.
+    out["field_colors"] = colors_for_listing(out, field_colors_store.list_thresholds())
     return out
 
 
