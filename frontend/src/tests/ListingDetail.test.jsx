@@ -146,6 +146,75 @@ describe("ListingDetail field colour chips (issue #100)", () => {
   });
 });
 
+describe("ListingDetail crime multiplier and mortgage summary rows (issue #101)", () => {
+  it("shows the property's crime ratio from the reference baseline in the Details section", async () => {
+    api.get.mockResolvedValue(baseListing({}));
+    api.crime.mockResolvedValue({
+      unavailable: null,
+      postcode: "SW17 9QR",
+      baselines: [
+        {
+          id: 1,
+          label: "Barnes",
+          postcode: "SW13 9JR",
+          is_reference: true,
+          comparison: { candidate_score: 15, baseline_score: 10, categories: [] },
+        },
+      ],
+    });
+    renderDetail();
+
+    const heading = await screen.findByText("Details");
+    const details = heading.closest(".collapsible-section");
+    const row = within(details).getByText("Crime multiplier").closest(".field-row");
+    await waitFor(() => expect(within(row).getByText("1.5x")).toBeInTheDocument());
+  });
+
+  it("shows an em dash for crime multiplier when there are no baselines to compare against", async () => {
+    api.get.mockResolvedValue(baseListing({}));
+    api.crime.mockResolvedValue({ unavailable: null, baselines: [] });
+    renderDetail();
+
+    const heading = await screen.findByText("Details");
+    const details = heading.closest(".collapsible-section");
+    const row = within(details).getByText("Crime multiplier").closest(".field-row");
+    await waitFor(() => expect(within(row).getByText("—")).toBeInTheDocument());
+  });
+
+  it("shows the mortgage summary rows from the same calculation as the Mortgage section", async () => {
+    api.get.mockResolvedValue(baseListing({ price_gbp: 500000 }));
+    api.mortgage.mockResolvedValue({
+      error: null,
+      result: {
+        monthlyPayments: [{ fromMonth: 1, payment: 2345.67, isVariable: false }],
+        payoffMonth: 301,
+        sdltPaid: 0,
+        totalInterestPaid: 0,
+        totalPaid: 0,
+      },
+    });
+    renderDetail();
+
+    const heading = await screen.findByText("Details");
+    const details = heading.closest(".collapsible-section");
+    const paymentRow = within(details).getByText("Initial monthly payment").closest(".field-row");
+    await waitFor(() => expect(within(paymentRow).getByText("£2,346")).toBeInTheDocument());
+
+    const payoffRow = within(details).getByText("Time to payoff").closest(".field-row");
+    expect(within(payoffRow).getByText("25y")).toBeInTheDocument();
+  });
+
+  it("shows an em dash for mortgage summary rows when the listing has no price", async () => {
+    api.get.mockResolvedValue(baseListing({ price_gbp: null }));
+    renderDetail();
+
+    const heading = await screen.findByText("Details");
+    const details = heading.closest(".collapsible-section");
+    const paymentRow = await within(details).findByText("Initial monthly payment");
+    expect(within(paymentRow.closest(".field-row")).getByText("—")).toBeInTheDocument();
+  });
+});
+
 describe("ListingDetail council tax rows", () => {
   it("renders the estimate and council name as read-only rows", async () => {
     api.get.mockResolvedValue(
