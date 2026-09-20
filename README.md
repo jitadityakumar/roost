@@ -41,6 +41,8 @@ feature is skipped/hidden rather than the app breaking (see
 - Home-vs-listing commute duration comparison — needs your home coordinates.
 - Local crime-rate comparison against baseline postcodes, and council tax
   band estimates — needs outbound internet to two free public APIs (no key).
+- Local politics (sitting MP, local council, council party control) — needs
+  outbound internet to two more free public APIs (no key).
 
 ## Requirements
 
@@ -64,6 +66,7 @@ variables — see `backend/app/config.py`.
 | Mortgage estimate | A running `mortgage-calculator` instance | `ROOST_MORTGAGE_API_BASE` | `GET .../mortgage` returns `{"result": null, "error": "..."}` |
 | Station walk distance + frequent destinations | A free TfL Unified API key ([register here](https://api-portal.tfl.gov.uk/)) | `TFL_API_KEY` | Per-station/journey computation is skipped and logged, not fatal; falls back to Rightmove's straight-line distance where applicable |
 | Home-vs-listing comparison | Your home's coordinates | `ROOST_HOME_LAT`, `ROOST_HOME_LON` | Comparison is simply not computed/shown |
+| Local politics (MP + council control) | None (public, keyless: `api.postcodes.io`, `members-api.parliament.uk`); council seat data is a one-off import of the Open Council Data UK CSV, not fetched by the app | — | MP/area fields stay empty (a scrape never fails); the section shows an empty state and its Refresh button retries |
 | Crime comparison + council tax band | None (public, keyless APIs: `api.postcodes.io`, `data.police.uk`) — just outbound internet access from wherever the backend runs | — | Requests to those two hosts fail; the feature errors per-listing |
 
 None of these are secrets you check into the repo — set them via `.env`

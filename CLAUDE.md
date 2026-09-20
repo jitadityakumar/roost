@@ -488,9 +488,9 @@ so a future rate-table tweak never needs the rebuild-and-swap dance other
 migrations in this repo have hit.
 
 **Collapsible detail-page sections, admin-configured defaults, no
-persistence (issue #93).** `ListingDetail.jsx`'s 11 sections (Details,
+persistence (issue #93).** `ListingDetail.jsx`'s 12 sections (Details,
 Description & Key Features, Nearest stations, Floorplans, EPC, Room Sizes,
-Commute, Frequent Destinations, Mortgage, Crime, Jobs) are each wrapped in a
+Commute, Frequent Destinations, Mortgage, Crime, Jobs, Local Politics) are each wrapped in a
 shared `CollapsibleSection.jsx` component — local `expanded` state only,
 seeded once from `defaultExpanded` at mount, never persisted. The admin
 default per section lives in a singleton `detail_page_sections_config` table
@@ -507,10 +507,33 @@ header + an explicit "No data"-style placeholder when expanded
 disappearing like several of these sections did before this issue —
 Commute/Mortgage/Crime are the deliberate exception, since their child
 components already render a distinct message for every state internally.
-Frequent Destinations is the one section that wraps *itself*
-(`FrequentDestinations.jsx` renders its own `CollapsibleSection`) rather than
-being wrapped by `ListingDetail.jsx`, since its header owns the refresh
-action button.
+Frequent Destinations (and Local Politics, below) wrap *themselves*
+(each renders its own `CollapsibleSection`) rather than being wrapped by
+`ListingDetail.jsx`, since their headers own a refresh action button.
+
+**Local Politics: MP, local council, council control (issue #61).**
+`app/localpolitics/`, migrations `0035`-`0037`. Store once, no scheduled
+refresh; the detail page reads only from the DB (the sole external request is
+the lazily loaded MP portrait, hotlinked from the Members API). Postcode
+fields (ward, parish, county, constituency + GSS codes) come from the same
+postcodes.io `lookup_postcode` call as the council (`crime/client.py`, use
+`parliamentary_constituency_2024`, not the stale un-suffixed field) and are
+derived/non-sticky like `admin_district`. The MP comes from the UK Parliament
+Members API by **exact constituency name** (it can't be queried by GSS;
+anything but exactly one current match means "not found"), stored in
+`constituency_mp` keyed by constituency GSS. Council seat counts live in
+`council_composition` keyed by council GSS, loaded once by
+`store.import_council_csv` from the Open Council Data UK CSV (previous year
+linked via the CSV's `council id`, not name) — the app never calls this or
+re-downloads the CSV; it's a manual one-off import. Control headline is
+computed from seat counts (`control.py`), never the CSV's label, and the
+"Other" bucket is never named as controlling/largest party. A Members API
+outage must never fail a scrape (`service.ensure_mp` never raises).
+`POST /api/listings/{id}/local-politics/refresh` re-runs the postcodes.io +
+MP resolve and must never wipe stored data on failure or on a response
+lacking a constituency. Party colours are Parliament's own (frontend
+`partyColors.js` + `--party-*` CSS vars, with our own dark variants); null
+colours render neutral grey.
 
 ## Working in this repo
 
