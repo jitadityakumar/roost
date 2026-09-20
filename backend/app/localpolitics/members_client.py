@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import urllib.parse
-from urllib.error import URLError
+from http.client import HTTPException
 from urllib.request import urlopen
 
 BASE = "https://members-api.parliament.uk/api"
@@ -29,7 +29,9 @@ def _get(path: str, params: dict | None = None) -> dict:
     try:
         with urlopen(url, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
             return json.loads(resp.read().decode("utf-8"))
-    except (URLError, TimeoutError, ValueError) as e:  # HTTPError is a URLError
+    # URLError/HTTPError/TimeoutError/ConnectionResetError are all OSErrors; a
+    # truncated body raises HTTPException (IncompleteRead).
+    except (OSError, HTTPException, ValueError) as e:
         raise MembersApiError(f"request failed for {url}: {e}") from e
 
 

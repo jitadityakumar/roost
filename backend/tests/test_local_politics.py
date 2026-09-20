@@ -91,6 +91,15 @@ def test_headline_exactly_half_is_not_majority():
     assert h["party"] is None  # exact tie -> no largest party named
 
 
+def test_headline_never_names_other_bucket():
+    h = control.headline(60, {**EMPTY, "other": 31, "lab": 20, "con": 9})
+    assert h == {"status": "no_overall_majority", "party": None, "seats": None, "total": 60}
+    h = control.headline(60, {**EMPTY, "other": 25, "lab": 20, "con": 15})
+    assert h["party"] is None
+    # ...but a real party still wins when it out-seats the bucket
+    assert control.headline(60, {**EMPTY, "other": 5, "lab": 40, "con": 15})["party"] == "Labour"
+
+
 def test_headline_no_overall_majority_names_largest():
     h = control.headline(70, {**EMPTY, "lab": 30, "con": 25, "ld": 15})
     assert h == {"status": "no_overall_majority", "party": "Labour", "seats": 30, "total": 70}
@@ -438,3 +447,58 @@ def test_refresh_404_and_no_postcode(client):
     assert client.post("/api/listings/999/local-politics/refresh").status_code == 404
     listings_store.create_stub_listing(1, URL)
     assert client.post("/api/listings/1/local-politics/refresh").status_code == 422
+
+
+def test_refresh_without_constituency_reports_and_keeps_stored_constituency_and_mp(client, monkeypatch):
+    from app.routes import local_politics as route
+
+    _seed_listing()
+    store.upsert_mp("E14001586", "Wimbledon", MP)
+    no_constituency = {
+        "admin_district": "Merton",
+        "admin_ward": "Abbey",
+        "parish": None,
+        "admin_county": None,
+        "parliamentary_constituency_2024": None,
+        "codes": {"admin_district": "E09000024", "admin_ward": "E05013810", "parliamentary_constituency_2024": None},
+    }
+    monkeypatch.setattr(route, "lookup_postcode", lambda postcode: no_constituency)
+
+    body = client.post("/api/listings/1/local-politics/refresh").json()
+
+    assert body["refresh"]["ok"] is False
+    assert "no constituency" in body["refresh"]["message"]
+    assert body["mp"]["name"] == "Mr Paul Kohler MP"
+    assert listings_store.get_listing(1)["constituency_gss"] == "E14001586"
+
+
+def test_scrape_retries_mp_from_stored_constituency_when_lookup_fails(client, monkeypatch):
+    listings_store.create_stub_listing(1, URL)
+    # Same postcode as the scrape's (SM1 2AB), so a failed lookup keeps stored values.
+    listings_store.apply_extracted_fields(1, {"postcode": "SM1 2AB", **service.columns_from_resolved(RESOLVED)})
+
+    def boom(postcode):
+        raise RuntimeError("postcodes.io down")
+
+    monkeypatch.setattr(handlers, "lookup_postcode", boom)
+    monkeypatch.setattr(members_client, "find_mp", lambda name: MP)
+
+    handlers.handle_rightmove_extract({"id": 1, "listing_id": 1, "skip_llm_chain": 1})
+
+    assert store.get_mp("E14001586") is not None
+
+
+def test_members_client_get_wraps_oserror_and_incomplete_read(monkeypatch):
+    from http.client import IncompleteRead
+
+    import app.localpolitics.members_client as mc
+
+    monkeypatch.undo()  # drop the autouse guard on _get
+    for exc in (ConnectionResetError("reset"), IncompleteRead(b"x")):
+
+        def boom(url, timeout=None, _exc=exc):
+            raise _exc
+
+        monkeypatch.setattr(mc, "urlopen", boom)
+        with pytest.raises(mc.MembersApiError):
+            mc._get("/x")

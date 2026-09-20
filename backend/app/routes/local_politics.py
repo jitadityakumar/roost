@@ -36,8 +36,22 @@ def refresh_local_politics(listing_id: int):
         resolved = lookup_postcode(postcode)
     except CrimeApiError as e:
         raise HTTPException(status_code=502, detail=f"postcode lookup failed: {e}")
+    cols = service.columns_from_resolved(resolved)
     if resolved is None:
         message = "postcodes.io didn't recognise this postcode"
+        ok = False
+    elif not cols["constituency_gss"] or not cols["constituency"]:
+        # Don't wipe a stored constituency/MP because this one response
+        # lacked it -- leave the constituency-derived columns alone.
+        listings_store.apply_extracted_fields(
+            listing_id,
+            {
+                "admin_district": resolved["admin_district"],
+                "admin_district_gss": resolved["codes"]["admin_district"],
+            },
+            from_scrape=False,
+        )
+        message = "postcodes.io returned no constituency for this postcode"
         ok = False
     else:
         listings_store.apply_extracted_fields(
@@ -45,16 +59,14 @@ def refresh_local_politics(listing_id: int):
             {
                 "admin_district": resolved["admin_district"],
                 "admin_district_gss": resolved["codes"]["admin_district"],
-                **service.columns_from_resolved(resolved),
+                **cols,
             },
             from_scrape=False,
         )
-        cols = service.columns_from_resolved(resolved)
         status = service.ensure_mp(cols["constituency_gss"], cols["constituency"], force=True)
-        ok = status in ("ok", "skipped")
+        ok = status == "ok"
         message = {
             "ok": None,
-            "skipped": None,
             "not_found": "couldn't identify a single MP for this constituency",
             "error": "the Parliament Members API request failed",
         }[status]

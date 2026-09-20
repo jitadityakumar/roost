@@ -251,7 +251,11 @@ def handle_rightmove_extract(job: dict) -> None:
     # Issue #61: resolve the MP on first sight of a constituency. Never
     # raises -- a Members API outage must not fail the scrape (the Refresh
     # button, or the next scrape, retries).
-    politics_service.ensure_mp(fields.get("constituency_gss"), fields.get("constituency"))
+    # Uses the stored columns (not just this scrape's `fields`) so a listing
+    # whose earlier Members API call failed is retried even when this scrape's
+    # own postcode lookup didn't run/resolve.
+    stored = store.get_listing(listing_id)
+    politics_service.ensure_mp(stored.get("constituency_gss"), stored.get("constituency"))
     store.set_extraction_status(listing_id, "done")
     store.insert_snapshot(listing_id, fields.get("price_gbp"), fields.get("rightmove_status"), prop)
 

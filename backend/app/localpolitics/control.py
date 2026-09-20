@@ -14,8 +14,13 @@ def headline(total: int, parties: dict) -> dict:
     "seats": int|None, "total": int}. For a majority, `party` holds it; for
     no overall majority, `party` is the largest party, or None on an exact
     tie for most seats."""
-    ranked = sorted(parties.items(), key=lambda kv: kv[1], reverse=True)
+    # "other" is an aggregate bucket (independents, small parties), not a
+    # party -- never named as controlling/largest. If it out-seats every real
+    # party the honest headline is "no overall majority" with nobody named.
+    ranked = sorted(((k, v) for k, v in parties.items() if k != "other"), key=lambda kv: kv[1], reverse=True)
     top_key, top_seats = ranked[0]
+    if parties.get("other", 0) > top_seats:
+        return {"status": "no_overall_majority", "party": None, "seats": None, "total": total}
     if top_seats >= majority_threshold(total):
         return {"status": "majority", "party": PARTIES[top_key], "seats": top_seats, "total": total}
     tied = len(ranked) > 1 and ranked[1][1] == top_seats
