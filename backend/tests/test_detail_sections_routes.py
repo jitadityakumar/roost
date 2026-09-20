@@ -12,6 +12,7 @@ def test_get_sections_config_seeded_defaults(client):
     assert body["room_sizes_expanded"] is False
     assert body["crime_expanded"] is False
     assert body["jobs_expanded"] is False
+    assert body["local_politics_expanded"] is False
 
 
 def test_put_sections_config_round_trips(client):

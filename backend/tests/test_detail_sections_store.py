@@ -14,6 +14,8 @@ def test_get_config_seeded_singleton_defaults(isolated_db):
     assert config["mortgage_expanded"] is True
     assert config["crime_expanded"] is False
     assert config["jobs_expanded"] is False
+    # Issue #61: collapsed by default (migration 0037 DEFAULT 0).
+    assert config["local_politics_expanded"] is False
 
 
 def test_put_config_round_trips(isolated_db):
