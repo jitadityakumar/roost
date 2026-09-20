@@ -16,6 +16,7 @@ SECTION_KEYS = [
     "mortgage",
     "crime",
     "jobs",
+    "local_politics",
 ]
 
 

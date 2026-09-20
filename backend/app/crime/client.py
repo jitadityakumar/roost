@@ -66,7 +66,8 @@ def geocode_postcode(postcode: str) -> tuple[float, float]:
 
 def lookup_postcode(postcode: str) -> dict | None:
     """Resolves a UK postcode to its council-tax billing authority
-    (admin_district) and that authority's GSS code, via postcodes.io's
+    (admin_district) and that authority's GSS code (plus ward/parish/county/
+    constituency, issue #61), via postcodes.io's
     single-postcode lookup -- the sibling of geocode_postcode above, same
     host/throttle/normalization, just reading a different part of the same
     `result` object (issue #60). Returns None for a postcode postcodes.io
@@ -78,9 +79,23 @@ def lookup_postcode(postcode: str) -> dict | None:
     result = (data or {}).get("result") if data else None
     if not result:
         return None
+    codes = result["codes"]
+    # Issue #61: the same postcodes.io result also carries the local-politics
+    # fields. .get throughout -- these are all nullable (unparished area, no
+    # county), and callers that only care about the council ignore the rest.
+    # parliamentary_constituency_2024, not the un-suffixed field, which can
+    # be stale after the 2024 boundary change.
     return {
         "admin_district": result["admin_district"],
-        "codes": {"admin_district": result["codes"]["admin_district"]},
+        "admin_ward": result.get("admin_ward"),
+        "parish": result.get("parish"),
+        "admin_county": result.get("admin_county"),
+        "parliamentary_constituency_2024": result.get("parliamentary_constituency_2024"),
+        "codes": {
+            "admin_district": codes["admin_district"],
+            "admin_ward": codes.get("admin_ward"),
+            "parliamentary_constituency_2024": codes.get("parliamentary_constituency_2024"),
+        },
     }
 
 

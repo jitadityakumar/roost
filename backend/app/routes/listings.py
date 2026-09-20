@@ -16,6 +16,7 @@ from app.jobs.handlers import compute_nearest_stations, compute_station_walk_dis
 from app.jobs.pipeline_status import derive_pipeline_status
 from app.listings import store, url_utils
 from app.listings.serialize import serialize_listing
+from app.localpolitics import service as politics_service
 from app.nearest_stations.store import get_nearest_stations
 from app.standards import store as standards_store
 from app.standards.evaluate import evaluate_listing
@@ -373,9 +374,13 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
                 {
                     "admin_district": resolved["admin_district"] if resolved else None,
                     "admin_district_gss": resolved["codes"]["admin_district"] if resolved else None,
+                    # Issue #61: same derived, non-sticky treatment.
+                    **politics_service.columns_from_resolved(resolved),
                 },
                 from_scrape=False,
             )
+            cols = politics_service.columns_from_resolved(resolved)
+            politics_service.ensure_mp(cols["constituency_gss"], cols["constituency"])
 
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 

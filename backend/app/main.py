@@ -21,6 +21,7 @@ from app.routes import (
     floorplan,
     journey_details,
     listings,
+    local_politics,
     media,
     mortgage,
     standards,
@@ -73,6 +74,7 @@ app.include_router(council_tax.router)
 app.include_router(floorplan.router)
 app.include_router(detail_sections.router)
 app.include_router(field_colors.router)
+app.include_router(local_politics.router)
 
 
 @app.get("/api/health")

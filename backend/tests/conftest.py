@@ -57,6 +57,18 @@ def isolated_db(_migrated_db_template, tmp_path, monkeypatch):
     backfill_queue.wait_until_idle(timeout=5)
 
 
+@pytest.fixture(autouse=True)
+def no_real_members_api(monkeypatch):
+    """Safety net: no test may hit the real UK Parliament Members API (issue
+    #61). Tests that exercise it patch members_client.find_mp / _get."""
+    from app.localpolitics import members_client
+
+    def _blocked(*args, **kwargs):
+        raise AssertionError("test tried to call the real Members API")
+
+    monkeypatch.setattr(members_client, "_get", _blocked)
+
+
 @pytest.fixture
 def sample_property_data():
     with open(os.path.join(FIXTURES_DIR, "sample_property_data.json")) as f:

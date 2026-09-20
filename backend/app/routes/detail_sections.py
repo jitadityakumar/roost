@@ -20,6 +20,7 @@ class DetailSectionsConfig(BaseModel):
     mortgage_expanded: bool
     crime_expanded: bool
     jobs_expanded: bool
+    local_politics_expanded: bool
 
 
 @router.get("/admin/detail-page-sections")

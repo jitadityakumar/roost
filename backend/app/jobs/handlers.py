@@ -38,6 +38,7 @@ from app.jobs.rightmove_extract import (
     summarize_broadband,
 )
 from app.listings import normalize, store
+from app.localpolitics import service as politics_service
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +234,7 @@ def handle_rightmove_extract(job: dict) -> None:
         if resolved:
             fields["admin_district"] = resolved["admin_district"]
             fields["admin_district_gss"] = resolved["codes"]["admin_district"]
+            fields.update(politics_service.columns_from_resolved(resolved))  # issue #61
         elif not postcode_is_sticky and postcode != old_postcode:
             # Postcode changed and the new one didn't resolve -- clear the
             # stale council rather than silently keeping the old (now
@@ -243,8 +245,17 @@ def handle_rightmove_extract(job: dict) -> None:
             # valid resolution).
             fields["admin_district"] = None
             fields["admin_district_gss"] = None
+            fields.update(politics_service.columns_from_resolved(None))
 
     store.apply_extracted_fields(listing_id, fields)
+    # Issue #61: resolve the MP on first sight of a constituency. Never
+    # raises -- a Members API outage must not fail the scrape (the Refresh
+    # button, or the next scrape, retries).
+    # Uses the stored columns (not just this scrape's `fields`) so a listing
+    # whose earlier Members API call failed is retried even when this scrape's
+    # own postcode lookup didn't run/resolve.
+    stored = store.get_listing(listing_id)
+    politics_service.ensure_mp(stored.get("constituency_gss"), stored.get("constituency"))
     store.set_extraction_status(listing_id, "done")
     store.insert_snapshot(listing_id, fields.get("price_gbp"), fields.get("rightmove_status"), prop)
 
