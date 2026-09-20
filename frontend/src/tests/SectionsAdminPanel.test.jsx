@@ -25,6 +25,7 @@ const CONFIG = {
   mortgage_expanded: true,
   crime_expanded: false,
   jobs_expanded: false,
+  local_politics_expanded: false,
 };
 
 describe("SectionsAdminPanel", () => {
@@ -47,7 +48,7 @@ describe("SectionsAdminPanel", () => {
     expect(commuteRow.querySelector("input[type=checkbox]").checked).toBe(true);
   });
 
-  it("Save PUTs all 11 values", async () => {
+  it("Save PUTs all 12 values", async () => {
     const user = userEvent.setup();
     api.detailSections.get.mockResolvedValue(CONFIG);
     api.detailSections.put.mockResolvedValue(CONFIG);

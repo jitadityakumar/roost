@@ -17,6 +17,8 @@ vi.mock("../api.js", () => ({
     crime: vi.fn().mockResolvedValue({ unavailable: null, baselines: [] }),
     listingDestinations: vi.fn().mockResolvedValue([]),
     refreshListingDestinations: vi.fn().mockResolvedValue([]),
+    localPolitics: vi.fn().mockResolvedValue({ mp: null, council: null, control: null, has_data: false }),
+    refreshLocalPolitics: vi.fn(),
     floorplan: {
       comparison: vi.fn(),
       getListingTrace: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock("../api.js", () => ({
         mortgage_expanded: true,
         crime_expanded: true,
         jobs_expanded: true,
+        local_politics_expanded: true,
       }),
     },
   },

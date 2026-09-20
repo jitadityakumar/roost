@@ -12,6 +12,7 @@ import Crime, { computePropertyRatio } from "./Crime.jsx";
 import { numericColorFor } from "../fieldColorFields.js";
 import RoomSizes from "./RoomSizes.jsx";
 import FrequentDestinations from "./FrequentDestinations.jsx";
+import LocalPolitics from "./LocalPolitics.jsx";
 import Comments from "./Comments.jsx";
 import CollapsibleSection from "./CollapsibleSection.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
@@ -541,6 +542,13 @@ export default function ListingDetail() {
       <CollapsibleSection title="Crime" defaultExpanded={sectionsConfig.crime_expanded}>
         <Crime listingId={id} ready={listing.extraction_status === "done"} />
       </CollapsibleSection>
+
+      {/* Wraps itself, like Frequent Destinations, since its header owns the Refresh button. */}
+      <LocalPolitics
+        listingId={id}
+        ready={listing.extraction_status === "done"}
+        defaultExpanded={sectionsConfig.local_politics_expanded}
+      />
 
       <CollapsibleSection
         title="Jobs"

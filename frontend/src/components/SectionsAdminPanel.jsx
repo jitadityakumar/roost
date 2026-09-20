@@ -13,6 +13,7 @@ const SECTIONS = [
   { key: "mortgage", label: "Mortgage" },
   { key: "crime", label: "Crime" },
   { key: "jobs", label: "Jobs" },
+  { key: "local_politics", label: "Local Politics" },
 ];
 
 export default function SectionsAdminPanel({ active }) {
