@@ -1346,8 +1346,6 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .lp-change-down { color: var(--danger); }
 .lp-change-muted { color: var(--muted); }
 .lp-source { margin: 1rem 0 0; }
-.lp-refresh { font: inherit; font-size: 0.85rem; padding: 0.2rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; background: none; color: var(--accent); cursor: pointer; }
-.lp-refresh:disabled { cursor: default; opacity: 0.6; }
 @container (max-width: 640px) {
   .lp-columns { grid-template-columns: 1fr; }
 }

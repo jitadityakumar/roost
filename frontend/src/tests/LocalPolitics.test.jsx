@@ -159,12 +159,12 @@ describe("LocalPolitics", () => {
     renderIt();
     await screen.findByText(/Nothing could be found/);
 
-    await user.click(screen.getByRole("button", { name: "Refresh" }));
-    expect(screen.getByRole("button", { name: "Refreshing…" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Refresh local politics" }));
+    expect(screen.getByRole("button", { name: "Refresh local politics" })).toBeDisabled();
 
     resolve({ ...FULL, refresh: { ok: true, message: null } });
     expect(await screen.findByText("Dame Siobhain McDonagh MP")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Refresh local politics" })).toBeEnabled();
   });
 
   it("Refresh reporting a partial failure keeps the data and shows the message", async () => {
@@ -177,7 +177,7 @@ describe("LocalPolitics", () => {
     renderIt();
     await screen.findByText("Dame Siobhain McDonagh MP");
 
-    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    await user.click(screen.getByRole("button", { name: "Refresh local politics" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Members API request failed");
     expect(screen.getByText("Dame Siobhain McDonagh MP")).toBeInTheDocument();
@@ -190,7 +190,7 @@ describe("LocalPolitics", () => {
     renderIt();
     await screen.findByText("Dame Siobhain McDonagh MP");
 
-    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    await user.click(screen.getByRole("button", { name: "Refresh local politics" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Refresh failed: 502 Bad Gateway");
     expect(screen.getByText("Dame Siobhain McDonagh MP")).toBeInTheDocument();

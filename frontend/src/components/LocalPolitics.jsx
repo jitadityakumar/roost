@@ -233,12 +233,21 @@ export default function LocalPolitics({ listingId, ready, defaultExpanded }) {
       defaultExpanded={defaultExpanded}
       actions={
         ready && (
-          <button className="lp-refresh" onClick={handleRefresh} disabled={refreshing}>
-            {refreshing ? "Refreshing…" : "Refresh"}
+          <button
+            className="icon-btn"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh local politics"
+            aria-label="Refresh local politics"
+          >
+            <span className={`spin${refreshing ? " spinning" : ""}`}>↻</span>
           </button>
         )
       }
     >
+      <p role="status" className="visually-hidden">
+        {refreshing ? "Refreshing local politics…" : ""}
+      </p>
       {refreshMessage && (
         <p role="alert" className="error">
           {refreshMessage}
