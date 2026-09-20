@@ -1292,3 +1292,62 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   .rs-room { grid-template-columns: 1fr; gap: 0.25rem; }
   .rs-stat { min-width: 130px; }
 }
+
+/* Local Politics section (issue #61). Party colours are Parliament's own
+   (see partyColors.js); dark-mode variants for Labour/Con/LD are our own
+   lightened adjustments. Kept inside the card so they aren't confused with
+   the listing-status colours. */
+:root {
+  --party-con: #0063ba;
+  --party-lab: #d50000;
+  --party-ld: #fc7d0b;
+  --party-green: #78b82a;
+  --party-ref: #12b6cf;
+  --party-snp: #fff685;
+  --party-pc: #348837;
+  --party-neutral: #909090;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --party-con: #4d9de0;
+    --party-lab: #e5484d;
+    --party-ld: #ff9a45;
+  }
+}
+.local-politics { container-type: inline-size; }
+.lp-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.lp-block { min-width: 0; }
+.lp-control { margin-top: 1.25rem; }
+.lp-label { margin: 0 0 0.5rem; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.lp-muted { color: var(--muted); font-size: 0.85rem; }
+.lp-mp { display: flex; gap: 0.75rem; align-items: center; }
+.lp-portrait { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--border); }
+.lp-portrait-fallback { display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--muted); }
+.lp-mp-name { font-weight: 600; }
+.lp-pill { display: inline-block; margin: 0.15rem 0; padding: 0.05rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
+.lp-stats { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; margin-top: 0.85rem; }
+.lp-stat-value { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lp-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; }
+.lp-facts dt { color: var(--muted); }
+.lp-facts dd { margin: 0; }
+.lp-headline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; margin-bottom: 0.6rem; }
+.lp-bar-wrap { position: relative; padding-bottom: 1.3rem; margin-bottom: 0.5rem; }
+.lp-bar { display: flex; height: 26px; border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.lp-bar-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.72rem; font-weight: 600; white-space: nowrap; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25); text-shadow: 0 0 2px rgba(0, 0, 0, 0.5); }
+.lp-majority-marker { position: absolute; top: -3px; bottom: 0; border-left: 2px dashed var(--fg); }
+.lp-majority-marker span { position: absolute; top: 100%; left: 4px; font-size: 0.72rem; color: var(--muted); white-space: nowrap; transform: translateY(-1.15rem); }
+.lp-table-wrap { overflow-x: auto; }
+.lp-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.lp-table th, .lp-table td { text-align: right; padding: 0.3rem 0.6rem; border-bottom: 1px solid var(--border); }
+.lp-table th:first-child, .lp-table td:first-child { text-align: left; white-space: nowrap; }
+.lp-table th { font-size: 0.75rem; color: var(--muted); font-weight: 600; }
+.lp-dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; margin-right: 0.5rem; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3); }
+.lp-change-up { color: var(--accent); }
+.lp-change-down { color: var(--danger); }
+.lp-change-muted { color: var(--muted); }
+.lp-source { margin: 1rem 0 0; }
+.lp-refresh { font: inherit; font-size: 0.85rem; padding: 0.2rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; background: none; color: var(--accent); cursor: pointer; }
+.lp-refresh:disabled { cursor: default; opacity: 0.6; }
+@container (max-width: 640px) {
+  .lp-columns { grid-template-columns: 1fr; }
+}

@@ -37,6 +37,8 @@ export const api = {
   commute: (id) => request(`/${id}/commute`),
   mortgage: (id) => request(`/${id}/mortgage`),
   crime: (id) => request(`/${id}/crime`),
+  localPolitics: (id) => request(`/${id}/local-politics`),
+  refreshLocalPolitics: (id) => request(`/${id}/local-politics/refresh`, { method: "POST" }),
   mediaList: (id) => request(`/${id}/media`),
   mediaUrl: (id, category, filename) => `${BASE}/${id}/media/${category}/${filename}`,
 
