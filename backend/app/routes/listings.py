@@ -102,9 +102,13 @@ def _serialize_with_pipeline_status(listing: dict) -> dict:
 def _serialize_many_with_pipeline_status(listings: list[dict]) -> list[dict]:
     statuses = queue.latest_job_statuses_for_listings([l["id"] for l in listings])
     rules = standards_store.list_rules()
+    thresholds = field_colors_store.list_thresholds()
     result = []
     for listing in listings:
         out = serialize_listing(listing)
+        # Listing cards colour floor area / EPC / lease years from the same
+        # admin thresholds as the detail page's Details section.
+        out["field_colors"] = colors_for_listing(out, thresholds)
         out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
         # Just a boolean here, not the full violation list the single-listing
         # GET returns -- the list view only needs a red-dot indicator, so

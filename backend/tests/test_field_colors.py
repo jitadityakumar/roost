@@ -300,3 +300,16 @@ def test_get_listing_mirrors_service_charge_pm_color_from_pa(client):
     colors = resp.json()["field_colors"]
     assert colors["service_charge_pa"] == "red"
     assert colors["service_charge_pm"] == "red"
+
+
+def test_list_listings_includes_field_colors(client):
+    listings_store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    listings_store.apply_extracted_fields(1, {"floor_area_sqft": 1000})
+    client.put(
+        "/api/admin/field-color-thresholds/floor_area_sqft",
+        json={"green_cutoff": "950", "red_cutoff": "750", "higher_is_better": True},
+    )
+
+    resp = client.get("/api/listings")
+    assert resp.status_code == 200
+    assert resp.json()[0]["field_colors"]["floor_area_sqft"] == "green"
