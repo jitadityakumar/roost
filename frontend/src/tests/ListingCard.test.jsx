@@ -86,3 +86,51 @@ describe("ListingCard warning indicator", () => {
     expect(document.querySelector(".warning-dot")).not.toBeInTheDocument();
   });
 });
+
+describe("ListingCard fact tags", () => {
+  it("shows floor area, EPC, chain free and lease years with threshold colours", () => {
+    renderCard(
+      makeListing({
+        floor_area_sqft: 1180,
+        epc_current: "C (71)",
+        chain_free: true,
+        lease_years_remaining: 96,
+        field_colors: { floor_area_sqft: "green", epc_current: "amber", lease_years_remaining: "red" },
+      })
+    );
+    expect(screen.getByText("1,180 sq ft")).toHaveClass("tc-green");
+    expect(screen.getByText("C (71)")).toHaveClass("tc-amber");
+    expect(screen.getByText("Chain free")).toHaveClass("tc-green");
+    expect(screen.getByText("96 years")).toHaveClass("tc-red");
+  });
+
+  it("omits tags for unknown values and for chain free unless Yes", () => {
+    renderCard(makeListing({ chain_free: false, floor_area_sqft: null, epc_current: null, lease_years_remaining: null }));
+    expect(screen.queryByText("Chain free")).not.toBeInTheDocument();
+    expect(screen.queryByText(/sq ft/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/years/)).not.toBeInTheDocument();
+  });
+
+  it("renders a tag without colour when no threshold rule applies", () => {
+    renderCard(makeListing({ floor_area_sqft: 700, field_colors: {} }));
+    expect(screen.getByText("700 sq ft")).not.toHaveClass("tc-green");
+  });
+});
+
+describe("ListingCard fact tag edge cases", () => {
+  it("still renders zero-valued floor area and lease years", () => {
+    renderCard(makeListing({ floor_area_sqft: 0, lease_years_remaining: 0 }));
+    expect(screen.getByText("0 sq ft")).toBeInTheDocument();
+    expect(screen.getByText("0 years")).toBeInTheDocument();
+  });
+
+  it("uses singular 'year' for a lease of 1", () => {
+    renderCard(makeListing({ lease_years_remaining: 1 }));
+    expect(screen.getByText("1 year")).toBeInTheDocument();
+  });
+
+  it("renders chain free green even when field_colors is absent", () => {
+    renderCard(makeListing({ chain_free: true, field_colors: undefined }));
+    expect(screen.getByText("Chain free")).toHaveClass("tc-green");
+  });
+});

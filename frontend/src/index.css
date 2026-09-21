@@ -117,6 +117,12 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .address { margin: 0.2rem 0; }
 .meta { color: var(--muted); font-size: 0.9rem; margin: 0; }
 
+.listing-facts { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.6rem; font-variant-numeric: tabular-nums; }
+.fact-tag { font-size: 0.8rem; font-weight: 500; padding: 0.1rem 0.5rem; border-radius: 4px; background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.fact-tag.tc-green { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.fact-tag.tc-amber { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.fact-tag.tc-red { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+
 .stub-card { display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem; }
 .spinner {
   width: 14px; height: 14px; margin-top: 4px;

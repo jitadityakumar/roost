@@ -300,3 +300,36 @@ def test_get_listing_mirrors_service_charge_pm_color_from_pa(client):
     colors = resp.json()["field_colors"]
     assert colors["service_charge_pa"] == "red"
     assert colors["service_charge_pm"] == "red"
+
+
+def test_list_listings_includes_field_colors(client):
+    listings_store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    listings_store.apply_extracted_fields(1, {"floor_area_sqft": 1000})
+    client.put(
+        "/api/admin/field-color-thresholds/floor_area_sqft",
+        json={"green_cutoff": "950", "red_cutoff": "750", "higher_is_better": True},
+    )
+
+    resp = client.get("/api/listings")
+    assert resp.status_code == 200
+    assert resp.json()[0]["field_colors"]["floor_area_sqft"] == "green"
+
+
+def test_list_listings_field_colors_match_detail_and_cover_epc(client):
+    listings_store.create_stub_listing(1, "https://www.rightmove.co.uk/properties/1")
+    listings_store.apply_extracted_fields(1, {"floor_area_sqft": 1000, "epc_current": "C (71)"})
+    listings_store.create_stub_listing(2, "https://www.rightmove.co.uk/properties/2")
+    client.put(
+        "/api/admin/field-color-thresholds/floor_area_sqft",
+        json={"green_cutoff": "950", "red_cutoff": "750", "higher_is_better": True},
+    )
+    client.put(
+        "/api/admin/field-color-thresholds/epc_current",
+        json={"green_cutoff": "B", "red_cutoff": "E"},
+    )
+
+    by_id = {l["id"]: l for l in client.get("/api/listings").json()}
+    assert by_id[1]["field_colors"] == client.get("/api/listings/1").json()["field_colors"]
+    assert by_id[1]["field_colors"]["epc_current"] == "amber"
+    # Listing with no values: no keys, no error.
+    assert by_id[2]["field_colors"] == {}
