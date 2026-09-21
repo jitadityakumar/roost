@@ -116,3 +116,21 @@ describe("ListingCard fact tags", () => {
     expect(screen.getByText("700 sq ft")).not.toHaveClass("tc-green");
   });
 });
+
+describe("ListingCard fact tag edge cases", () => {
+  it("still renders zero-valued floor area and lease years", () => {
+    renderCard(makeListing({ floor_area_sqft: 0, lease_years_remaining: 0 }));
+    expect(screen.getByText("0 sq ft")).toBeInTheDocument();
+    expect(screen.getByText("0 years")).toBeInTheDocument();
+  });
+
+  it("uses singular 'year' for a lease of 1", () => {
+    renderCard(makeListing({ lease_years_remaining: 1 }));
+    expect(screen.getByText("1 year")).toBeInTheDocument();
+  });
+
+  it("renders chain free green even when field_colors is absent", () => {
+    renderCard(makeListing({ chain_free: true, field_colors: undefined }));
+    expect(screen.getByText("Chain free")).toHaveClass("tc-green");
+  });
+});

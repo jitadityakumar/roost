@@ -19,7 +19,7 @@ function ListingFacts({ listing }) {
     tags.push({ key: "chain", text: "Chain free", color: "green" });
   }
   if (listing.lease_years_remaining != null) {
-    tags.push({ key: "lease", text: `${listing.lease_years_remaining} years`, color: colors.lease_years_remaining });
+    tags.push({ key: "lease", text: `${listing.lease_years_remaining} ${listing.lease_years_remaining === 1 ? "year" : "years"}`, color: colors.lease_years_remaining });
   }
   if (tags.length === 0) return null;
   return (
