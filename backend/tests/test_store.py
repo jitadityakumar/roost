@@ -138,3 +138,34 @@ def test_delete_listing_cascades_station_walk_distances_and_destination_journeys
     assert walk_store.get_walk_distances(listing_id) == {}
     assert destination_journey_store.get_journeys(listing_id) == {}
     assert destination_journey_store.get_scan_pool_ids(listing_id) == {}
+
+
+def test_delete_listing_cascades_floorplan_traces_and_nearest_station_candidates(listing_id):
+    from app.floorplan import store as floorplan_store
+    from app.nearest_stations import store as nearest_store
+
+    nearest_store.replace_candidates(
+        listing_id,
+        [
+            {
+                "stop_point_id": "910GWOKING",
+                "name": "Woking Rail Station",
+                "modes": "national-rail",
+                "lat": 51.318,
+                "lon": -0.557,
+                "distance_meters": 400,
+                "walk_distance_meters": 500,
+                "duration_seconds": 360,
+                "computed_at": "2026-09-24T00:00:00Z",
+            }
+        ],
+    )
+    floorplan_store.put_listing_trace(listing_id, "floorplans/01.jpeg", 800, 600, 10.0, [], [])
+
+    # Must not raise IntegrityError -- both tables have a non-cascading FK
+    # on listings(id).
+    store.delete_listing(listing_id)
+
+    assert store.get_listing(listing_id) is None
+    assert nearest_store.get_nearest_stations(listing_id) == []
+    assert floorplan_store.list_listing_traces(listing_id) == []

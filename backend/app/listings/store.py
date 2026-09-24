@@ -276,6 +276,10 @@ def delete_listing(listing_id: int) -> None:
         # comments (0025) is also a NOT NULL, non-cascading FK on
         # listings(id) -- same failure mode as the tables above.
         conn.execute("DELETE FROM comments WHERE listing_id = ?", (listing_id,))
+        # listing_floorplan_traces (0028-0030) and nearest_station_candidates
+        # (0031) -- same failure mode again.
+        conn.execute("DELETE FROM listing_floorplan_traces WHERE listing_id = ?", (listing_id,))
+        conn.execute("DELETE FROM nearest_station_candidates WHERE listing_id = ?", (listing_id,))
         conn.execute("DELETE FROM listings WHERE id = ?", (listing_id,))
         conn.commit()
     finally:
