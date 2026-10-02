@@ -123,13 +123,20 @@ def apply_extracted_fields(listing_id: int, fields: dict, from_scrape: bool = Tr
     conn = get_connection()
     try:
         conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute("SELECT edited_fields FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        row = conn.execute(
+            "SELECT edited_fields, epc_certificate_url FROM listings WHERE id = ?", (listing_id,)
+        ).fetchone()
         if row is None:
             conn.execute("COMMIT")
             raise ValueError(f"no listing with id {listing_id}")
 
         edited_fields = json.loads(row["edited_fields"] or "{}")
         to_write = {k: v for k, v in fields.items() if not (from_scrape and _is_sticky(k, edited_fields))}
+        if from_scrape and row["epc_certificate_url"]:
+            # Issue #115: an attached EPC certificate outranks scraped and
+            # LLM EPC values (it's written with from_scrape=False).
+            for k in ("epc_current", "epc_potential", "epc_source"):  # source too: it labels those values
+                to_write.pop(k, None)
         to_write["updated_at"] = _now_iso()
 
         set_clause = ", ".join(f"{k} = ?" for k in to_write)

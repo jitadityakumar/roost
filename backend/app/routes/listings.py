@@ -8,6 +8,8 @@ from app.commute.maps_url import maps_walking_url
 from app.commute.walk_store import get_walk_distances, lookup_walk
 from app.comments import store as comments_store
 from app.counciltax import store as counciltax_store
+from app.epc_certificate import store as epc_store
+from app.epc_certificate.url import InvalidCertificateUrlError, canonical_certificate_url
 from app.crime.client import lookup_postcode
 from app.field_colors import store as field_colors_store
 from app.field_colors.evaluate import colors_for_listing
@@ -109,6 +111,9 @@ def _serialize_many_with_pipeline_status(listings: list[dict]) -> list[dict]:
         # Listing cards colour floor area / EPC / lease years from the same
         # admin thresholds as the detail page's Details section.
         out["field_colors"] = colors_for_listing(out, thresholds)
+        # The parsed certificate (features, steps...) is detail-page only;
+        # cards just need display_address, set by serialize_listing.
+        out.pop("epc_certificate", None)
         out["pipeline_status"] = derive_pipeline_status(statuses.get(listing["id"], {}))
         # Just a boolean here, not the full violation list the single-listing
         # GET returns -- the list view only needs a red-dot indicator, so
@@ -127,6 +132,15 @@ EDITABLE_FIELDS = {
     "council_tax_band", "floor_area_sqft", "epc_current", "epc_potential",
     "chain_free", "cash_only", "garden", "parking",
 }
+
+
+# Written by the attached EPC certificate (issue #115), which outranks manual
+# values -- so they can't be hand-edited while one is attached.
+CERTIFICATE_OWNED_FIELDS = {"epc_current", "epc_potential"}
+
+
+class EpcCertificateRequest(BaseModel):
+    url: str
 
 
 class CreateListingRequest(BaseModel):
@@ -356,6 +370,12 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
         unknown = set(body.fields) - EDITABLE_FIELDS
         if unknown:
             raise HTTPException(status_code=422, detail=f"non-editable field(s): {sorted(unknown)}")
+        locked = CERTIFICATE_OWNED_FIELDS & set(body.fields)
+        if locked and listing.get("epc_certificate_url"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"{sorted(locked)} come from the attached EPC certificate -- remove it to edit them",
+            )
         store.apply_manual_edit(listing_id, body.fields)
         # postcode is EDITABLE_FIELDS (sticky once hand-edited) -- resolve
         # the council for it immediately rather than waiting for the next
@@ -386,6 +406,33 @@ def patch_listing(listing_id: int, body: PatchListingRequest):
             cols = politics_service.columns_from_resolved(resolved)
             politics_service.ensure_mp(cols["constituency_gss"], cols["constituency"])
 
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
+
+
+@router.put("/{listing_id}/epc-certificate", status_code=202)
+def put_epc_certificate(listing_id: int, body: EpcCertificateRequest):
+    """Issue #115: attach (or replace/re-fetch) a gov.uk EPC certificate URL.
+    Validated against the certificate URL pattern before anything is stored;
+    the fetch + parse runs as an http-lane job so a failure is visible via
+    pipeline_status and retried by re-PUTting the same URL. Always enqueues
+    (no has_pending_job guard): a still-running job for an older URL drops
+    its own result via save_parsed's URL-match check."""
+    if store.get_listing(listing_id) is None:
+        raise HTTPException(status_code=404, detail="listing not found")
+    try:
+        url = canonical_certificate_url(body.url)
+    except InvalidCertificateUrlError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    epc_store.set_url(listing_id, url)
+    queue.enqueue_job(listing_id, epc_store.JOB_TYPE, "http")
+    return _serialize_with_pipeline_status(store.get_listing(listing_id))
+
+
+@router.delete("/{listing_id}/epc-certificate")
+def delete_epc_certificate(listing_id: int):
+    if store.get_listing(listing_id) is None:
+        raise HTTPException(status_code=404, detail="listing not found")
+    epc_store.clear(listing_id)
     return _serialize_with_pipeline_status(store.get_listing(listing_id))
 
 

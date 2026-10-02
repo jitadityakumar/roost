@@ -535,6 +535,35 @@ lacking a constituency. Party colours are Parliament's own (frontend
 `partyColors.js` + `--party-*` CSS vars, with our own dark variants); null
 colours render neutral grey.
 
+**Manually attached EPC certificate (issue #115).** The user can paste a
+gov.uk "Find an energy certificate" URL onto a listing
+(`PUT/DELETE /api/listings/{id}/epc-certificate`). `app/epc_certificate/`:
+`url.py` is the SSRF guard (only `find-energy-certificate.service.gov.uk`
+`/energy-certificate/<5x4 digits>`; the stored/fetched URL is rebuilt from the
+number alone), `client.py` fetches (no redirects, size cap), `parser.py` is a
+pure deterministic BeautifulSoup parse anchored on the page's ids/classes
+(never reads assessor name/phone/email -- personal data, deliberately not
+stored), `store.py` persists. Fetch + parse runs as an `http`-lane
+`epc_certificate_fetch` job (so failures show via `pipeline_status` and a
+retry is re-PUTting the URL); `save_parsed` only writes if the listing's URL
+is still the one fetched. Parsed data is one JSON blob in
+`listings.epc_certificate_data` (breakdown, steps, plus extra figures stored
+for future running-cost work, #116) -- a plain column, so nothing to add to
+`delete_listing`. **A certificate outranks every other EPC source, including
+manual edits:** its ratings are written to `epc_current`/`epc_potential`
+bypassing stickiness; while the URL is set `apply_extracted_fields` drops
+scraped/LLM EPC values, `llm_enqueue.should_enqueue` skips `epc_vision`, and
+PATCH 422s edits of those two fields. `listings.epc_source` has a CHECK of
+`('rightmove','llm')` and widening it would mean rebuilding `listings`, so
+`'certificate'` is **not stored** -- `serialize_listing` reports it whenever
+parsed data is attached (and `clear()` NULLs the stored source). The API also
+exposes `display_address` (certificate address when attached, else
+Rightmove's; both are kept) and `epc_certificate.postcode_mismatch`. The
+list endpoint omits the parsed blob. Migration `0038` rebuilt `jobs` to widen
+its `job_type` CHECK (same self-referencing-FK pattern as `0017`). Tests use
+a synthetic fixture (`tests/fixtures/epc_certificate_synthetic.html`) --
+never commit a real certificate (it contains a full address).
+
 ## Working in this repo
 
 This is a **public** repository. Never commit real listing data, credentials,

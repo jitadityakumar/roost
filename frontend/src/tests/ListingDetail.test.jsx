@@ -496,3 +496,46 @@ describe("ListingDetail section collapsing", () => {
     expect(screen.getByText("No nearby stations found.")).toBeInTheDocument();
   });
 });
+
+describe("ListingDetail EPC certificate (issue #115)", () => {
+  const CERT_URL = "https://find-energy-certificate.service.gov.uk/energy-certificate/0000-0000-0000-0000-0000";
+
+  it("shows no certificate link and the Rightmove address when none is attached", async () => {
+    api.get.mockResolvedValue(baseListing({ address: "Example Road", display_address: "Example Road" }));
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { level: 2, name: "Example Road" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /EPC certificate/ })).not.toBeInTheDocument();
+  });
+
+  it("links the certificate in the header and titles the page with its full address", async () => {
+    api.get.mockResolvedValue(
+      baseListing({
+        address: "Example Road",
+        display_address: "Flat 1, 1, Example Road, TOWNSVILLE, AB1 2CD",
+        epc_certificate_url: CERT_URL,
+        epc_certificate: null,
+      })
+    );
+    renderDetail();
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Flat 1, 1, Example Road, TOWNSVILLE, AB1 2CD" })
+    ).toBeInTheDocument();
+    const links = screen.getAllByRole("link", { name: /EPC certificate/ });
+    expect(links[0]).toHaveAttribute("href", CERT_URL);
+  });
+
+  it("does not offer manual edit of EPC ratings while a certificate is attached", async () => {
+    api.get.mockResolvedValue(
+      baseListing({ epc_current: "D (62)", epc_potential: "B (84)", epc_certificate_url: CERT_URL })
+    );
+    renderDetail();
+    await userEvent.click(await screen.findByRole("button", { name: /Edit/ }));
+
+    const rowFor = (label) => screen.getByText(label).closest(".field-row");
+    expect(rowFor("EPC current").querySelector(".edit-btn")).toBeNull();
+    expect(rowFor("EPC potential").querySelector(".edit-btn")).toBeNull();
+    expect(rowFor("Bedrooms").querySelector(".edit-btn")).not.toBeNull();
+  });
+});
