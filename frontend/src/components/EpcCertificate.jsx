@@ -161,7 +161,6 @@ export default function EpcCertificate({ listing, job, onUpdate, onReload }) {
               ) : (
                 <>Valid until {formatDate(cert.valid_until)}. </>
               ))}
-            Older certificates may not reflect later improvements.
           </p>
 
           {cert.features?.length > 0 && (
