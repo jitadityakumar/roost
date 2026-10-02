@@ -10,7 +10,10 @@ first stage of it.
 """
 from __future__ import annotations
 
-_LLM_STAGE_JOB_TYPES = ("text_extract", "floor_area_vision", "epc_vision")
+# epc_certificate_fetch (issue #115) is user-triggered and independent of the
+# scrape chain, but is grouped with the llm-lane stages so a failed fetch
+# shows the same "failed" badge and an in-flight one shows "processing".
+_LLM_STAGE_JOB_TYPES = ("text_extract", "floor_area_vision", "epc_vision", "epc_certificate_fetch")
 
 _IN_FLIGHT = ("queued", "running")
 

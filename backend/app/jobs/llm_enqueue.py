@@ -28,6 +28,12 @@ def should_enqueue(listing_id: int, job_type: str) -> bool:
     listing, or if every field job_type would populate is already sticky."""
     if queue.has_pending_job(listing_id, job_type):
         return False
+    if job_type == "epc_vision":
+        # Issue #115: an attached certificate's ratings outrank the image
+        # read, so the (serial, scarce) llm lane shouldn't spend a turn on it.
+        listing = store.get_listing(listing_id)
+        if listing and listing.get("epc_certificate_url"):
+            return False
     return not store.target_fields_all_sticky(listing_id, JOB_TYPE_TARGET_FIELDS[job_type])
 
 

@@ -33,6 +33,9 @@ export const api = {
   refresh: (id) => request(`/${id}/refresh`, { method: "POST" }),
   patch: (id, body) => request(`/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   remove: (id) => request(`/${id}`, { method: "DELETE" }),
+  setEpcCertificate: (id, url) =>
+    request(`/${id}/epc-certificate`, { method: "PUT", body: JSON.stringify({ url }) }),
+  removeEpcCertificate: (id) => request(`/${id}/epc-certificate`, { method: "DELETE" }),
   jobs: (id) => request(`/${id}/jobs`),
   commute: (id) => request(`/${id}/commute`),
   mortgage: (id) => request(`/${id}/mortgage`),

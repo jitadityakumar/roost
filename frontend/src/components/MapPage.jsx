@@ -61,7 +61,7 @@ function MapPopupCard({ listing }) {
         {thumbFilename ? (
           <img
             src={api.mediaUrl(listing.id, "photos", thumbFilename)}
-            alt={listing.address ? `Photo of ${listing.address}` : "Listing photo"}
+            alt={(listing.display_address || listing.address) ? `Photo of ${listing.display_address || listing.address}` : "Listing photo"}
             loading="lazy"
             onError={() => setThumbFilename("")}
           />
@@ -77,7 +77,7 @@ function MapPopupCard({ listing }) {
       <div className="map-popup-body">
         <span className={`status-dot ${listing.user_status}`} />
         <span className="price">£{listing.price_gbp?.toLocaleString()}</span>
-        <p className="address">{listing.address}</p>
+        <p className="address">{listing.display_address || listing.address}</p>
         <p className="meta">
           {listing.bedrooms ?? "?"} bed · {listing.bathrooms ?? "?"} bath · {listing.property_type || ""}
         </p>

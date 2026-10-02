@@ -22,6 +22,7 @@ from app.commute.tfl_client import TflApiError, compute_walk_distance, resolve_s
 from app.config import MEDIA_DIR
 from app.crime.client import lookup_postcode
 from app.destinations.compute import compute_for_listing
+from app.epc_certificate import client as epc_client, parser as epc_parser, store as epc_store
 from app.field_colors.broadband import parse_broadband_mbps
 from app.jobs import llm_enqueue, llm_prompts, queue
 from app.nearest_stations.discovery import compute_nearest_stations
@@ -515,10 +516,28 @@ def handle_epc_vision(job: dict) -> None:
         store.apply_extracted_fields(listing_id, fields)
 
 
+def handle_epc_certificate_fetch(job: dict) -> None:
+    """Issue #115: fetch + parse the listing's manually attached gov.uk EPC
+    certificate. A listing whose URL was removed since enqueueing is a no-op;
+    one whose URL was replaced mid-flight is dropped by save_parsed's
+    URL-match guard (the replacement has its own job)."""
+    listing_id = job["listing_id"]
+    listing = store.get_listing(listing_id)
+    if listing is None:
+        raise RuntimeError(f"no listing row for id {listing_id}")
+    url = listing.get("epc_certificate_url")
+    if not url:
+        return
+    html = epc_client.fetch_certificate_html(url)
+    data = epc_parser.parse_certificate(html)
+    epc_store.save_parsed(listing_id, url, data)
+
+
 HANDLERS = {
     "rightmove_extract": handle_rightmove_extract,
     "media_download": handle_media_download,
     "text_extract": handle_text_extract,
     "floor_area_vision": handle_floor_area_vision,
     "epc_vision": handle_epc_vision,
+    "epc_certificate_fetch": handle_epc_certificate_fetch,
 }

@@ -15,6 +15,7 @@ import FrequentDestinations from "./FrequentDestinations.jsx";
 import LocalPolitics from "./LocalPolitics.jsx";
 import Comments from "./Comments.jsx";
 import CollapsibleSection from "./CollapsibleSection.jsx";
+import EpcCertificate from "./EpcCertificate.jsx";
 import { PIPELINE_STATUS_LABEL } from "../pipelineStatus.js";
 import { USER_STATUSES, USER_STATUS_LABEL, STATUS_COMMENT_VERB } from "../userStatus.js";
 import { getCookie, setCookie } from "../cookie.js";
@@ -157,6 +158,8 @@ function latestJobsByType(jobs) {
   for (const j of jobs) latest.set(j.job_type, j);
   return Array.from(latest.values());
 }
+
+const CERTIFICATE_OWNED_FIELDS = ["epc_current", "epc_potential"];
 
 const FIELDS = [
   { field: "price_gbp", label: "Price", editable: true, currency: true, colorable: true },
@@ -303,7 +306,7 @@ export default function ListingDetail() {
 
       <div className="detail-header">
         <div className="detail-title">
-          <h2>{listing.address || listing.url}</h2>
+          <h2>{listing.display_address || listing.address || listing.url}</h2>
           <p className="status-line">
             <span className={`status-dot ${listing.user_status}`} />
             Status: <b>{USER_STATUS_LABEL[listing.user_status] || listing.user_status}</b>
@@ -394,6 +397,14 @@ export default function ListingDetail() {
             </a>
           </>
         )}
+        {listing.epc_certificate_url && (
+          <>
+            {" · "}
+            <a href={listing.epc_certificate_url} target="_blank" rel="noreferrer">
+              EPC certificate ↗
+            </a>
+          </>
+        )}
       </p>
 
       {listing.pipeline_status && (
@@ -408,7 +419,15 @@ export default function ListingDetail() {
 
       <CollapsibleSection title="Details" className="fields" defaultExpanded={sectionsConfig.details_expanded}>
         {FIELDS.map((f) => (
-          <FieldRow key={f.field} listing={listing} onSave={handleFieldSave} editMode={editMode} {...f} />
+          <FieldRow
+            key={f.field}
+            listing={listing}
+            onSave={handleFieldSave}
+            editMode={editMode}
+            {...f}
+            // Issue #115: an attached certificate owns the EPC ratings (the API 422s edits).
+            editable={f.editable && !(listing.epc_certificate_url && CERTIFICATE_OWNED_FIELDS.includes(f.field))}
+          />
         ))}
         <div className="field-row">
           <span className="field-label-col">
@@ -498,10 +517,20 @@ export default function ListingDetail() {
       <CollapsibleSection
         title="EPC"
         defaultExpanded={sectionsConfig.epc_expanded}
-        hasData={listing.extraction_status === "done" && epcUrls.length > 0}
-        emptyMessage={listing.extraction_status === "done" ? "No EPC images." : "Waiting for listing details…"}
+        hasData={listing.extraction_status === "done"}
+        emptyMessage="Waiting for listing details…"
       >
-        <MediaGrid images={epcUrls} />
+        {epcUrls.length > 0 ? (
+          <MediaGrid images={epcUrls} />
+        ) : (
+          <p className="empty-state">No EPC images.</p>
+        )}
+        <EpcCertificate
+          listing={listing}
+          job={latestJobsByType(jobs).find((j) => j.job_type === "epc_certificate_fetch")}
+          onUpdate={setListing}
+          onReload={load}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection
