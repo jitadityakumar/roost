@@ -76,7 +76,7 @@ export default function EpcCertificate({ listing, job, onUpdate, onReload }) {
     <form className="epc-cert-form" onSubmit={attach}>
       <input
         type="url"
-        placeholder="https://find-energy-certificate.service.gov.uk/energy-certificate/…"
+        placeholder="URL"
         aria-label="EPC certificate URL"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
@@ -97,10 +97,7 @@ export default function EpcCertificate({ listing, job, onUpdate, onReload }) {
     <div className="epc-certificate">
       {!attachedUrl && (
         <>
-          <p className="meta">
-            Rightmove often only has a low-quality EPC image. Paste the certificate URL from gov.uk “Find an
-            energy certificate” to add the full address, ratings and breakdown.
-          </p>
+          <p className="meta">Attach EPC certificate</p>
           {form}
         </>
       )}
