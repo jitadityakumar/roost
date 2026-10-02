@@ -27,11 +27,19 @@ def _now_iso() -> str:
 
 def set_url(listing_id: int, url: str) -> None:
     """Attach (or replace) the certificate URL, discarding any previously
-    parsed data -- it belonged to a different certificate."""
+    parsed data -- it belonged to a different certificate. If that data had
+    supplied the ratings, their stored source label (serialize reports
+    'certificate' only while data is present) is NULLed so it can't fall back
+    to a stale llm/rightmove claim, including via a later clear()."""
     conn = get_connection()
     try:
         conn.execute(
-            "UPDATE listings SET epc_certificate_url = ?, epc_certificate_data = NULL, updated_at = ? WHERE id = ?",
+            """
+            UPDATE listings
+            SET epc_source = CASE WHEN epc_certificate_data IS NOT NULL THEN NULL ELSE epc_source END,
+                epc_certificate_url = ?, epc_certificate_data = NULL, updated_at = ?
+            WHERE id = ?
+            """,
             (url, _now_iso(), listing_id),
         )
         conn.commit()

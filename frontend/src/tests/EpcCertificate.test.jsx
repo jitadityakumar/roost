@@ -49,6 +49,19 @@ describe("EpcCertificate", () => {
     expect(api.setEpcCertificate).toHaveBeenCalledWith(1, URL);
   });
 
+  it("reloads after attach and after remove so a stale fetch job doesn't hide the new one", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    api.setEpcCertificate.mockResolvedValue({ ...base, epc_certificate_url: URL });
+    api.removeEpcCertificate.mockResolvedValue({ ...base });
+    const { onReload } = renderIt({ epc_certificate_url: URL, epc_certificate: CERT }, { job: { status: "done" } });
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+    fireEvent.change(screen.getByLabelText("EPC certificate URL"), { target: { value: URL } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Replace" }).pop());
+    await waitFor(() => expect(onReload).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(onReload).toHaveBeenCalledTimes(2));
+  });
+
   it("shows the server's validation error", async () => {
     api.setEpcCertificate.mockRejectedValue(new Error("not a certificate URL"));
     renderIt({});

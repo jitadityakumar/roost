@@ -21,7 +21,9 @@ def _attach_epc_certificate(out: dict) -> None:
             cert = None
     if cert is not None:
         listing_pc, cert_pc = _norm_postcode(out.get("postcode")), _norm_postcode(cert.get("postcode"))
-        cert["postcode_mismatch"] = bool(listing_pc and cert_pc and listing_pc != cert_pc)
+        # Only compare full postcodes (>= 5 chars: outcode + 3-char incode);
+        # a partial one like "AB1" would always look like a mismatch.
+        cert["postcode_mismatch"] = len(listing_pc) >= 5 and len(cert_pc) >= 5 and listing_pc != cert_pc
     out["epc_certificate"] = cert
     if cert is not None:
         out["epc_source"] = "certificate"  # not a stored value, see epc_certificate/store.py

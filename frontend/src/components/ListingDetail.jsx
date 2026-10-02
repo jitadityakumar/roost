@@ -410,7 +410,9 @@ export default function ListingDetail() {
       {listing.pipeline_status && (
         <p className={`pending-banner ${listing.pipeline_status === "failed" ? "failed" : ""}`}>
           {listing.pipeline_status === "failed"
-            ? `Extraction failed${listing.extraction_error ? `: ${listing.extraction_error}` : ""}`
+            ? listing.extraction_status === "done"
+              ? "A background step failed — see the Jobs section (EPC certificate errors are shown in the EPC section)."
+              : `Extraction failed${listing.extraction_error ? `: ${listing.extraction_error}` : ""}`
             : PIPELINE_STATUS_LABEL[listing.pipeline_status] || listing.pipeline_status}
         </p>
       )}

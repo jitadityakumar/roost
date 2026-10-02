@@ -341,3 +341,137 @@ def test_list_endpoint_omits_parsed_certificate_but_has_display_address(client, 
     item = client.get("/api/listings").json()[0]
     assert "epc_certificate" not in item and "epc_certificate_data" not in item
     assert item["display_address"] == "Flat 1, 1, Example Road, TOWNSVILLE, AB1 2CD"
+
+
+# --- review follow-ups ---
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://[find-energy-certificate.service.gov.uk/energy-certificate/0000-0000-0000-0000-0000",
+        "https://find-energy-certificate.service.gov.uk/energy-certificate/٠٠٠٠-0000-0000-0000-0000",
+    ],
+)
+def test_url_malformed_or_non_ascii_digits_rejected_cleanly(url):
+    with pytest.raises(InvalidCertificateUrlError):
+        canonical_certificate_url(url)
+
+
+def test_url_port_and_uppercase_host_normalised():
+    got = canonical_certificate_url(
+        "https://FIND-ENERGY-CERTIFICATE.service.gov.uk:8443/energy-certificate/0000-0000-0000-0000-0000"
+    )
+    assert got == CERT_URL
+
+
+def test_put_malformed_url_is_422_not_500(client, listing_id):
+    r = client.put(f"/api/listings/{listing_id}/epc-certificate", json={"url": "https://[bad"})
+    assert r.status_code == 422
+
+
+def test_replace_after_success_drops_certificate_source_label(client, listing_id, html, monkeypatch):
+    monkeypatch.setattr(handlers.epc_client, "fetch_certificate_html", lambda url: html)
+    client.put(f"/api/listings/{listing_id}/epc-certificate", json={"url": CERT_URL})
+    handlers.handle_epc_certificate_fetch(_job(listing_id))
+
+    other = CERT_URL.replace("0000-0000-0000-0000-0000", "1111-1111-1111-1111-1111")
+    body = client.put(f"/api/listings/{listing_id}/epc-certificate", json={"url": other}).json()
+    assert body["epc_certificate"] is None and body["epc_source"] is None
+
+    body = client.delete(f"/api/listings/{listing_id}/epc-certificate").json()
+    assert body["epc_source"] is None  # not a stale llm/rightmove claim on cert-derived ratings
+
+
+def test_pending_attach_keeps_existing_source_label(client, listing_id):
+    store.apply_extracted_fields(listing_id, {"epc_current": "C (70)", "epc_source": "llm"})
+    client.put(f"/api/listings/{listing_id}/epc-certificate", json={"url": CERT_URL})
+    assert client.get(f"/api/listings/{listing_id}").json()["epc_source"] == "llm"
+
+
+def test_postcode_mismatch_skipped_for_partial_postcode(client, listing_id, html, monkeypatch):
+    monkeypatch.setattr(handlers.epc_client, "fetch_certificate_html", lambda url: html)
+    client.put(f"/api/listings/{listing_id}/epc-certificate", json={"url": CERT_URL})
+    handlers.handle_epc_certificate_fetch(_job(listing_id))
+    store.apply_extracted_fields(listing_id, {"postcode": "ZZ9"}, from_scrape=False)
+    assert client.get(f"/api/listings/{listing_id}").json()["epc_certificate"]["postcode_mismatch"] is False
+
+
+def test_save_parsed_without_potential_rating_leaves_potential_null(listing_id, html):
+    from app.epc_certificate.parser import parse_certificate
+
+    data = parse_certificate(html)
+    data["potential_rating"] = None
+    data["potential_score"] = None
+    epc_store.set_url(listing_id, CERT_URL)
+    assert epc_store.save_parsed(listing_id, CERT_URL, data) is True
+    row = store.get_listing(listing_id)
+    assert row["epc_current"] == "D (62)" and row["epc_potential"] is None
+
+
+def test_worker_retry_path_for_parse_error(listing_id, monkeypatch):
+    monkeypatch.setattr(handlers.epc_client, "fetch_certificate_html", lambda url: "<html>Page not found</html>")
+    epc_store.set_url(listing_id, CERT_URL)
+    job_id = queue.enqueue_job(listing_id, "epc_certificate_fetch", "http")
+    job = queue.claim_next_job("http")
+    assert job["id"] == job_id
+    with pytest.raises(Exception) as exc:
+        handlers.HANDLERS[job["job_type"]](job)
+    queue.fail_job(job_id, str(exc.value))
+    row = [j for j in queue.get_jobs_for_listing(listing_id) if j["id"] == job_id][0]
+    assert row["status"] == "queued" and row["attempts"] == 1  # retried, not permanently failed yet
+
+
+def test_migration_0038_preserves_existing_jobs_rows(tmp_path, monkeypatch):
+    import shutil
+    import sqlite3
+
+    from app.db import migrate
+
+    src = migrate.MIGRATIONS_DIR
+    old_dir = tmp_path / "old"
+    old_dir.mkdir()
+    for _, name in migrate._migration_files():
+        if int(name[:4]) < 38:
+            shutil.copy(os.path.join(src, name), old_dir / name)
+
+    db = str(tmp_path / "upgrade.db")
+    monkeypatch.setenv("ROOST_DB_PATH", db)
+    monkeypatch.setattr(migrate, "MIGRATIONS_DIR", str(old_dir))
+    migrate.run_migrations()
+
+    conn = sqlite3.connect(db)
+    now = "2026-01-01T00:00:00"
+    conn.execute("INSERT INTO listings (id, url, created_at, updated_at) VALUES (1, 'u', ?, ?)", (now, now))
+    conn.execute(
+        "INSERT INTO jobs (id, listing_id, job_type, lane, status, created_at, updated_at) "
+        "VALUES (1, 1, 'rightmove_extract', 'http', 'done', ?, ?)",
+        (now, now),
+    )
+    conn.execute(
+        "INSERT INTO jobs (id, listing_id, job_type, lane, status, depends_on_job_id, attempts, last_error, "
+        "created_at, updated_at, skip_llm_chain) VALUES (2, 1, 'media_download', 'http', 'failed', 1, 3, 'boom', ?, ?, 1)",
+        (now, now),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(migrate, "MIGRATIONS_DIR", src)
+    migrate.run_migrations()
+
+    conn = sqlite3.connect(db)
+    rows = conn.execute(
+        "SELECT id, job_type, status, depends_on_job_id, attempts, last_error, skip_llm_chain FROM jobs ORDER BY id"
+    ).fetchall()
+    assert rows == [
+        (1, "rightmove_extract", "done", None, 0, None, 0),
+        (2, "media_download", "failed", 1, 3, "boom", 1),
+    ]
+    conn.execute(
+        "INSERT INTO jobs (listing_id, job_type, lane, status, created_at, updated_at) "
+        "VALUES (1, 'epc_certificate_fetch', 'http', 'queued', ?, ?)",
+        (now, now),
+    )
+    conn.execute("SELECT epc_certificate_url, epc_certificate_data FROM listings")
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] in (0, 1)
+    conn.close()

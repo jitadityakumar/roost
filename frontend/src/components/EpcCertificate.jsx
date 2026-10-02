@@ -47,6 +47,10 @@ export default function EpcCertificate({ listing, job, onUpdate, onReload }) {
       onUpdate(await api.setEpcCertificate(listing.id, url.trim()));
       setUrl("");
       setReplacing(false);
+      // onUpdate only swaps the listing; `jobs` still holds the previous
+      // fetch job (done/failed), which would hide "Fetching…" and stop
+      // polling. Reload so the new queued job is seen.
+      onReload();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -60,6 +64,7 @@ export default function EpcCertificate({ listing, job, onUpdate, onReload }) {
     setError(null);
     try {
       onUpdate(await api.removeEpcCertificate(listing.id));
+      onReload();
     } catch (err) {
       setError(err.message);
     } finally {

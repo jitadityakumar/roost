@@ -17,9 +17,6 @@
 -- Restored at the end; PRAGMA foreign_keys can't be toggled inside a
 -- transaction and this script runs outside one (executescript).
 
-ALTER TABLE listings ADD COLUMN epc_certificate_url TEXT;
-ALTER TABLE listings ADD COLUMN epc_certificate_data TEXT;
-
 PRAGMA foreign_keys=OFF;
 
 DROP TABLE IF EXISTS jobs_new;
@@ -63,3 +60,11 @@ CREATE INDEX idx_jobs_listing_id ON jobs(listing_id);
 CREATE INDEX idx_jobs_status_lane ON jobs(status, lane);
 
 PRAGMA foreign_keys=ON;
+
+-- The ALTERs go last on purpose: executescript() isn't atomic and a rerun
+-- after a crash dies on "duplicate column name" for an ALTER that already
+-- ran, whereas everything above is safe to repeat (DROP IF EXISTS jobs_new,
+-- and rebuilding an already-rebuilt jobs is harmless). That leaves the
+-- crash window at the very end of the file.
+ALTER TABLE listings ADD COLUMN epc_certificate_url TEXT;
+ALTER TABLE listings ADD COLUMN epc_certificate_data TEXT;
