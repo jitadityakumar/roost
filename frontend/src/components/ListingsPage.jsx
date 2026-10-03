@@ -6,6 +6,7 @@ import { USER_STATUS_LABEL } from "../userStatus.js";
 
 const EMPTY_STATE = {
   triage: "Nothing in triage — add a property to get started.",
+  parked: "Nothing parked.",
   approved: "No approved listings yet — approve one from triage.",
   rejected: "No rejected listings.",
 };
