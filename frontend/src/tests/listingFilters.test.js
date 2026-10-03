@@ -7,6 +7,7 @@ import {
   epcBand,
   sortListings,
   tenureKey,
+  toggleIn,
   visibleOptions,
 } from "../listingFilters.js";
 
@@ -105,5 +106,23 @@ describe("sortListings", () => {
     const d = [L(1, { created_at: "2026-01-01" }), L(2, { created_at: "2026-02-01" })];
     expect(ids(sortListings(d, "newest"))).toEqual([2, 1]);
     expect(ids(d)).toEqual([1, 2]);
+  });
+});
+
+describe("edge cases", () => {
+  it("toggleIn adds and removes", () => {
+    expect(toggleIn(["A"], "B")).toEqual(["A", "B"]);
+    expect(toggleIn(["A", "B"], "A")).toEqual(["B"]);
+  });
+  it("a vanished selection filters to nothing", () => {
+    const f = { ...EMPTY_FILTERS, tenure: ["LEASEHOLD"] };
+    expect(applyFilters([L(1, { tenure: "FREEHOLD" })], f)).toEqual([]);
+  });
+  it("selecting an EPC band excludes listings with no band", () => {
+    const f = { ...EMPTY_FILTERS, epc: ["C"] };
+    expect(applyFilters([L(1, { epc_current: null })], f)).toEqual([]);
+  });
+  it("empty-string tenure is Unknown", () => {
+    expect(tenureKey(L(1, { tenure: "" }))).toBe("UNKNOWN");
   });
 });

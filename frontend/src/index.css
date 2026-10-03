@@ -1451,7 +1451,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   background: rgba(128, 128, 128, 0.25);
   color: var(--fg);
 }
-.filter-pill {
+.controls .filter-pill, .filter-pill {
   padding: 0.25rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 999px;

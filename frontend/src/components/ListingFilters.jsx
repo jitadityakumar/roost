@@ -35,7 +35,7 @@ export function FilterPills({ filters, onChange }) {
 export function FiltersButton({ filters, onClick }) {
   const n = activeFilterCount(filters);
   return (
-    <button type="button" className="filters-btn" onClick={onClick}>
+    <button type="button" className="filters-btn" aria-haspopup="dialog" onClick={onClick}>
       Filters{n > 0 && <span className="filter-count-badge">{n}</span>}
     </button>
   );
@@ -121,7 +121,6 @@ export function FiltersDialog({ options, filters, onChange, resultCount, onClose
                   type="button"
                   className={`filter-option epc-option epc-${o.value}${filters.epc.includes(o.value) ? " selected" : ""}${o.count === 0 ? " empty" : ""}`}
                   aria-pressed={filters.epc.includes(o.value)}
-                  aria-label={`EPC band ${o.label}`}
                   onClick={() => onChange({ ...filters, epc: toggleIn(filters.epc, o.value) })}
                 >
                   {o.label}

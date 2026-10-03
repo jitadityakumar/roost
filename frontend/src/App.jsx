@@ -24,7 +24,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/add" element={<AddPage />} />
             {USER_STATUSES.map((status) => (
-              <Route key={status} path={`/${status}`} element={<ListingsPage status={status} />} />
+              <Route key={status} path={`/${status}`} element={<ListingsPage key={status} status={status} />} />
             ))}
             <Route path="/listings/:id" element={<ListingDetail />} />
             <Route path="/listings/:id/trace" element={<FloorplanTracePage />} />
