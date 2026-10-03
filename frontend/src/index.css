@@ -847,16 +847,62 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .commute-terminus-name { flex: 1; }
 .commute-also-calls-at { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
 .commute-terminus-stats { color: var(--muted); white-space: nowrap; }
-.commute-terminus-operator { color: var(--muted); font-size: 0.85rem; }
-.commute-terminus-tube-lines { display: flex; gap: 0.3rem; flex-wrap: wrap; }
-.tube-line-badge {
+.commute-terminus-badges { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.line-badge { display: inline-flex; vertical-align: middle; }
+.line-badge-lg-tile {
   display: inline-flex;
-  align-items: center;
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
+  align-items: stretch;
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.4;
+}
+.line-badge-logo { background: #f4f4f4; padding: 0.15rem 0.3rem; height: 1.4rem; width: auto; box-sizing: border-box; }
+.line-badge-name { padding: 0.1rem 0.5rem; display: inline-flex; align-items: center; }
+.line-badge-sm-tile {
+  display: none;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: default;
+}
+.line-badge-underground .line-badge-sm-tile { width: 2rem; height: 1.1rem; border-radius: 2px; }
+.line-badge-overground .line-badge-sm-tile,
+.line-badge-elizabeth .line-badge-sm-tile,
+.line-badge-dlr .line-badge-sm-tile,
+.line-badge-tram .line-badge-sm-tile { width: 2rem; height: 1.1rem; border-radius: 999px; }
+.line-badge-rail .line-badge-sm-tile { width: 1.25rem; height: 1.25rem; border-radius: 50%; }
+.line-badge-sm-tile:hover::after,
+.line-badge-sm-tile:focus::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  white-space: nowrap;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  background: #222;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.line-badge-lg .line-badge-sm-tile, .line-badge-auto .line-badge-sm-tile { display: none; }
+.line-badge-sm .line-badge-lg-tile { display: none; }
+.line-badge-sm .line-badge-sm-tile { display: inline-flex; }
+@media (max-width: 700px) {
+  .line-badge-auto .line-badge-lg-tile { display: none; }
+  .line-badge-auto .line-badge-sm-tile { display: inline-flex; }
+}
+@media (prefers-color-scheme: dark) {
+  .line-badge-lg-tile, .line-badge-sm-tile { border-color: rgba(255, 255, 255, 0.6); }
 }
 
 .mortgage-summary .field-value { font-variant-numeric: tabular-nums; }

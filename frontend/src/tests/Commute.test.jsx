@@ -7,6 +7,12 @@ vi.mock("../api.js", () => ({
   api: { commute: vi.fn() },
 }));
 
+// Deterministic regardless of whether the gitignored logo files exist.
+vi.mock("../components/networkLogos.js", () => ({
+  logoUrlForType: () => undefined,
+  walkingLogoUrl: () => undefined,
+}));
+
 describe("Commute", () => {
   it("shows a waiting message when the listing isn't ready yet", () => {
     render(<Commute listingId={1} ready={false} />);
@@ -142,6 +148,44 @@ describe("Commute", () => {
     const lightBadge = await screen.findByText("Waterloo & City");
     expect(lightBadge).toHaveStyle({ color: "#000" });
     expect(screen.getByText("Northern")).toHaveStyle({ color: "#fff" });
+  });
+
+  it("renders operators as badges, splitting a combined operators_title", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        {
+          name: "Woking",
+          crs: "WOK",
+          distance: 0.3,
+          error: null,
+          termini: {
+            peak: {
+              termini: [
+                {
+                  terminus_crs: "WAT",
+                  terminus_name: "London Waterloo",
+                  journey_time_mins: 25,
+                  journey_range: "24–28",
+                  stops_range: "1–2",
+                  trains_per_hour: 11,
+                  operators_title: "South Western Railway, Unknown Trains",
+                  tube_lines: [],
+                },
+              ],
+            },
+            offpeak: { termini: [] },
+          },
+        },
+      ],
+    });
+
+    render(<Commute listingId={1} ready={true} />);
+    expect(await screen.findByText("South Western Railway")).toHaveStyle({
+      backgroundColor: "#24398C",
+    });
+    expect(screen.getByRole("img", { name: "South Western Railway" })).toHaveTextContent("SW");
+    // unknown operator falls back to a neutral tile rather than vanishing
+    expect(screen.getByText("Unknown Trains")).toBeInTheDocument();
   });
 
   it("shows an empty state when no stations resolve", async () => {

@@ -1,20 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { formatDistance } from "./NearestStations.jsx";
+import LineBadge from "./LineBadge.jsx";
 import { formatWalkMeters, walkDurationClass } from "./walkFormat.js";
-
-// Line colors come from the API as arbitrary hex, so text color needs to be
-// picked for contrast rather than hardcoded (unlike NearestStations' fixed
-// badge palette).
-function contrastText(hexColor) {
-  if (!hexColor) return "#fff";
-  const hex = hexColor.replace("#", "");
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.6 ? "#000" : "#fff";
-}
 
 // "18–22" -> "18m-22m"
 function formatRange(range) {
@@ -24,6 +12,11 @@ function formatRange(range) {
 // "5–6" -> "5-6 stops"
 function formatStops(range) {
   return range ? `${range.replace(/[-–]/, "-")} stops` : null;
+}
+
+// "South Western Railway, Southeastern" -> ["South Western Railway", "Southeastern"]
+function operatorNames(title) {
+  return (title || "").split(", ").filter(Boolean);
 }
 
 function TerminusRow({ terminus }) {
@@ -49,18 +42,16 @@ function TerminusRow({ terminus }) {
         <span className="commute-terminus-stats">{stats.join(" · ")}</span>
       </div>
       <div className="commute-terminus-line2">
-        <span className="commute-terminus-tube-lines">
+        <span className="commute-terminus-badges">
           {(terminus.tube_lines || []).map((tl) => (
-            <span
-              key={tl.line}
-              className="tube-line-badge"
-              style={{ backgroundColor: tl.color, color: contrastText(tl.color) }}
-            >
-              {tl.line}
-            </span>
+            <LineBadge key={tl.line} name={tl.line} />
           ))}
         </span>
-        <span className="commute-terminus-operator">{terminus.operators_title}</span>
+        <span className="commute-terminus-badges">
+          {operatorNames(terminus.operators_title).map((op) => (
+            <LineBadge key={op} name={op} />
+          ))}
+        </span>
       </div>
     </li>
   );
