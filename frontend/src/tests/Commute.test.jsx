@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import Commute from "../components/Commute.jsx";
+import Commute, { mergeTermini } from "../components/Commute.jsx";
 import { api } from "../api.js";
 
 vi.mock("../api.js", () => ({
@@ -57,10 +57,10 @@ describe("Commute", () => {
     await waitFor(() => expect(screen.getByText(/Woking/)).toBeInTheDocument());
     expect(screen.getByText("(0.34 mi)")).toBeInTheDocument();
     expect(screen.getByText("London Waterloo")).toBeInTheDocument();
-    expect(screen.getByText("25m · 11/hr · 24m-28m · 1-2 stops")).toBeInTheDocument();
+    expect(screen.getByText("Peak: 25m · 11/hr · 24m-28m · 1-2 stops")).toBeInTheDocument();
     expect(screen.getByText("South Western Railway")).toBeInTheDocument();
     expect(screen.getByText("Jubilee")).toBeInTheDocument();
-    expect(screen.queryByText("Off-peak")).not.toBeInTheDocument();
+    expect(screen.getByText("No off-peak")).toBeInTheDocument();
   });
 
   it("renders each terminus with its own operator, and an also-calls-at note when present", async () => {
@@ -312,5 +312,71 @@ describe("Commute", () => {
     await waitFor(() => expect(screen.getByText(/Clapham Junction/)).toBeInTheDocument());
     expect(screen.getByText("(0.40 mi)")).toBeInTheDocument();
     expect(screen.queryByText(/min walk/)).not.toBeInTheDocument();
+  });
+});
+
+const T = (crs, name, extra = {}) => ({
+  terminus_crs: crs,
+  terminus_name: name,
+  journey_time_mins: 20,
+  journey_range: "19–21",
+  stops_range: "1–2",
+  trains_per_hour: 4,
+  operators_title: "Southern",
+  tube_lines: [],
+  ...extra,
+});
+
+describe("mergeTermini", () => {
+  it("pairs by terminus code, follows peak order, and appends off-peak-only termini", () => {
+    const rows = mergeTermini({
+      peak: { termini: [T("VIC", "London Victoria"), T("LBG", "London Bridge")] },
+      offpeak: { termini: [T("LBG", "London Bridge"), T("VIC", "London Victoria"), T("BFR", "London Blackfriars")] },
+    });
+    expect(rows.map((r) => (r.peak ?? r.offpeak).terminus_crs)).toEqual(["VIC", "LBG", "BFR"]);
+    expect(rows[0].offpeak.terminus_crs).toBe("VIC");
+    expect(rows[2].peak).toBeNull();
+  });
+
+  it("marks a peak-only terminus (and a station with no off-peak list at all)", () => {
+    const rows = mergeTermini({ peak: { termini: [T("LBG", "London Bridge")] }, offpeak: { termini: [] } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].offpeak).toBeNull();
+    expect(mergeTermini({ peak: { termini: [T("LBG", "x")] } })[0].offpeak).toBeNull();
+    expect(mergeTermini(undefined)).toEqual([]);
+  });
+});
+
+describe("Commute merged rows", () => {
+  function station(termini) {
+    return { stations: [{ name: "Crystal Palace", crs: "CYP", distance: 0.3, error: null, termini }] };
+  }
+
+  it("shows peak and off-peak figures on one row, in peak order", async () => {
+    api.commute.mockResolvedValue(
+      station({
+        peak: { termini: [T("VIC", "London Victoria", { journey_time_mins: 28 }), T("LBG", "London Bridge")] },
+        offpeak: { termini: [T("LBG", "London Bridge"), T("VIC", "London Victoria", { journey_time_mins: 27.5 })] },
+      })
+    );
+    render(<Commute listingId={1} ready={true} />);
+    const names = await screen.findAllByText(/^London (Victoria|Bridge)$/);
+    expect(names.map((n) => n.textContent)).toEqual(["London Victoria", "London Bridge"]);
+    expect(screen.getByText(/^Peak: 28m/)).toBeInTheDocument();
+    expect(screen.getByText(/^Off-peak: 27.5m/)).toBeInTheDocument();
+    expect(screen.queryByText("No off-peak")).not.toBeInTheDocument();
+  });
+
+  it("says 'No off-peak' for a peak-only terminus and 'No peak' for an off-peak-only one", async () => {
+    api.commute.mockResolvedValue(
+      station({
+        peak: { termini: [T("LBG", "London Bridge")] },
+        offpeak: { termini: [T("BFR", "London Blackfriars")] },
+      })
+    );
+    render(<Commute listingId={1} ready={true} />);
+    expect(await screen.findByText("No off-peak")).toBeInTheDocument();
+    expect(screen.getByText("No peak")).toBeInTheDocument();
+    expect(screen.getByText(/^Off-peak: 20m/)).toBeInTheDocument();
   });
 });

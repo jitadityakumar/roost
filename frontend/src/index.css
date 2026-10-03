@@ -830,7 +830,6 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 
 .commute-station { margin-bottom: 1rem; }
 .commute-station h4 { margin-bottom: 0.3rem; }
-.commute-terminus-group h5 { margin: 0.3rem 0; color: var(--muted); font-size: 0.85rem; }
 .commute-terminus-list { list-style: none; padding: 0; margin: 0; }
 .commute-terminus-row {
   padding: 0.4rem 0;

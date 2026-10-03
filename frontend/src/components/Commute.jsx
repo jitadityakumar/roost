@@ -15,53 +15,78 @@ function formatStops(range) {
   return range ? `${range.replace(/[-–]/, "-")} stops` : null;
 }
 
-function TerminusRow({ terminus }) {
-  const stats = [
-    `${terminus.journey_time_mins}m`,
-    `${terminus.trains_per_hour}/hr`,
-    formatRange(terminus.journey_range),
-    formatStops(terminus.stops_range),
-  ].filter(Boolean);
+function statsFor(t) {
+  return [
+    `${t.journey_time_mins}m`,
+    `${t.trains_per_hour}/hr`,
+    formatRange(t.journey_range),
+    formatStops(t.stops_range),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// One row per terminus with its peak and off-peak figures side by side.
+// Pairs by primary terminus code (not position or the also-calls-at
+// grouping), follows the peak order, and appends any off-peak-only termini.
+// A missing side is null -- the row renders "No peak" / "No off-peak" for it.
+export function mergeTermini(termini) {
+  const peak = termini?.peak?.termini ?? [];
+  const offpeak = termini?.offpeak?.termini ?? [];
+  const offByCrs = new Map(offpeak.map((t) => [t.terminus_crs, t]));
+  const rows = peak.map((p) => ({ peak: p, offpeak: offByCrs.get(p.terminus_crs) ?? null }));
+  const peakCrs = new Set(peak.map((t) => t.terminus_crs));
+  offpeak.filter((o) => !peakCrs.has(o.terminus_crs)).forEach((o) => rows.push({ peak: null, offpeak: o }));
+  return rows;
+}
+
+function TerminusRow({ row }) {
+  // Identity (name, badges, also-calls-at) is the same on both sides when
+  // both exist; fall back to whichever side is present.
+  const base = row.peak ?? row.offpeak;
 
   return (
     <li className="commute-terminus-row">
       <div className="commute-terminus-line1">
         <span className="commute-terminus-name">
-          {terminus.terminus_name}
-          {terminus.also_calls_at?.length > 0 && (
+          {base.terminus_name}
+          {base.also_calls_at?.length > 0 && (
             <span className="commute-also-calls-at">
               {" "}
-              (also to {terminus.also_calls_at.map((t) => t.terminus_name).join(", ")})
+              (also to {base.also_calls_at.map((t) => t.terminus_name).join(", ")})
             </span>
           )}
         </span>
-        <span className="commute-terminus-stats">{stats.join(" · ")}</span>
+        <span className="commute-terminus-stats">
+          {row.peak ? `Peak: ${statsFor(row.peak)}` : "No peak"}
+        </span>
       </div>
       <div className="commute-terminus-line2">
         <span className="commute-terminus-badges">
-          {(terminus.tube_lines || []).map((tl) => (
+          {(base.tube_lines || []).map((tl) => (
             <LineBadge key={`line-${tl.line}`} name={tl.line} color={tl.color} />
           ))}
-          {operatorNames(terminus.operators_title).map((op) => (
+          {operatorNames(base.operators_title).map((op) => (
             <LineBadge key={`op-${op}`} name={op} />
           ))}
+        </span>
+        <span className="commute-terminus-stats">
+          {row.offpeak ? `Off-peak: ${statsFor(row.offpeak)}` : "No off-peak"}
         </span>
       </div>
     </li>
   );
 }
 
-function TerminusList({ label, group }) {
-  if (!group || group.termini.length === 0) return null;
+function TerminusList({ termini }) {
+  const rows = mergeTermini(termini);
+  if (rows.length === 0) return null;
   return (
-    <div className="commute-terminus-group">
-      <h5>{label}</h5>
-      <ul className="commute-terminus-list">
-        {group.termini.map((t) => (
-          <TerminusRow key={t.terminus_crs} terminus={t} />
-        ))}
-      </ul>
-    </div>
+    <ul className="commute-terminus-list">
+      {rows.map((r) => (
+        <TerminusRow key={(r.peak ?? r.offpeak).terminus_crs} row={r} />
+      ))}
+    </ul>
   );
 }
 
@@ -90,10 +115,7 @@ function StationCommute({ station }) {
       </h4>
       {station.error && <p className="error">Couldn't load commute times for this station.</p>}
       {station.termini && (
-        <>
-          <TerminusList label="Peak" group={station.termini.peak} />
-          <TerminusList label="Off-peak" group={station.termini.offpeak} />
-        </>
+        <TerminusList termini={station.termini} />
       )}
     </div>
   );
