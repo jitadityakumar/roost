@@ -58,7 +58,7 @@ function TerminusRow({ row }) {
           )}
         </span>
         <span className="commute-terminus-stats">
-          {row.peak ? `Peak: ${statsFor(row.peak)}` : "No peak"}
+          {row.peak ? statsFor(row.peak) : "No peak"}
         </span>
       </div>
       <div className="commute-terminus-line2">
@@ -71,7 +71,7 @@ function TerminusRow({ row }) {
           ))}
         </span>
         <span className="commute-terminus-stats">
-          {row.offpeak ? `Off-peak: ${statsFor(row.offpeak)}` : "No off-peak"}
+          {row.offpeak ? statsFor(row.offpeak) : "No off-peak"}
         </span>
       </div>
     </li>

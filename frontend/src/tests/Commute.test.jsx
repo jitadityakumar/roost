@@ -57,7 +57,7 @@ describe("Commute", () => {
     await waitFor(() => expect(screen.getByText(/Woking/)).toBeInTheDocument());
     expect(screen.getByText("(0.34 mi)")).toBeInTheDocument();
     expect(screen.getByText("London Waterloo")).toBeInTheDocument();
-    expect(screen.getByText("Peak: 25m · 11/hr · 24m-28m · 1-2 stops")).toBeInTheDocument();
+    expect(screen.getByText("25m · 11/hr · 24m-28m · 1-2 stops")).toBeInTheDocument();
     expect(screen.getByText("South Western Railway")).toBeInTheDocument();
     expect(screen.getByText("Jubilee")).toBeInTheDocument();
     expect(screen.getByText("No off-peak")).toBeInTheDocument();
@@ -362,8 +362,8 @@ describe("Commute merged rows", () => {
     render(<Commute listingId={1} ready={true} />);
     const names = await screen.findAllByText(/^London (Victoria|Bridge)$/);
     expect(names.map((n) => n.textContent)).toEqual(["London Victoria", "London Bridge"]);
-    expect(screen.getByText(/^Peak: 28m/)).toBeInTheDocument();
-    expect(screen.getByText(/^Off-peak: 27.5m/)).toBeInTheDocument();
+    expect(screen.getByText(/^28m/)).toBeInTheDocument();
+    expect(screen.getByText(/^27.5m/)).toBeInTheDocument();
     expect(screen.queryByText("No off-peak")).not.toBeInTheDocument();
   });
 
@@ -377,6 +377,6 @@ describe("Commute merged rows", () => {
     render(<Commute listingId={1} ready={true} />);
     expect(await screen.findByText("No off-peak")).toBeInTheDocument();
     expect(screen.getByText("No peak")).toBeInTheDocument();
-    expect(screen.getByText(/^Off-peak: 20m/)).toBeInTheDocument();
+    expect(screen.getAllByText(/^20m/)).toHaveLength(2); // peak (LBG) + off-peak (BFR)
   });
 });
