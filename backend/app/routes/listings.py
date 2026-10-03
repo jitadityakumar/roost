@@ -147,7 +147,7 @@ class CreateListingRequest(BaseModel):
     url: str
 
 
-VALID_USER_STATUSES = ("triage", "parked", "approved", "rejected", "viewing", "contacted")
+VALID_USER_STATUSES = ("triage", "parked", "approved", "offer", "rejected", "viewing", "contacted")
 
 # Declarative required-fields-on-entry map (issue #82) -- a future status
 # needing extra input on entry is a config change here, not new branching in
@@ -158,6 +158,7 @@ STATUS_REQUIRED_FIELDS = {
     "rejected": ["comment", "initials"],
     "viewing": ["comment", "initials"],
     "contacted": ["comment", "initials"],
+    "offer": ["comment", "initials"],
 }
 
 

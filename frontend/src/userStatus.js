@@ -1,11 +1,12 @@
 // Shared between App/Home (routes/nav), ListingsPage, ListingCard, and
-// ListingDetail (status-change menu) so the 6 statuses can't drift out of
+// ListingDetail (status-change menu) so the 7 statuses can't drift out of
 // sync -- adding a status here is enough to get a new tab/route and menu
 // entry, no per-status branching elsewhere (issue #82).
 export const USER_STATUS_LABEL = {
   triage: "Triage",
   parked: "Parked",
   approved: "Approved",
+  offer: "Offer",
   rejected: "Rejected",
   viewing: "Viewing",
   contacted: "Contacted",
@@ -16,7 +17,7 @@ export const USER_STATUSES = Object.keys(USER_STATUS_LABEL);
 // Home page's nav order/wording is its own concern, deliberately separate
 // from USER_STATUSES (which drives route generation and the status-change
 // menu, where a different order is more natural) -- user-requested layout.
-export const HOME_MENU_ORDER = ["viewing", "contacted", "approved", "triage", "parked", "rejected"];
+export const HOME_MENU_ORDER = ["offer", "viewing", "contacted", "approved", "triage", "parked", "rejected"];
 
 // Statuses whose entry requires a mandatory comment (+ initials) -- mirrors
 // backend/app/routes/listings.py's STATUS_REQUIRED_FIELDS. The verb fills
@@ -25,6 +26,7 @@ export const STATUS_COMMENT_VERB = {
   rejected: "reason for rejecting",
   viewing: "note for the viewing",
   contacted: "note on contacting the agent",
+  offer: "note on the offer",
 };
 
 // Same color mapping as .status-dot/.home-option/.status-menu in
@@ -38,6 +40,7 @@ export const STATUS_COLOR_VAR = {
   triage: { cssVar: "--muted", fallback: "#666" },
   parked: { cssVar: "--parked", fallback: "#c8ae82" },
   approved: { cssVar: "--accent", fallback: "#2a6f4f" },
+  offer: { cssVar: "--offer", fallback: "#7c4dbb" },
   rejected: { cssVar: "--danger", fallback: "#b3261e" },
   viewing: { cssVar: "--edit-color", fallback: "#2563eb" },
   contacted: { cssVar: "--warn", fallback: "#b8860b" },

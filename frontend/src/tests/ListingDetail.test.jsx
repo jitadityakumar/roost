@@ -391,6 +391,7 @@ describe("ListingDetail status-change menu", () => {
     expect(within(menu).getByText("Viewing")).toBeInTheDocument();
     expect(within(menu).getByText("Contacted")).toBeInTheDocument();
     expect(within(menu).getByText("Parked")).toBeInTheDocument();
+    expect(within(menu).getByText("Offer")).toBeInTheDocument();
   });
 
   it("moving to a comment-required status shows the comment box, not an immediate patch", async () => {
@@ -403,6 +404,19 @@ describe("ListingDetail status-change menu", () => {
     await user.click(await screen.findByRole("button", { name: /^Rejected/ }));
 
     expect(screen.getByLabelText("Reason for rejecting")).toBeInTheDocument();
+    expect(api.patch).not.toHaveBeenCalled();
+  });
+
+  it("moving to Offer shows the comment box", async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(baseListing());
+    renderDetail();
+    api.patch.mockClear();
+
+    await user.click(await screen.findByRole("button", { name: "Change status ▾" }));
+    await user.click(await screen.findByRole("button", { name: /^Offer/ }));
+
+    expect(screen.getByLabelText("Note on the offer")).toBeInTheDocument();
     expect(api.patch).not.toHaveBeenCalled();
   });
 

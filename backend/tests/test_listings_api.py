@@ -249,6 +249,29 @@ def test_patch_listing_moves_to_contacted_with_comment_stores_it(client):
     assert contacted_comments[0]["text"] == "Emailed the agent"
 
 
+def test_patch_listing_moves_to_offer_without_comment_is_rejected(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch("/api/listings/1", json={"user_status": "offer"})
+    assert resp.status_code == 422
+    resp = client.patch("/api/listings/1", json={"user_status": "offer", "comment": "x"})
+    assert resp.status_code == 422
+
+
+def test_patch_listing_moves_to_offer_with_comment_stores_it(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch(
+        "/api/listings/1",
+        json={"user_status": "offer", "comment": "Offered 5% under asking", "initials": "JK"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_status"] == "offer"
+    offer_comments = [c for c in body["comments"] if c["comment_type"] == "offer"]
+    assert len(offer_comments) == 1
+    assert offer_comments[0]["text"] == "Offered 5% under asking"
+    assert [l["id"] for l in client.get("/api/listings?user_status=offer").json()] == [1]
+
+
 def test_patch_listing_moves_to_parked_without_comment(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch("/api/listings/1", json={"user_status": "parked"})
