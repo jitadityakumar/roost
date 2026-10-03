@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import ListingCard from "./ListingCard.jsx";
 import { USER_STATUS_LABEL } from "../userStatus.js";
+import { EMPTY_FILTERS, applyFilters, deriveOptions, sortListings } from "../listingFilters.js";
+import { FilterPills, FiltersButton, FiltersDialog } from "./ListingFilters.jsx";
 
 const EMPTY_STATE = {
   triage: "Nothing in triage — add a property to get started.",
@@ -14,6 +16,8 @@ const EMPTY_STATE = {
 export default function ListingsPage({ status }) {
   const [listings, setListings] = useState([]);
   const [sortBy, setSortBy] = useState("newest");
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
@@ -42,11 +46,12 @@ export default function ListingsPage({ status }) {
     return () => clearInterval(timer);
   }, [listings, load]);
 
-  const sorted = [...listings].sort((a, b) => {
-    if (sortBy === "price_asc") return (a.price_gbp || Infinity) - (b.price_gbp || Infinity);
-    if (sortBy === "price_desc") return (b.price_gbp || -Infinity) - (a.price_gbp || -Infinity);
-    return new Date(b.created_at) - new Date(a.created_at);
-  });
+  const options = useMemo(() => deriveOptions(listings), [listings]);
+  const sorted = useMemo(
+    () => sortListings(applyFilters(listings, filters), sortBy),
+    [listings, filters, sortBy]
+  );
+  const closeFilters = useCallback(() => setFiltersOpen(false), []);
 
   return (
     <div className="dashboard">
@@ -60,13 +65,35 @@ export default function ListingsPage({ status }) {
           <option value="newest">Newest first</option>
           <option value="price_asc">Price: low to high</option>
           <option value="price_desc">Price: high to low</option>
+          <option value="size_asc">Size: small to large</option>
+          <option value="size_desc">Size: large to small</option>
         </select>
+        <FiltersButton filters={filters} onClick={() => setFiltersOpen(true)} />
+        <FilterPills filters={filters} onChange={setFilters} />
       </div>
+
+      {listings.length > 0 && (
+        <p className="listing-count">
+          {sorted.length} of {listings.length} {listings.length === 1 ? "home" : "homes"}
+        </p>
+      )}
+
+      {filtersOpen && (
+        <FiltersDialog
+          options={options}
+          filters={filters}
+          onChange={setFilters}
+          resultCount={sorted.length}
+          onClose={closeFilters}
+        />
+      )}
 
       {error && <p className="error">{error}</p>}
 
       {sorted.length === 0 ? (
-        <p className="empty-state">{EMPTY_STATE[status] || "Nothing here yet."}</p>
+        <p className="empty-state">
+          {listings.length > 0 ? "No homes match these filters." : EMPTY_STATE[status] || "Nothing here yet."}
+        </p>
       ) : (
         <div className="listing-grid">
           {sorted.map((l) => (
