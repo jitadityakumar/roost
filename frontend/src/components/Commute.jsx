@@ -48,7 +48,7 @@ function TerminusRow({ row }) {
   // Identity (name, badges, also-calls-at) is the same on both sides when
   // both exist; fall back to whichever side is present.
   const base = row.peak ?? row.offpeak;
-  const also = (base.also_calls_at || []).map((t) => t.terminus_crs);
+  const also = (base.also_calls_at || []).map((t) => t.terminus_crs).filter(Boolean);
 
   return (
     <li className="commute-terminus-row">

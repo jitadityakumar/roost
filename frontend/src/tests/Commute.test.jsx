@@ -436,7 +436,49 @@ describe("Commute row layout", () => {
       return r;
     });
     expect(row.children).toHaveLength(6);
-    expect(row.children[4]).toHaveTextContent("");
+    expect(row.children[4]).toBeEmptyDOMElement();
     expect(row.children[5]).toHaveTextContent("No off-peak");
+  });
+
+  it("takes identity from the off-peak side when only it exists, and puts 'No peak' in the peak cell", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        { name: "Woking", crs: "WOK", distance: 0.3, error: null,
+          termini: {
+            peak: { termini: [] },
+            offpeak: { termini: [T("BFR", "London Blackfriars", {
+              operators_title: "Thameslink",
+              also_calls_at: [{ terminus_crs: "STP", terminus_name: "London St Pancras International" }],
+            })] },
+          } },
+      ],
+    });
+    const { container } = render(<Commute listingId={1} ready={true} />);
+    const row = await waitFor(() => {
+      const r = container.querySelector(".commute-terminus-row");
+      expect(r).not.toBeNull();
+      return r;
+    });
+    const cells = Array.from(row.children);
+    expect(cells[0]).toHaveTextContent("London Blackfriars");
+    expect(cells[1]).toHaveTextContent(/Thameslink/);
+    expect(cells[2]).toBeEmptyDOMElement(); // no tube lines
+    expect(cells[3]).toHaveTextContent("No peak");
+    expect(cells[4]).toHaveTextContent("also to STP");
+    expect(cells[5]).toHaveTextContent(/^20m/);
+  });
+
+  it("skips also_calls_at entries that lack a CRS code", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        { name: "Woking", crs: "WOK", distance: 0.3, error: null,
+          termini: {
+            peak: { termini: [T("LBG", "London Bridge", { also_calls_at: [{ terminus_name: "x" }, { terminus_crs: "CHX", terminus_name: "y" }] })] },
+            offpeak: { termini: [] },
+          } },
+      ],
+    });
+    render(<Commute listingId={1} ready={true} />);
+    expect(await screen.findByText("also to CHX")).toBeInTheDocument();
   });
 });
