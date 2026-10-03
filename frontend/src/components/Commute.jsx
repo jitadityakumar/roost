@@ -40,40 +40,36 @@ export function mergeTermini(termini) {
   return rows;
 }
 
+// Two columns by three lines (cells flow into a CSS grid):
+//   terminus name              | operator badges
+//   interchange (tube) badges  | peak figures
+//   also to <CRS codes>        | off-peak figures
 function TerminusRow({ row }) {
   // Identity (name, badges, also-calls-at) is the same on both sides when
   // both exist; fall back to whichever side is present.
   const base = row.peak ?? row.offpeak;
+  const also = (base.also_calls_at || []).map((t) => t.terminus_crs).filter(Boolean);
 
   return (
     <li className="commute-terminus-row">
-      <div className="commute-terminus-line1">
-        <span className="commute-terminus-name">
-          {base.terminus_name}
-          {base.also_calls_at?.length > 0 && (
-            <span className="commute-also-calls-at">
-              {" "}
-              (also to {base.also_calls_at.map((t) => t.terminus_name).join(", ")})
-            </span>
-          )}
-        </span>
-        <span className="commute-terminus-stats">
-          {row.peak ? statsFor(row.peak) : "No peak"}
-        </span>
-      </div>
-      <div className="commute-terminus-line2">
-        <span className="commute-terminus-badges">
-          {(base.tube_lines || []).map((tl) => (
-            <LineBadge key={`line-${tl.line}`} name={tl.line} color={tl.color} />
-          ))}
-          {operatorNames(base.operators_title).map((op) => (
-            <LineBadge key={`op-${op}`} name={op} />
-          ))}
-        </span>
-        <span className="commute-terminus-stats">
-          {row.offpeak ? statsFor(row.offpeak) : "No off-peak"}
-        </span>
-      </div>
+      <span className="commute-terminus-name">{base.terminus_name}</span>
+      <span className="commute-terminus-badges commute-cell-right">
+        {operatorNames(base.operators_title).map((op) => (
+          <LineBadge key={`op-${op}`} name={op} />
+        ))}
+      </span>
+      <span className="commute-terminus-badges">
+        {(base.tube_lines || []).map((tl) => (
+          <LineBadge key={`line-${tl.line}`} name={tl.line} color={tl.color} />
+        ))}
+      </span>
+      <span className="commute-terminus-stats commute-cell-right">
+        {row.peak ? statsFor(row.peak) : "No peak"}
+      </span>
+      <span className="commute-also-calls-at">{also.length > 0 ? `also to ${also.join(", ")}` : ""}</span>
+      <span className="commute-terminus-stats commute-cell-right">
+        {row.offpeak ? statsFor(row.offpeak) : "No off-peak"}
+      </span>
     </li>
   );
 }

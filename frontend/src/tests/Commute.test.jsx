@@ -109,7 +109,8 @@ describe("Commute", () => {
     await waitFor(() => expect(screen.getByText("London Victoria")).toBeInTheDocument());
     expect(screen.getByText("Southeastern")).toBeInTheDocument();
     expect(screen.getByText("Thameslink")).toBeInTheDocument();
-    expect(screen.getByText(/also to London St Pancras International/)).toBeInTheDocument();
+    expect(screen.getByText("also to STP")).toBeInTheDocument();
+    expect(screen.queryByText(/London St Pancras International/)).not.toBeInTheDocument();
   });
 
   it("picks black text on a light tube-line color and white text on a dark one", async () => {
@@ -378,5 +379,106 @@ describe("Commute merged rows", () => {
     expect(await screen.findByText("No off-peak")).toBeInTheDocument();
     expect(screen.getByText("No peak")).toBeInTheDocument();
     expect(screen.getAllByText(/^20m/)).toHaveLength(2); // peak (LBG) + off-peak (BFR)
+  });
+});
+
+describe("Commute row layout", () => {
+  it("lays out name, operators, interchange, peak, also-to CRS codes, off-peak in grid order", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        {
+          name: "East Croydon", crs: "ECR", distance: 0.4, error: null,
+          termini: {
+            peak: {
+              termini: [
+                T("LBG", "London Bridge", {
+                  operators_title: "Southern, Thameslink",
+                  tube_lines: [{ line: "Northern", color: "#000000" }],
+                  also_calls_at: [
+                    { terminus_crs: "CST", terminus_name: "London Cannon Street" },
+                    { terminus_crs: "CHX", terminus_name: "London Charing Cross" },
+                  ],
+                }),
+              ],
+            },
+            offpeak: { termini: [T("LBG", "London Bridge", { journey_time_mins: 21 })] },
+          },
+        },
+      ],
+    });
+    const { container } = render(<Commute listingId={1} ready={true} />);
+    const row = await waitFor(() => {
+      const r = container.querySelector(".commute-terminus-row");
+      expect(r).not.toBeNull();
+      return r;
+    });
+    const cells = Array.from(row.children);
+    expect(cells).toHaveLength(6);
+    expect(cells[0]).toHaveTextContent("London Bridge");
+    expect(cells[1]).toHaveTextContent(/Southern.*Thameslink/);
+    expect(cells[2]).toHaveTextContent("Northern");
+    expect(cells[3]).toHaveTextContent(/^20m/);
+    expect(cells[4]).toHaveTextContent("also to CST, CHX");
+    expect(cells[5]).toHaveTextContent(/^21m/);
+  });
+
+  it("leaves the also-to cell empty when there is none, keeping the six-cell grid", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        { name: "Mitcham Eastfields", crs: "MTC", distance: 0.5, error: null,
+          termini: { peak: { termini: [T("LBG", "London Bridge")] }, offpeak: { termini: [] } } },
+      ],
+    });
+    const { container } = render(<Commute listingId={1} ready={true} />);
+    const row = await waitFor(() => {
+      const r = container.querySelector(".commute-terminus-row");
+      expect(r).not.toBeNull();
+      return r;
+    });
+    expect(row.children).toHaveLength(6);
+    expect(row.children[4]).toBeEmptyDOMElement();
+    expect(row.children[5]).toHaveTextContent("No off-peak");
+  });
+
+  it("takes identity from the off-peak side when only it exists, and puts 'No peak' in the peak cell", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        { name: "Woking", crs: "WOK", distance: 0.3, error: null,
+          termini: {
+            peak: { termini: [] },
+            offpeak: { termini: [T("BFR", "London Blackfriars", {
+              operators_title: "Thameslink",
+              also_calls_at: [{ terminus_crs: "STP", terminus_name: "London St Pancras International" }],
+            })] },
+          } },
+      ],
+    });
+    const { container } = render(<Commute listingId={1} ready={true} />);
+    const row = await waitFor(() => {
+      const r = container.querySelector(".commute-terminus-row");
+      expect(r).not.toBeNull();
+      return r;
+    });
+    const cells = Array.from(row.children);
+    expect(cells[0]).toHaveTextContent("London Blackfriars");
+    expect(cells[1]).toHaveTextContent(/Thameslink/);
+    expect(cells[2]).toBeEmptyDOMElement(); // no tube lines
+    expect(cells[3]).toHaveTextContent("No peak");
+    expect(cells[4]).toHaveTextContent("also to STP");
+    expect(cells[5]).toHaveTextContent(/^20m/);
+  });
+
+  it("skips also_calls_at entries that lack a CRS code", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        { name: "Woking", crs: "WOK", distance: 0.3, error: null,
+          termini: {
+            peak: { termini: [T("LBG", "London Bridge", { also_calls_at: [{ terminus_name: "x" }, { terminus_crs: "CHX", terminus_name: "y" }] })] },
+            offpeak: { termini: [] },
+          } },
+      ],
+    });
+    render(<Commute listingId={1} ready={true} />);
+    expect(await screen.findByText("also to CHX")).toBeInTheDocument();
   });
 });
