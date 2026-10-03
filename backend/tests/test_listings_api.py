@@ -249,6 +249,16 @@ def test_patch_listing_moves_to_contacted_with_comment_stores_it(client):
     assert contacted_comments[0]["text"] == "Emailed the agent"
 
 
+def test_patch_listing_moves_to_parked_without_comment(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch("/api/listings/1", json={"user_status": "parked"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_status"] == "parked"
+    assert body["comments"] == []
+    assert [l["id"] for l in client.get("/api/listings?user_status=parked").json()] == [1]
+
+
 def test_patch_listing_rejects_non_editable_field(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch("/api/listings/1", json={"fields": {"extraction_status": "done"}})

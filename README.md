@@ -15,7 +15,7 @@ Core (no configuration needed):
   scrapes + extracts fields, downloads photos/floorplan/EPC image.
 - Manual field editing — an edit sticks and is never overwritten by a later
   refresh/re-scrape.
-- Status tracking (Triage / Approved / Rejected / Viewing / Contacted), with
+- Status tracking (Triage / Parked / Approved / Rejected / Viewing / Contacted), with
   a required comment + initials when entering Rejected/Viewing/Contacted.
 - Admin-defined "standards" rules (e.g. "floor area < 700 sqft") flagged
   per-listing, purely advisory.
