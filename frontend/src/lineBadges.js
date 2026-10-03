@@ -76,26 +76,42 @@ export const LINE_BADGES = [
 // Alternate spellings seen in london-commuter-stations data -> canonical name.
 const ALIASES = {
   "elizabeth line": "Elizabeth line",
-  "lnr & wmr": "London Northwestern Railway",
 };
+
+// The data source sometimes merges two operators into one name; show both.
+const COMBINED = {
+  "lnr & wmr": ["London Northwestern Railway", "West Midlands Railway"],
+};
+
+// "South Western Railway, Southeastern" (comma-joined operators_title) ->
+// ["South Western Railway", "Southeastern"], combined names expanded.
+export function operatorNames(title) {
+  return (title || "")
+    .split(", ")
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .flatMap((n) => COMBINED[n.toLowerCase()] ?? [n]);
+}
 
 const BY_NAME = new Map(LINE_BADGES.map((b) => [b.name.toLowerCase(), b]));
 
 const FALLBACK_COLOR = "#888888";
 
-// Unknown names (e.g. "London Overground", CrossCountry) get a neutral tile
-// with the first two letters as the code, so nothing silently disappears.
-export function lookupLineBadge(name) {
+// Unknown names (e.g. "London Overground", CrossCountry) get a neutral pill
+// tile with no logo, so nothing silently disappears or borrows a wrong
+// network's logo. `color` overrides the table (Commute passes the API's
+// own line colour).
+export function lookupLineBadge(name, color) {
   const key = String(name || "").trim().toLowerCase();
   const found = BY_NAME.get(ALIASES[key]?.toLowerCase() ?? key);
-  if (found) return found;
-  return {
+  const badge = found ?? {
     name: String(name || "").trim(),
-    code: String(name || "?").trim().slice(0, 2).toUpperCase() || "?",
+    code: String(name || "?").trim().slice(0, 3).toUpperCase() || "?",
     color: FALLBACK_COLOR,
-    group: "rail",
-    logoType: GROUP_LOGO_TYPE.rail,
+    group: "other",
+    logoType: undefined,
   };
+  return color ? { ...badge, color } : badge;
 }
 
 // Tube/Overground/etc. tiles keep Commute's original luminance rule; rail

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { formatDistance } from "./NearestStations.jsx";
 import LineBadge from "./LineBadge.jsx";
+import { operatorNames } from "../lineBadges.js";
 import { formatWalkMeters, walkDurationClass } from "./walkFormat.js";
 
 // "18–22" -> "18m-22m"
@@ -12,11 +13,6 @@ function formatRange(range) {
 // "5–6" -> "5-6 stops"
 function formatStops(range) {
   return range ? `${range.replace(/[-–]/, "-")} stops` : null;
-}
-
-// "South Western Railway, Southeastern" -> ["South Western Railway", "Southeastern"]
-function operatorNames(title) {
-  return (title || "").split(", ").filter(Boolean);
 }
 
 function TerminusRow({ terminus }) {
@@ -44,12 +40,10 @@ function TerminusRow({ terminus }) {
       <div className="commute-terminus-line2">
         <span className="commute-terminus-badges">
           {(terminus.tube_lines || []).map((tl) => (
-            <LineBadge key={tl.line} name={tl.line} />
+            <LineBadge key={`line-${tl.line}`} name={tl.line} color={tl.color} />
           ))}
-        </span>
-        <span className="commute-terminus-badges">
           {operatorNames(terminus.operators_title).map((op) => (
-            <LineBadge key={op} name={op} />
+            <LineBadge key={`op-${op}`} name={op} />
           ))}
         </span>
       </div>

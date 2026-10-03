@@ -5,8 +5,8 @@ import { logoUrlForType } from "./networkLogos.js";
 // (`size="auto"`, the default) or the caller pins one with "lg" / "sm".
 // Large: neutral logo cell (omitted when the gitignored logo is absent) +
 // coloured name cell. Small: shape-coded code tile, full name on hover/focus.
-export default function LineBadge({ name, size = "auto" }) {
-  const badge = lookupLineBadge(name);
+export default function LineBadge({ name, color, size = "auto" }) {
+  const badge = lookupLineBadge(name, color);
   const logoUrl = logoUrlForType(badge.logoType);
   const style = { backgroundColor: badge.color, color: textColorFor(badge) };
 

@@ -878,6 +878,7 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .line-badge-elizabeth .line-badge-sm-tile,
 .line-badge-dlr .line-badge-sm-tile,
 .line-badge-tram .line-badge-sm-tile { width: 2rem; height: 1.1rem; border-radius: 999px; }
+.line-badge-other .line-badge-sm-tile { width: 2rem; height: 1.1rem; border-radius: 999px; }
 .line-badge-rail .line-badge-sm-tile { width: 1.25rem; height: 1.25rem; border-radius: 50%; }
 .line-badge-sm-tile:hover::after,
 .line-badge-sm-tile:focus::after {
@@ -891,6 +892,8 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   border-radius: 3px;
   background: #222;
   color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  max-width: 80vw;
   font-size: 0.7rem;
   font-weight: 500;
 }

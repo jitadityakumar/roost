@@ -150,6 +150,31 @@ describe("Commute", () => {
     expect(screen.getByText("Northern")).toHaveStyle({ color: "#fff" });
   });
 
+  it("uses the API's line colour for a line missing from the badge table", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        {
+          name: "Woking", crs: "WOK", distance: 0.3, error: null,
+          termini: {
+            peak: {
+              termini: [
+                {
+                  terminus_crs: "WAT", terminus_name: "London Waterloo", journey_time_mins: 25,
+                  journey_range: "24–28", stops_range: "1–2", trains_per_hour: 11,
+                  operators_title: "",
+                  tube_lines: [{ line: "Brand New Line", color: "#ABCDEF" }],
+                },
+              ],
+            },
+            offpeak: { termini: [] },
+          },
+        },
+      ],
+    });
+    render(<Commute listingId={1} ready={true} />);
+    expect(await screen.findByText("Brand New Line")).toHaveStyle({ backgroundColor: "#ABCDEF" });
+  });
+
   it("renders operators as badges, splitting a combined operators_title", async () => {
     api.commute.mockResolvedValue({
       stations: [
