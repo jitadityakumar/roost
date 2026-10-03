@@ -832,21 +832,21 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .commute-station h4 { margin-bottom: 0.3rem; }
 .commute-terminus-list { list-style: none; padding: 0; margin: 0; }
 .commute-terminus-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.6rem;
+  row-gap: 0.25rem;
+  align-items: center;
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
 }
-.commute-terminus-line1, .commute-terminus-line2 {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-.commute-terminus-line2 { margin-top: 0.25rem; }
-.commute-terminus-name { flex: 1; }
-.commute-also-calls-at { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
-.commute-terminus-stats { color: var(--muted); white-space: nowrap; }
-.commute-terminus-badges { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.commute-cell-right { justify-self: end; }
+.commute-terminus-name { min-width: 0; overflow-wrap: anywhere; }
+.commute-also-calls-at { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+.commute-terminus-stats { color: var(--muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.commute-terminus-badges { display: flex; gap: 0.3rem; flex-wrap: wrap; align-items: center; min-width: 0; }
+.commute-cell-right.commute-terminus-badges { justify-content: flex-end; }
 .line-badge { display: inline-flex; vertical-align: middle; }
 .line-badge-lg-tile {
   display: inline-flex;
