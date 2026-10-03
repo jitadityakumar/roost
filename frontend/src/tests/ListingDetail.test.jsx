@@ -390,6 +390,7 @@ describe("ListingDetail status-change menu", () => {
     expect(within(menu).getByText("Rejected")).toBeInTheDocument();
     expect(within(menu).getByText("Viewing")).toBeInTheDocument();
     expect(within(menu).getByText("Contacted")).toBeInTheDocument();
+    expect(within(menu).getByText("Parked")).toBeInTheDocument();
   });
 
   it("moving to a comment-required status shows the comment box, not an immediate patch", async () => {

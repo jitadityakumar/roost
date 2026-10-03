@@ -259,6 +259,15 @@ def test_patch_listing_moves_to_parked_without_comment(client):
     assert [l["id"] for l in client.get("/api/listings?user_status=parked").json()] == [1]
 
 
+def test_patch_listing_parked_ignores_comment_and_round_trips(client):
+    store.create_stub_listing(1, VALID_URL)
+    resp = client.patch("/api/listings/1", json={"user_status": "parked", "comment": "later", "initials": "JK"})
+    assert resp.status_code == 200
+    assert resp.json()["comments"] == []
+    resp = client.patch("/api/listings/1", json={"user_status": "triage"})
+    assert resp.json()["user_status"] == "triage"
+
+
 def test_patch_listing_rejects_non_editable_field(client):
     store.create_stub_listing(1, VALID_URL)
     resp = client.patch("/api/listings/1", json={"fields": {"extraction_status": "done"}})
