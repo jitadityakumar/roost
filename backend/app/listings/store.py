@@ -192,7 +192,7 @@ def apply_manual_edit(listing_id: int, fields: dict) -> dict:
 # gets (issue #82). 'rejected' keeps the pre-existing 'rejection' type name
 # for continuity with data written before this map existed; 'viewing'/
 # 'contacted' just reuse the status name.
-STATUS_COMMENT_TYPE = {"rejected": "rejection", "viewing": "viewing", "contacted": "contacted"}
+STATUS_COMMENT_TYPE = {"rejected": "rejection", "viewing": "viewing", "contacted": "contacted", "offer": "offer"}
 
 
 def set_user_status(
