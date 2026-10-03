@@ -1,10 +1,16 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import Commute from "../components/Commute.jsx";
+import Commute, { mergeTermini } from "../components/Commute.jsx";
 import { api } from "../api.js";
 
 vi.mock("../api.js", () => ({
   api: { commute: vi.fn() },
+}));
+
+// Deterministic regardless of whether the gitignored logo files exist.
+vi.mock("../components/networkLogos.js", () => ({
+  logoUrlForType: () => undefined,
+  walkingLogoUrl: () => undefined,
 }));
 
 describe("Commute", () => {
@@ -54,7 +60,7 @@ describe("Commute", () => {
     expect(screen.getByText("25m · 11/hr · 24m-28m · 1-2 stops")).toBeInTheDocument();
     expect(screen.getByText("South Western Railway")).toBeInTheDocument();
     expect(screen.getByText("Jubilee")).toBeInTheDocument();
-    expect(screen.queryByText("Off-peak")).not.toBeInTheDocument();
+    expect(screen.getByText("No off-peak")).toBeInTheDocument();
   });
 
   it("renders each terminus with its own operator, and an also-calls-at note when present", async () => {
@@ -142,6 +148,69 @@ describe("Commute", () => {
     const lightBadge = await screen.findByText("Waterloo & City");
     expect(lightBadge).toHaveStyle({ color: "#000" });
     expect(screen.getByText("Northern")).toHaveStyle({ color: "#fff" });
+  });
+
+  it("uses the API's line colour for a line missing from the badge table", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        {
+          name: "Woking", crs: "WOK", distance: 0.3, error: null,
+          termini: {
+            peak: {
+              termini: [
+                {
+                  terminus_crs: "WAT", terminus_name: "London Waterloo", journey_time_mins: 25,
+                  journey_range: "24–28", stops_range: "1–2", trains_per_hour: 11,
+                  operators_title: "",
+                  tube_lines: [{ line: "Brand New Line", color: "#ABCDEF" }],
+                },
+              ],
+            },
+            offpeak: { termini: [] },
+          },
+        },
+      ],
+    });
+    render(<Commute listingId={1} ready={true} />);
+    expect(await screen.findByText("Brand New Line")).toHaveStyle({ backgroundColor: "#ABCDEF" });
+  });
+
+  it("renders operators as badges, splitting a combined operators_title", async () => {
+    api.commute.mockResolvedValue({
+      stations: [
+        {
+          name: "Woking",
+          crs: "WOK",
+          distance: 0.3,
+          error: null,
+          termini: {
+            peak: {
+              termini: [
+                {
+                  terminus_crs: "WAT",
+                  terminus_name: "London Waterloo",
+                  journey_time_mins: 25,
+                  journey_range: "24–28",
+                  stops_range: "1–2",
+                  trains_per_hour: 11,
+                  operators_title: "South Western Railway, Unknown Trains",
+                  tube_lines: [],
+                },
+              ],
+            },
+            offpeak: { termini: [] },
+          },
+        },
+      ],
+    });
+
+    render(<Commute listingId={1} ready={true} />);
+    expect(await screen.findByText("South Western Railway")).toHaveStyle({
+      backgroundColor: "#24398C",
+    });
+    expect(screen.getByRole("img", { name: "South Western Railway" })).toHaveTextContent("SW");
+    // unknown operator falls back to a neutral tile rather than vanishing
+    expect(screen.getByText("Unknown Trains")).toBeInTheDocument();
   });
 
   it("shows an empty state when no stations resolve", async () => {
@@ -243,5 +312,71 @@ describe("Commute", () => {
     await waitFor(() => expect(screen.getByText(/Clapham Junction/)).toBeInTheDocument());
     expect(screen.getByText("(0.40 mi)")).toBeInTheDocument();
     expect(screen.queryByText(/min walk/)).not.toBeInTheDocument();
+  });
+});
+
+const T = (crs, name, extra = {}) => ({
+  terminus_crs: crs,
+  terminus_name: name,
+  journey_time_mins: 20,
+  journey_range: "19–21",
+  stops_range: "1–2",
+  trains_per_hour: 4,
+  operators_title: "Southern",
+  tube_lines: [],
+  ...extra,
+});
+
+describe("mergeTermini", () => {
+  it("pairs by terminus code, follows peak order, and appends off-peak-only termini", () => {
+    const rows = mergeTermini({
+      peak: { termini: [T("VIC", "London Victoria"), T("LBG", "London Bridge")] },
+      offpeak: { termini: [T("LBG", "London Bridge"), T("VIC", "London Victoria"), T("BFR", "London Blackfriars")] },
+    });
+    expect(rows.map((r) => (r.peak ?? r.offpeak).terminus_crs)).toEqual(["VIC", "LBG", "BFR"]);
+    expect(rows[0].offpeak.terminus_crs).toBe("VIC");
+    expect(rows[2].peak).toBeNull();
+  });
+
+  it("marks a peak-only terminus (and a station with no off-peak list at all)", () => {
+    const rows = mergeTermini({ peak: { termini: [T("LBG", "London Bridge")] }, offpeak: { termini: [] } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].offpeak).toBeNull();
+    expect(mergeTermini({ peak: { termini: [T("LBG", "x")] } })[0].offpeak).toBeNull();
+    expect(mergeTermini(undefined)).toEqual([]);
+  });
+});
+
+describe("Commute merged rows", () => {
+  function station(termini) {
+    return { stations: [{ name: "Crystal Palace", crs: "CYP", distance: 0.3, error: null, termini }] };
+  }
+
+  it("shows peak and off-peak figures on one row, in peak order", async () => {
+    api.commute.mockResolvedValue(
+      station({
+        peak: { termini: [T("VIC", "London Victoria", { journey_time_mins: 28 }), T("LBG", "London Bridge")] },
+        offpeak: { termini: [T("LBG", "London Bridge"), T("VIC", "London Victoria", { journey_time_mins: 27.5 })] },
+      })
+    );
+    render(<Commute listingId={1} ready={true} />);
+    const names = await screen.findAllByText(/^London (Victoria|Bridge)$/);
+    expect(names.map((n) => n.textContent)).toEqual(["London Victoria", "London Bridge"]);
+    expect(screen.getByText(/^28m/)).toBeInTheDocument();
+    expect(screen.getByText(/^27.5m/)).toBeInTheDocument();
+    expect(screen.queryByText("No off-peak")).not.toBeInTheDocument();
+  });
+
+  it("says 'No off-peak' for a peak-only terminus and 'No peak' for an off-peak-only one", async () => {
+    api.commute.mockResolvedValue(
+      station({
+        peak: { termini: [T("LBG", "London Bridge")] },
+        offpeak: { termini: [T("BFR", "London Blackfriars")] },
+      })
+    );
+    render(<Commute listingId={1} ready={true} />);
+    expect(await screen.findByText("No off-peak")).toBeInTheDocument();
+    expect(screen.getByText("No peak")).toBeInTheDocument();
+    expect(screen.getAllByText(/^20m/)).toHaveLength(2); // peak (LBG) + off-peak (BFR)
   });
 });
