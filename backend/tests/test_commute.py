@@ -347,6 +347,62 @@ def test_get_commute_includes_radius_discovered_national_rail_not_in_raw_list(cl
     assert "WNT" in crs_codes  # the radius-discovered candidate
 
 
+def test_get_commute_orders_stations_by_walk_distance_across_both_sources(client, monkeypatch):
+    from app.commute.walk_store import replace_walk_distances
+    from app.nearest_stations.store import replace_candidates
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    store.create_stub_listing(7, "https://www.rightmove.co.uk/properties/7")
+    store.apply_extracted_fields(
+        7,
+        {
+            "nearest_stations_raw": json.dumps(
+                [
+                    {"name": "Clapham Junction Station", "distance": 0.1, "types": ["NATIONAL_TRAIN"]},
+                    {"name": "Balham Station", "distance": 0.2, "types": ["NATIONAL_TRAIN"]},
+                    {"name": "Tooting Station", "distance": 0.3, "types": ["NATIONAL_TRAIN"]},
+                ]
+            )
+        },
+    )
+    replace_walk_distances(
+        7,
+        [
+            _walk_row(0, "Clapham Junction Station", 900, 700),
+            _walk_row(1, "Balham Station", 300, 240),
+            # Tooting: no stored walk (lookup failed), 0.3mi fallback keeps it shown.
+        ],
+    )
+    replace_candidates(
+        7,
+        [_candidate_row("Wandsworth Town Rail Station", "national-rail", 500, walk_distance_meters=600)],
+    )
+    resp = client.get("/api/listings/7/commute")
+    # Balham 300m, Wandsworth Town 600m (TfL-discovered), Clapham 900m, Tooting last (no walk).
+    assert [s["crs"] for s in resp.json()["stations"]] == ["BAL", "WNT", "CLJ", "TOO"]
+
+
+def test_get_commute_stations_without_walk_data_ordered_by_straight_line_distance(client, monkeypatch):
+    from app.routes import commute as commute_route
+
+    monkeypatch.setattr(commute_route, "fetch_station_termini", lambda crs: {"crs": crs})
+    store.create_stub_listing(8, "https://www.rightmove.co.uk/properties/8")
+    store.apply_extracted_fields(
+        8,
+        {
+            "nearest_stations_raw": json.dumps(
+                [
+                    {"name": "Tooting Station", "distance": 0.4, "types": ["NATIONAL_TRAIN"]},
+                    {"name": "Balham Station", "distance": 0.2, "types": ["NATIONAL_TRAIN"]},
+                ]
+            )
+        },
+    )
+    resp = client.get("/api/listings/8/commute")
+    assert [s["crs"] for s in resp.json()["stations"]] == ["BAL", "TOO"]
+
+
 def test_get_commute_radius_candidate_excludes_walk_over_cutoff(client, listing_id):
     from app.nearest_stations.store import replace_candidates
 

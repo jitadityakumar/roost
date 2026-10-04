@@ -30,6 +30,19 @@ COMMUTE_MAX_WALK_SECONDS = MAX_WALK_MINUTES * 60
 COMMUTE_FALLBACK_MAX_MILES = 0.5
 
 
+def _walk_order(station: dict) -> tuple:
+    """Shortest walk first. A station with no stored walk distance (the walk
+    lookup failed) goes last, ordered among themselves by Rightmove's
+    straight-line distance (TfL-discovered ones have none, so they trail)."""
+    meters = station["walk_distance_meters"]
+    distance = station.get("distance")
+    return (
+        meters is None,
+        meters if meters is not None else 0,
+        distance if distance is not None else float("inf"),
+    )
+
+
 def _worth_showing_commute(station: dict, walk: dict | None) -> bool:
     if walk and walk["duration_seconds"] is not None:
         return walk["duration_seconds"] <= COMMUTE_MAX_WALK_SECONDS
@@ -97,4 +110,5 @@ def get_commute(listing_id: int):
 
         stations.append(result)
 
+    stations.sort(key=_walk_order)
     return {"stations": stations}
