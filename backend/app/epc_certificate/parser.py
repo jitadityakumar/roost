@@ -87,11 +87,13 @@ def _features(soup) -> list[dict]:
 
 def _steps(soup) -> list[dict]:
     out = []
-    for block in soup.select(".epb-recommended-improvements"):
-        h3 = block.find("h3")
+    # All steps sit in one container as sibling <h3>/<dl> pairs, so walk the
+    # headings rather than assuming one container per step.
+    for h3 in soup.select(".epb-recommended-improvements h3"):
         m = re.match(r"Step\s+(\d+):\s*(.+)", _text(h3))
         if not m:
             continue
+        block = h3.find_next_sibling("dl")
         cost = _text(_dl_value(block, "Typical installation cost"))
         saving = _text(_dl_value(block, "Typical yearly saving"))
         potential = _text(_dl_value(block, "Potential rating"))
