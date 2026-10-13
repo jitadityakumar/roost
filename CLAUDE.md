@@ -562,7 +562,57 @@ Rightmove's; both are kept) and `epc_certificate.postcode_mismatch`. The
 list endpoint omits the parsed blob. Migration `0038` rebuilt `jobs` to widen
 its `job_type` CHECK (same self-referencing-FK pattern as `0017`). Tests use
 a synthetic fixture (`tests/fixtures/epc_certificate_synthetic.html`) --
-never commit a real certificate (it contains a full address).
+never commit a real certificate (it contains a full address). `_steps` in
+`parser.py` must walk every sibling h3/dl pair on the page (PR #127 fixed it
+reading only the first).
+
+**User status model (issues #82, Parked #122, Offer #123).** `user_status` is
+one of triage / parked / approved / offer / rejected / viewing / contacted,
+changed freely via `PATCH /api/listings/{id}`. `STATUS_REQUIRED_FIELDS` in
+`routes/listings.py` (mirrored by `STATUS_COMMENT_VERB` in
+`frontend/src/userStatus.js`) makes `comment` + `initials` mandatory for
+rejected/viewing/contacted/offer (422 otherwise); triage/parked/approved are
+comment-free. The comment is a `comments` row whose `comment_type` comes from
+`STATUS_COMMENT_TYPE` in `listings/store.py` (rejection/viewing/contacted/
+offer) and is kept as history. Routes, tabs and the status menu are
+generated from `USER_STATUSES` in `userStatus.js` -- adding a status there is
+enough for the UI; the Home nav has its own order (`HOME_MENU_ORDER`) and
+colours come from `STATUS_COLOR_VAR` (`--parked` beige, `--offer` purple).
+**`user_status` has a CHECK constraint, so a new status needs a migration that
+rebuilds `listings`** (and `comments` if it gets a comment type): `0039` did
+it for parked, `0040` for offer. `listings` is FK-referenced by many tables,
+so rebuild with `PRAGMA foreign_keys=OFF`/`ON` and a `DROP TABLE IF EXISTS
+<table>_new` guard. **Any new `listings` column must also be carried through
+those rebuilds' column lists in every later rebuild.**
+
+**Commute ordering and badges (PRs #118, #121, #126).** `routes/commute.py`
+`_walk_order` sorts the combined (Rightmove + TfL-radius) station list by
+`walk_distance_meters`; stations with no stored walk data go last, tie-broken
+by Rightmove's straight-line `distance` (TfL-discovered ones have none, so
+they trail). On the frontend, `lineBadges.js` holds the line/operator data
+(`lookupLineBadge`, text-colour helpers) and `components/LineBadge.jsx`
+renders a tile (`size="auto"`: large above 700px viewport, small below; `lg`/
+`sm` pin one). `Commute.jsx` shows one row per terminus: `mergeTermini` pairs
+peak and off-peak by primary terminus CRS (peak order; off-peak-only appended;
+a missing side reads "No peak"/"No off-peak"). The API's `tl.color` overrides
+the table's colour. Operator names come from splitting `operators_title` on
+", "; unknown names get a neutral "other" pill. Trademarked logo SVGs live in
+`frontend/src/assets/network-logos/` (gitignored, loaded with Vite
+`import.meta.glob()`; letter-badge fallback) -- never commit them.
+
+**Listing-page filters, sorts and card tags (#124, PR #110).** Filtering and
+sorting on the status pages is entirely client-side (no backend change):
+`listingFilters.js` is the pure logic, `ListingFilters.jsx` the overlay
+(centred dialog on desktop, bottom sheet on mobile), wired in
+`ListingsPage.jsx`. Tenure and EPC band are OR within a group, AND between
+groups; chain-free is a single on/off chip. Options and counts are derived
+from the *unfiltered* set for the current status page, so a choice can't
+vanish as other filters apply (a selected value whose last listing disappears
+stays, greyed). Filters and sort reset on navigation. Size sorts use
+`floor_area_sqft`, nulls last. `ListingCard.jsx`'s `ListingFacts` shows
+colour-coded tags (floor area, EPC, chain free, lease years), each only when
+known, coloured from `listing.field_colors` (the Field Colours thresholds);
+the map popup is deliberately unchanged.
 
 ## Working in this repo
 

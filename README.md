@@ -17,6 +17,8 @@ Core (no configuration needed):
   refresh/re-scrape.
 - Status tracking (Triage / Parked / Approved / Offer / Rejected / Viewing / Contacted), with
   a required comment + initials when entering Offer/Rejected/Viewing/Contacted.
+- Filters (tenure, chain-free, EPC band) and size sorts (small to large,
+  large to small) on each status page, applied client-side.
 - Admin-defined "standards" rules (e.g. "floor area < 700 sqft") flagged
   per-listing, purely advisory.
 - Map view of the shortlist (Leaflet/OpenStreetMap), filterable by status.
@@ -43,6 +45,13 @@ feature is skipped/hidden rather than the app breaking (see
   band estimates — needs outbound internet to two free public APIs (no key).
 - Local politics (sitting MP, local council, council party control) — needs
   outbound internet to two more free public APIs (no key).
+- Attach a gov.uk "Find an energy certificate" URL to a listing to use its
+  official EPC ratings, address and improvement steps — needs outbound
+  internet to that site (no key).
+- Commute shows stations nearest-walk first, with line/operator badges (Tube
+  lines, Overground, National Rail operators). Optional brand logos go in
+  `frontend/src/assets/network-logos/` (gitignored); without them a
+  letter badge is shown.
 
 ## Requirements
 
