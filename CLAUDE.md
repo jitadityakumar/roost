@@ -221,6 +221,14 @@ path alone (no fetch) and rejects any host outside `rightmove.co.uk` — this
 is the SSRF guard for a URL an end user supplies. Don't relax the host
 allowlist without deliberately reconsidering that.
 
+**The Commute section is non-critical and effectively superseded by Frequent
+Destinations.** Commute needs `london-commuter-stations`, a private sibling
+service that is not on GitHub, so the README deliberately omits it (and its
+`ROOST_COMMUTE_API_BASE` env var). Frequent Destinations (TfL-based, only
+needs a free `TFL_API_KEY`) covers the same "how long to get to X" question
+with no such dependency, so don't treat Commute as a required feature or add
+README documentation for it.
+
 **Commute times are fetched live, never persisted.** `app/commute/` resolves
 a listing's `nearest_stations_raw` (Rightmove's `[{name, distance, types}]`)
 to CRS codes via an in-process, no-network lookup against the bundled

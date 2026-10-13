@@ -32,9 +32,7 @@ feature is skipped/hidden rather than the app breaking (see
 - LLM-enriched fields (lease years, service charge, council tax band,
   chain-free, cash-only, floor area/EPC read off images) — needs a running
   host-side LLM bridge with an authenticated `claude` session.
-- Commute times to configured termini — needs a running
-  `london-commuter-stations` sibling service.
-- Mortgage-affordability estimate — needs a running `mortgage-calculator`
+- Mortgage-affordability estimate — needs a running [`mortgage-calculator`](https://github.com/jitadityakumar/mortgage-calculator)
   sibling service.
 - Nearest stations (discovered via a TfL radius search, not just
   Rightmove's own list of 3), walking distance/time, and "frequent
@@ -48,10 +46,6 @@ feature is skipped/hidden rather than the app breaking (see
 - Attach a gov.uk "Find an energy certificate" URL to a listing to use its
   official EPC ratings, address and improvement steps — needs outbound
   internet to that site (no key).
-- Commute shows stations nearest-walk first, with line/operator badges (Tube
-  lines, Overground, National Rail operators). Optional brand logos go in
-  `frontend/src/assets/network-logos/` (gitignored); without them a
-  letter badge is shown.
 
 ## Requirements
 
@@ -71,8 +65,7 @@ variables — see `backend/app/config.py`.
 | Feature | Requirement | Env var | If missing |
 |---|---|---|---|
 | LLM enrichment | A running host-side LLM bridge (`host/llm_bridge/`, own venv/systemd unit) with an authenticated `claude login` session | `ROOST_LLM_BRIDGE_BASE` | `llm`-lane jobs fail with a clear error per job; scraped fields still work |
-| Commute times | A running `london-commuter-stations` instance | `ROOST_COMMUTE_API_BASE` | `GET .../commute` raises a `CommuteApiError`; UI shows it as unavailable |
-| Mortgage estimate | A running `mortgage-calculator` instance | `ROOST_MORTGAGE_API_BASE` | `GET .../mortgage` returns `{"result": null, "error": "..."}` |
+| Mortgage estimate | A running [`mortgage-calculator`](https://github.com/jitadityakumar/mortgage-calculator) instance | `ROOST_MORTGAGE_API_BASE` | `GET .../mortgage` returns `{"result": null, "error": "..."}` |
 | Station walk distance + frequent destinations | A free TfL Unified API key ([register here](https://api-portal.tfl.gov.uk/)) | `TFL_API_KEY` | Per-station/journey computation is skipped and logged, not fatal; falls back to Rightmove's straight-line distance where applicable |
 | Home-vs-listing comparison | Your home's coordinates | `ROOST_HOME_LAT`, `ROOST_HOME_LON` | Comparison is simply not computed/shown |
 | Local politics (MP + council control) | None (public, keyless: `api.postcodes.io`, `members-api.parliament.uk`); council seat data is a one-off import of the Open Council Data UK CSV, not fetched by the app | — | MP/area fields stay empty (a scrape never fails); the section shows an empty state and its Refresh button retries |
@@ -163,7 +156,7 @@ failures could otherwise accumulate an ever-growing log file on the host.
 `--env-file .env` is how every optional feature in the
 [Requirements](#requirements) table above gets configured — a `.env` file
 (gitignored, not tracked in this repo) holding whichever of
-`ROOST_COMMUTE_API_BASE`, `ROOST_MORTGAGE_API_BASE`, `TFL_API_KEY`,
+`ROOST_MORTGAGE_API_BASE`, `TFL_API_KEY`,
 `ROOST_LLM_BRIDGE_BASE`, `ROOST_HOME_LAT`/`ROOST_HOME_LON` you want enabled.
 Any left unset just means that one feature is unavailable — the app runs
 fine without any of them. `--env-file` is used deliberately instead of
